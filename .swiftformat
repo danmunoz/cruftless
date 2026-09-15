@@ -1,0 +1,10 @@
+--swiftversion 6.0
+--indent 4
+--allman false
+--semicolons never
+--commas never
+--stripunusedargs always
+--trimwhitespace always
+--maxwidth 140
+--disable wrapMultilineStatementBraces,modifierOrder
+--exclude .build,CruftlessCore/.build,DerivedData

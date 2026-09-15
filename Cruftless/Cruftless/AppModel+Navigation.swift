@@ -1,0 +1,135 @@
+import CruftlessCore
+import Foundation
+import SwiftUI
+
+public enum AppRoute: Hashable {
+    case detail(TrackedLocation)
+    case review(DeletionPlan)
+    case result(DeletionResult)
+}
+
+extension AppModel {
+    /// Pushes a drill-down, but never into an empty screen.
+    public func openDetail(for location: TrackedLocation) {
+        cancelPreparation()
+
+        guard drillDowns[location.id] != nil else {
+            prepare(location)
+            return
+        }
+        pushing { navigationPath.append(.detail(location)) }
+    }
+
+    /// Fetches a drill-down the scan has not reached yet, then pushes.
+    private func prepare(_ location: TrackedLocation) {
+        preparingLocationId = location.id
+        prepareTask = Task { [weak self] in
+            guard let self else { return }
+            let contents = await coldContents(for: location)
+
+            guard !Task.isCancelled, preparingLocationId == location.id else { return }
+            preparingLocationId = nil
+            prepareTask = nil
+
+            guard let contents, !contents.isUnavailable else {
+                reportPlanFailure(
+                    Self.coldFailureMessage(for: location, contents: contents)
+                )
+                return
+            }
+
+            adopt(contents, for: location.id)
+            pushing { navigationPath.append(.detail(location)) }
+        }
+    }
+
+    private func coldContents(for location: TrackedLocation) async -> DrillDownContent? {
+        switch location.id {
+        case LocationCatalog.simulatorRuntimes.id:
+            do {
+                return .runtimes(try await simulatorService.runtimes())
+            } catch {
+                return .unavailable(error.localizedDescription)
+            }
+
+        case LocationCatalog.simulatorDevices.id:
+            do {
+                let devices = try await simulatorService.devices()
+                return .devices(devices, sizes: await scanEngine.childSizes(for: location.id))
+            } catch {
+                return .unavailable(error.localizedDescription)
+            }
+
+        default:
+            return .children(await scanEngine.children(of: location.id))
+        }
+    }
+
+    private static func coldFailureMessage(
+        for location: TrackedLocation,
+        contents: DrillDownContent?
+    ) -> String {
+        if case let .unavailable(reason) = contents { return reason }
+        return "\(location.title) could not be read. Try scanning again."
+    }
+
+    /// Adopts a listing measured outside a scan.
+    func adopt(_ contents: DrillDownContent, for locationId: String) {
+        drillDowns[locationId] = contents
+    }
+
+    /// Re-reads one drill-down live, for the retry a failed screen offers.
+    public func reloadDrillDown(for location: TrackedLocation) {
+        cancelPreparation()
+        preparingLocationId = location.id
+        prepareTask = Task { [weak self] in
+            guard let self else { return }
+            let contents = await coldContents(for: location)
+            guard !Task.isCancelled, preparingLocationId == location.id else { return }
+            preparingLocationId = nil
+            prepareTask = nil
+            guard let contents else { return }
+            adopt(contents, for: location.id)
+        }
+    }
+
+    /// Drops an in-flight cold fetch.
+    func cancelPreparation() {
+        prepareTask?.cancel()
+        prepareTask = nil
+        preparingLocationId = nil
+    }
+
+    public func openReview(for plan: DeletionPlan) {
+        guard !plan.isEmpty else {
+            reportPlanFailure("Nothing left to delete there.")
+            return
+        }
+        checkRunningApps()
+        planFailure = nil
+        pushing { navigationPath.append(.review(plan)) }
+    }
+
+    public func pop() {
+        guard !navigationPath.isEmpty else { return }
+        planFailure = nil
+        pushing { navigationPath.removeLast() }
+    }
+
+    public func popToRoot() {
+        guard !isDeleting else { return }
+        pushing { navigationPath.removeAll() }
+        planFailure = nil
+        freeSpaceDelta = nil
+    }
+
+    /// Every mutation of `navigationPath` goes through here.
+    func pushing(_ change: () -> Void) {
+        isNavigating = true
+        withAnimation(PopoverMetrics.pushAnimation, completionCriteria: .logicallyComplete) {
+            change()
+        } completion: { [self] in
+            isNavigating = false
+        }
+    }
+}

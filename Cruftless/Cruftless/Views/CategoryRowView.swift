@@ -1,0 +1,114 @@
+import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
+import SwiftUI
+
+/// One tracked location in the List.
+public struct CategoryRowView: View {
+    public let entry: InventoryEntry
+    /// True while this row's drill-down is being read after a click the scan could not answer from cache.
+    public var isOpening: Bool = false
+    /// True while this location's size is being re-measured.
+    public var isMeasuring: Bool = false
+    public let onSelect: () -> Void
+    public let onAction: () -> Void
+
+    public init(
+        entry: InventoryEntry,
+        isOpening: Bool = false,
+        isMeasuring: Bool = false,
+        onSelect: @escaping () -> Void,
+        onAction: @escaping () -> Void
+    ) {
+        self.entry = entry
+        self.isOpening = isOpening
+        self.isMeasuring = isMeasuring
+        self.onSelect = onSelect
+        self.onAction = onAction
+    }
+
+    private var tier: Tier {
+        entry.location.tier
+    }
+
+    /// A drill-down row carries both: the row opens Detail, the capsule clears the whole location.
+    private var action: RowAction? {
+        // Inert while it is being re-measured, like the skeleton rows of a first scan.
+        guard !entry.isUnavailable, !isMeasuring else { return nil }
+        return RowAction(
+            DesignTokens.actionLabel(for: tier),
+            isDestructive: tier.isFlagged,
+            handler: onAction
+        )
+    }
+
+    public var body: some View {
+        PopoverRow(
+            icon: entry.location.icon,
+            iconFileURL: entry.rootURLs.first,
+            title: entry.location.title,
+            sizeBytes: entry.isUnavailable ? nil : entry.reclaimableBytes,
+            flagTint: tier.isFlagged ? DesignTokens.tierColor(for: tier) : nil,
+            action: action,
+            // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
+            showsChevron: entry.location.hasDrillDown && !entry.isUnavailable && !isMeasuring,
+            isReadOnly: tier == .info,
+            isPlaceholder: isMeasuring,
+            isOpening: isOpening,
+            onSelect: entry.isUnavailable || isMeasuring ? nil : onSelect
+        ) {
+            if isMeasuring {
+                Text("Measuring…")
+                    .foregroundStyle(.tertiary)
+            } else if entry.isUnavailable {
+                Text("Unavailable: \(entry.unavailableReason ?? "cannot be read")")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+#if DEBUG
+    private func previewRow(_ index: Int) -> some View {
+        CategoryRowView(entry: PreviewFixtures.sampleEntries[index], onSelect: {}, onAction: {})
+    }
+
+    #Preview("Rows: being re-measured") {
+        VStack(spacing: 2) {
+            CategoryRowView(entry: PreviewFixtures.sampleEntries[3], onSelect: {}, onAction: {})
+            CategoryRowView(
+                entry: PreviewFixtures.sampleEntries[3],
+                isMeasuring: true,
+                onSelect: {},
+                onAction: {}
+            )
+            CategoryRowView(
+                entry: PreviewFixtures.sampleEntries[0],
+                isMeasuring: true,
+                onSelect: {},
+                onAction: {}
+            )
+        }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Rows: every tier") {
+        VStack(spacing: 2) {
+            previewRow(0) // simulator devices, drill-down
+            previewRow(3) // derived data, regen
+            previewRow(5) // Xcode installs, reveal
+            previewRow(6) // dyld cache, read-only: dimmed, padlock
+            previewRow(10) // archives, flagged ⚠ inline, sub-GB size
+            previewRow(12) // products/logs, sub-GB size
+            CategoryRowView(
+                entry: .unavailable(location: LocationCatalog.toolchains, reason: "permission denied"),
+                onSelect: {},
+                onAction: {}
+            )
+        }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+#endif

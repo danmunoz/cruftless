@@ -1,0 +1,284 @@
+import Darwin
+import Foundation
+
+public protocol SimulatorCommandExecuting: Sendable {
+    func shutdownSimulator(udid: String) async throws
+    func eraseSimulator(udid: String) async throws
+    func deleteSimulator(udid: String) async throws
+    func deleteRuntime(identifier: String) async throws
+}
+
+public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
+    private let runner: SimctlRunner
+
+    public init(runner: SimctlRunner = SimctlRunner()) {
+        self.runner = runner
+    }
+
+    public func shutdownSimulator(udid: String) async throws {
+        try await runner.shutdown(udid: udid)
+    }
+
+    public func eraseSimulator(udid: String) async throws {
+        try await runner.erase(udid: udid)
+    }
+
+    public func deleteSimulator(udid: String) async throws {
+        try await runner.delete(udid: udid)
+    }
+
+    /// Sends the delete and then waits for the runtime to actually leave the installed list.
+    public func deleteRuntime(identifier: String) async throws {
+        try await runner.runtimeDelete(identifier: identifier)
+        try await runner.awaitRuntimeRemoval(identifier: identifier)
+    }
+}
+
+/// The sole executor permitted to permanently delete files or mutate simulators.
+public actor DeletionExecutor {
+    private let simulatorExecutor: SimulatorCommandExecuting
+
+    /// Serialises every overlapping `execute` call.
+    private var isExecuting = false
+
+    private static let fileSystemQueue = DispatchQueue(
+        label: "com.cruftless.core.deletion-executor",
+        qos: .userInitiated
+    )
+
+    public init(simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor()) {
+        self.simulatorExecutor = simulatorExecutor
+    }
+
+    /// Executes all items in the plan sequentially, collecting per-item outcomes.
+    public func execute(_ plan: DeletionPlan) async -> DeletionResult {
+        guard !isExecuting else {
+            return Self.refusedAsConcurrent(plan)
+        }
+        isExecuting = true
+        defer { isExecuting = false }
+
+        var outcomes: [ItemOutcome] = []
+        outcomes.reserveCapacity(plan.items.count)
+
+        for item in plan.items {
+            if Task.isCancelled {
+                outcomes.append(
+                    ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0)
+                )
+                continue
+            }
+            let outcome = await executeSingle(item)
+            outcomes.append(outcome)
+        }
+
+        return DeletionResult(items: outcomes)
+    }
+
+    private static func refusedAsConcurrent(_ plan: DeletionPlan) -> DeletionResult {
+        DeletionResult(
+            items: plan.items.map {
+                ItemOutcome(target: $0, status: .notAttempted(reason: .executorBusy), freedBytes: 0)
+            }
+        )
+    }
+
+    private func executeSingle(_ target: DeletionTarget) async -> ItemOutcome {
+        switch target {
+        case let .path(_, _, validatedPath, fingerprint, _, _, bytes, precondition):
+            await executePath(
+                target,
+                validatedPath: validatedPath,
+                fingerprint: fingerprint,
+                bytes: bytes,
+                precondition: precondition
+            )
+        case let .simulatorErase(udid, _, isBooted, _, bytes):
+            await executeSimulatorErase(target, udid: udid, isBooted: isBooted, bytes: bytes)
+        case let .simulatorDelete(udid, _, isBooted, _, bytes):
+            await executeSimulatorDelete(target, udid: udid, isBooted: isBooted, bytes: bytes)
+        case let .runtimeDelete(identifier, _, _, bytes):
+            await executeRuntimeDelete(target, identifier: identifier, bytes: bytes)
+        }
+    }
+
+    /// Hops the whole check-then-delete sequence onto `fileSystemQueue`.
+    private func executePath(
+        _ target: DeletionTarget,
+        validatedPath: ValidatedPath,
+        fingerprint: Fingerprint,
+        bytes: Int64,
+        precondition: DeletionPrecondition?
+    ) async -> ItemOutcome {
+        await Self.offCooperativePool {
+            Self.performPathDeletion(
+                target,
+                validatedPath: validatedPath,
+                fingerprint: fingerprint,
+                bytes: bytes,
+                precondition: precondition
+            )
+        }
+    }
+
+    /// Runs `work` on `fileSystemQueue` and suspends until it returns.
+    private static func offCooperativePool<Value: Sendable>(
+        _ work: @escaping @Sendable () -> Value
+    ) async -> Value {
+        await withCheckedContinuation { continuation in
+            fileSystemQueue.async {
+                continuation.resume(returning: work())
+            }
+        }
+    }
+
+    private static func performPathDeletion(
+        _ target: DeletionTarget,
+        validatedPath: ValidatedPath,
+        fingerprint: Fingerprint,
+        bytes: Int64,
+        precondition: DeletionPrecondition?
+    ) -> ItemOutcome {
+        // The fingerprint's resolved path and the validated path are both derived from the same URL at plan time.
+        guard fingerprint.path == validatedPath.path else {
+            return ItemOutcome(
+                target: target,
+                status: .failed(reason: "Refused: validated path and fingerprint disagree"),
+                freedBytes: 0
+            )
+        }
+
+        if let precondition, let refusal = Self.check(precondition) {
+            return ItemOutcome(target: target, status: .failed(reason: "Refused: \(refusal)"), freedBytes: 0)
+        }
+
+        let check = fingerprint.verify(at: validatedPath.url)
+        switch check {
+        case .valid:
+            let startedAt = Date()
+            do {
+                // Sole invocation of removeItem in the codebase.
+                try FileManager.default.removeItem(at: validatedPath.url)
+                return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
+            } catch {
+                return Self.outcomeAfterRemoveFailure(
+                    target: target,
+                    url: validatedPath.url,
+                    plannedBytes: bytes,
+                    startedAt: startedAt,
+                    error: error
+                )
+            }
+        case .missing:
+            return ItemOutcome(target: target, status: .failed(reason: "Item no longer exists on disk"), freedBytes: 0)
+        case let .pathChanged(expected, actual):
+            return ItemOutcome(
+                target: target,
+                status: .failed(reason: "Resolved path changed: expected \(expected), got \(actual)"),
+                freedBytes: 0
+            )
+        case let .changedSinceScan(reason):
+            return ItemOutcome(target: target, status: .failed(reason: "Refused: \(reason)"), freedBytes: 0)
+        }
+    }
+
+    /// Works out what a failed `removeItem` actually left behind.
+    private static func outcomeAfterRemoveFailure(
+        target: DeletionTarget,
+        url: URL,
+        plannedBytes: Int64,
+        startedAt: Date,
+        error: any Error
+    ) -> ItemOutcome {
+        var statBuf = stat()
+        guard lstat(PathNormalizer.normalize(url.path(percentEncoded: false)), &statBuf) == 0 else {
+            // Nothing is left despite the error: the delete did complete.
+            return ItemOutcome(target: target, status: .succeeded, freedBytes: plannedBytes)
+        }
+
+        // A set of its own: this walk must count every byte still on disk, not skip the ones some earlier walk happened to see.
+        let surviving = DirectoryWalker
+            .walk(url: url, inodeSet: InodeSet(), ignoringEntriesCreatedAfter: startedAt)
+            .allocatedBytes
+
+        guard surviving > 0 else {
+            // Nothing the plan named is still on disk.
+            return ItemOutcome(target: target, status: .succeeded, freedBytes: plannedBytes)
+        }
+
+        let freed = max(0, plannedBytes - surviving)
+
+        guard freed > 0 else {
+            // Nothing came off.
+            return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
+        }
+
+        let reason = "Partially removed: \(Self.sentence(error)) " +
+            "\(ByteFormatter.format(surviving)) still on disk."
+        return ItemOutcome(target: target, status: .partiallyFailed(reason: reason), freedBytes: freed)
+    }
+
+    /// Adds sentence-ending punctuation when needed.
+    private static func sentence(_ error: any Error) -> String {
+        let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.hasSuffix(".") ? text : text + "."
+    }
+
+    /// Re-checks a plan-time precondition at execute time.
+    private static func check(_ precondition: DeletionPrecondition) -> String? {
+        switch precondition {
+        case let .simulatorShutdown(devicePlist, deviceName):
+            let deviceDirectory = devicePlist.deletingLastPathComponent()
+            guard let device = DeviceStore.parseDevicePlist(at: devicePlist, deviceDirectory: deviceDirectory) else {
+                return "\(deviceName)'s device.plist can't be read, so its state is unknown"
+            }
+            guard device.state.isShutdown else {
+                return "\(deviceName) is no longer shut down"
+            }
+            return nil
+        }
+    }
+
+    private func executeSimulatorErase(
+        _ target: DeletionTarget,
+        udid: String,
+        isBooted: Bool,
+        bytes: Int64
+    ) async -> ItemOutcome {
+        do {
+            if isBooted {
+                try await simulatorExecutor.shutdownSimulator(udid: udid)
+            }
+            try await simulatorExecutor.eraseSimulator(udid: udid)
+            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
+        } catch {
+            return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
+        }
+    }
+
+    private func executeSimulatorDelete(
+        _ target: DeletionTarget,
+        udid: String,
+        isBooted: Bool,
+        bytes: Int64
+    ) async -> ItemOutcome {
+        do {
+            if isBooted {
+                try await simulatorExecutor.shutdownSimulator(udid: udid)
+            }
+            try await simulatorExecutor.deleteSimulator(udid: udid)
+            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
+        } catch {
+            return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
+        }
+    }
+
+    private func executeRuntimeDelete(_ target: DeletionTarget, identifier: String, bytes: Int64) async -> ItemOutcome {
+        do {
+            try await simulatorExecutor.deleteRuntime(identifier: identifier)
+            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
+        } catch {
+            return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
+        }
+    }
+}
