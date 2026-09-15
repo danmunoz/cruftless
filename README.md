@@ -5,9 +5,16 @@ used by Xcode and CoreSimulator. It shows what can be reclaimed, explains the
 consequence of each action, and asks for confirmation before permanently
 deleting anything.
 
-> [!IMPORTANT]
-> Cruftless is pre-release software. It is not yet distributed as a signed app;
-> for now, build it from source.
+## Install
+
+Cruftless is available through Homebrew:
+
+```bash
+brew install --cask danmunoz/tap/cruftless
+```
+
+It requires macOS 26 or later. Releases are Developer ID–signed and notarized
+by Apple.
 
 <p align="center">
   <img src="Screenshots/overview.png" width="31%" alt="Cruftless overview showing reclaimable developer disk space">
