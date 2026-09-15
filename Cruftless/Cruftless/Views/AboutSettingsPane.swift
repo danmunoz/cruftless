@@ -45,6 +45,12 @@ private struct AboutLinks: View {
     var body: some View {
         VStack(spacing: 0) {
             AboutLink(
+                title: "Project Website",
+                destination: URL(string: "https://www.danmunoz.com/projects/cruftless")!
+            )
+            Divider()
+                .padding(.leading, 12)
+            AboutLink(
                 title: "GitHub Repository",
                 destination: URL(string: "https://github.com/danmunoz/cruftless")!
             )
