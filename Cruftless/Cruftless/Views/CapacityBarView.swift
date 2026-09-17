@@ -50,7 +50,7 @@ public struct CapacityBarView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(ByteFormatter.format(reclaimableBytes)) reclaimable of "
+            "\(ByteFormatter.format(reclaimableBytes)) cleanable of "
                 + "\(ByteFormatter.format(capacity.totalBytes)) total. "
                 + "Used \(ByteFormatter.format(capacity.usedBytes)), "
                 + "purgeable \(ByteFormatter.format(capacity.purgeableBytes)), "

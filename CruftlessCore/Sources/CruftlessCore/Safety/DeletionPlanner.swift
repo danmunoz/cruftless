@@ -43,7 +43,7 @@ public enum DeletionPlanner {
         }
 
         try rejectOverlaps(among: targets)
-        let plan = DeletionPlan.batch(targets)
+        let plan = DeletionPlan.batch(targets, affectedLocationIds: [location.id])
         guard !plan.isEmpty else {
             throw DeletionPlanningError.nothingToPlan(title: location.title)
         }
@@ -117,12 +117,13 @@ public enum DeletionPlanner {
         try requireDeletableLocation(location)
         try requirePathDeletion(location)
         let pathGuard = PathGuard(roots: location.resolveRoots(), protectedPaths: context.protectedPaths)
-        return try DeletionPlan.single(target(
+        let builtTarget = try target(
             for: child,
             in: location,
             pathGuard: pathGuard,
             context: context
-        ))
+        )
+        return DeletionPlan.single(builtTarget, affectedLocationIds: [location.id])
     }
 
     /// Plans a clear of several drill-down children at once.
@@ -144,7 +145,7 @@ public enum DeletionPlanner {
         }
         try rejectOverlaps(among: targets)
 
-        let plan = DeletionPlan.batch(targets)
+        let plan = DeletionPlan.batch(targets, affectedLocationIds: [location.id])
         guard !plan.isEmpty else {
             throw DeletionPlanningError.nothingToPlan(title: location.title)
         }

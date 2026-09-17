@@ -41,6 +41,23 @@ struct DeletionPlannerTests {
         let plan = try DeletionPlanner.wholeLocation(entry, context: PlanningContext())
         #expect(plan.count == 1)
         #expect(plan.totalReclaimableBytes == 4096)
+        #expect(plan.affectedLocationIds == Set(["previews"]))
+    }
+
+    @Test("A child plan rescans only its location")
+    func childPlanScopesRescan() throws {
+        let root = try makeTempRoot(named: "Archives")
+        defer { TestFileSystem.removeDirectoryRecursively(at: root.deletingLastPathComponent()) }
+        let archive = root.appendingPathComponent("MyApp.xcarchive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+
+        let loc = location(id: "archives", tier: .irreversible, roots: [root])
+        let child = ChildEntry(
+            id: "archive", name: "MyApp.xcarchive", url: archive, reclaimableBytes: 20,
+            staleness: StalenessInfo(lastUsedDate: Date()), tier: .irreversible, consequence: "dSYMs"
+        )
+        let plan = try DeletionPlanner.child(child, in: loc, context: PlanningContext())
+        #expect(plan.affectedLocationIds == Set(["archives"]))
     }
 
     @Test("A multi-root location reports each root's own size, not the total")
@@ -173,6 +190,7 @@ struct DeletionPlannerTests {
         #expect(plan.count == 1)
         #expect(!plan.hasFlaggedItem)
         #expect(plan.totalReclaimableBytes == 10)
+        #expect(plan.affectedLocationIds == Set(["archives"]))
     }
 
     @Test("A single flagged child chosen explicitly is still plannable")
@@ -250,7 +268,6 @@ struct DeletionPlannerTests {
         }
         #expect(FileManager.default.fileExists(atPath: victim.path))
     }
-
 }
 
 @Suite("DeletionPlanner custom roots")

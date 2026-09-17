@@ -36,25 +36,25 @@ public struct ScanProgress: Sendable, Equatable {
         started = []
     }
 
-    /// Rows measured so far, largest first: the order the finished list uses, so a row does not jump when the scan ends.
+    /// Measured rows in final inventory order.
     public var rows: [InventoryEntry] {
-        landed.sorted { $0.reclaimableBytes > $1.reclaimableBytes }
+        Inventory.displaySorted(landed)
     }
 
-    /// Promised locations that have not landed yet, still in catalog order.
+    /// Planned locations without measurements.
     public var pending: [TrackedLocation] {
         let landedIds = Set(landed.map(\.id))
         return planned.filter { !landedIds.contains($0.id) }
     }
 
-    /// Locations being measured at this instant: begun, promised, and not yet landed.
+    /// Planned locations currently being measured.
     public var measuring: Set<String> {
         let landedIds = Set(landed.map(\.id))
         let plannedIds = Set(planned.map(\.id))
         return started.intersection(plannedIds).subtracting(landedIds)
     }
 
-    /// Whether this location's number is being replaced right now.
+    /// Returns whether a location is being measured.
     public func isMeasuring(_ locationId: String) -> Bool {
         measuring.contains(locationId)
     }

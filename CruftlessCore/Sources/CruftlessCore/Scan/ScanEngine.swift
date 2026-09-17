@@ -116,8 +116,9 @@ public actor ScanEngine {
                     resolved.filter { Self.willProduceRow($0.location, roots: $0.roots) }.map(\.location)
                 ))
 
-                let volumeCapacity = VolumeCapacity.query()
                 let collectedEntries = await self.walkAndYield(resolved, inodes: inodes, into: continuation)
+                // Captures volume capacity after walking.
+                let volumeCapacity = VolumeCapacity.query()
 
                 let inventory = self.assembled(
                     from: collectedEntries,
@@ -233,7 +234,7 @@ public actor ScanEngine {
             let runtimes = Self.needsRuntimes(location)
                 ? await Self.resolveRuntimes(runtimesTask)
                 : (list: nil, failure: nil)
-            let deviceLister = self.deviceLister
+            let deviceLister = deviceLister
 
             return await offActor {
                 continuation.yield(.locationStarted(locationId: location.id))
@@ -277,5 +278,4 @@ public actor ScanEngine {
             contents: .runtimes(runtimes)
         )
     }
-
 }

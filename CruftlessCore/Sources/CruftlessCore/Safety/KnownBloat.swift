@@ -115,6 +115,7 @@ public enum KnownBloat: Sendable {
         }
 
         let totalSize = targets.reduce(0) { $0 + $1.reclaimableBytes }
-        return DeletionPlan.batch(targets, confirmLabel: "Clear \(ByteFormatter.format(totalSize))")
+        return DeletionPlan.batch(targets, confirmLabel: "Clear \(ByteFormatter.format(totalSize))",
+                                  affectedLocationIds: [LocationCatalog.simulatorDevices.id])
     }
 }

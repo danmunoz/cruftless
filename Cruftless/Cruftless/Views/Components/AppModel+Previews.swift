@@ -13,7 +13,7 @@
                 capacity: PreviewFixtures.sampleCapacity,
                 scannedAt: scannedAt
             )
-            model.hasCompletedScanThisSession = true
+            model.scannedLocationIds = Set(PreviewFixtures.sampleEntries.map(\.location.id))
             return model
         }
 
@@ -57,10 +57,10 @@
             return model
         }
 
-        static func previewRestored(scannedAt: Date = .now.addingTimeInterval(-7_200)) -> AppModel {
+        static func previewRestored(scannedAt: Date = .now.addingTimeInterval(-7200)) -> AppModel {
             let model = previewPopulated(scannedAt: scannedAt)
-            // No scan has run this session, which is what makes the rows restored (`AppModel.isInventoryRestored`).
-            model.hasCompletedScanThisSession = false
+            // Marks every row as restored.
+            model.scannedLocationIds = []
             return model
         }
 

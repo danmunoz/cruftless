@@ -46,13 +46,22 @@ struct ScanProgressTests {
         #expect(progress.rows.map(\.id) == [LocationCatalog.archives.id, LocationCatalog.derivedData.id])
     }
 
+    @Test("Measured rows tie-break exactly as the finished list does")
+    func rowsTieBreakLikeInventory() {
+        var progress = ScanProgress()
+        progress.plan(LocationCatalog.all)
+        progress.record(entry(LocationCatalog.swiftPMCache, bytes: 0))
+        progress.record(entry(LocationCatalog.ibSupport, bytes: 0))
+        #expect(progress.rows.map(\.id) == [LocationCatalog.swiftPMCache.id, LocationCatalog.ibSupport.id])
+    }
+
     @Test("The running total counts deletable tiers only")
     func totalCountsDeletableTiersOnly() {
         var progress = ScanProgress()
         progress.plan(LocationCatalog.all)
         progress.record(entry(LocationCatalog.derivedData, bytes: 100))
-        progress.record(entry(LocationCatalog.xcodeInstalls, bytes: 90_000))
-        progress.record(entry(LocationCatalog.simulatorDyldCache, bytes: 80_000))
+        progress.record(entry(LocationCatalog.xcodeInstalls, bytes: 90000))
+        progress.record(entry(LocationCatalog.simulatorDyldCache, bytes: 80000))
 
         #expect(progress.reclaimableBytes == 100)
     }

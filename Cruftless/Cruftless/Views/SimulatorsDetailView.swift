@@ -199,11 +199,11 @@ public struct SimulatorsDetailView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             if paths.isEmpty {
-                Text("Nothing reclaimable inside this device.")
+                Text("Nothing cleanable inside this device.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             } else {
-                Text("Reclaimable inside this device · \(ByteFormatter.format(total))")
+                Text("Cleanable inside this device · \(ByteFormatter.format(total))")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -287,5 +287,4 @@ private extension SimulatorsDetailView {
             return plan
         }
     }
-
 }

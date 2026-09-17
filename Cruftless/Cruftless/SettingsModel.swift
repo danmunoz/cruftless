@@ -139,7 +139,7 @@ public final class SettingsModel {
 
         let content = UNMutableNotificationContent()
         content.title = "Review developer disk bloat"
-        content.body = "Open Cruftless to review reclaimable Xcode and simulator files."
+        content.body = "Open Cruftless to review cleanable Xcode and simulator files."
         content.sound = .default
 
         do {

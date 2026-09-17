@@ -10,6 +10,18 @@ import SwiftUI
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("List: rows below the separator") {
+        let model = AppModel()
+        model.inventory = Inventory(
+            entries: PreviewFixtures.sampleEntries + PreviewFixtures.emptyStateEntries,
+            capacity: PreviewFixtures.sampleCapacity,
+            scannedAt: .now
+        )
+        model.scannedLocationIds = Set(model.inventory!.entries.map(\.location.id))
+        return ListView(model: model, onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("List: Xcode and Simulator running") {
         ListView(model: .previewWithXcodeAndSimulatorRunning(), onOpenSettings: {})
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
@@ -69,6 +81,7 @@ import SwiftUI
                 reason: .protectedLocation
             )
         ]
+        model.scannedLocationIds = Set(model.inventory!.entries.map(\.location.id))
         return ListView(model: model, onOpenSettings: {})
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
@@ -82,6 +95,7 @@ import SwiftUI
             capacity: PreviewFixtures.sampleCapacity,
             scannedAt: .now
         )
+        model.scannedLocationIds = Set(model.inventory!.entries.map(\.location.id))
         return ListView(model: model, onOpenSettings: {})
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }

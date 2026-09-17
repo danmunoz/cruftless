@@ -10,7 +10,7 @@ struct DeletionExecutorSimulatorTests {
     @Test("Erasing a booted simulator shuts it down first")
     func bootedEraseShutsDownFirst() async {
         let mock = MockSimulatorExecutor()
-        let executor = DeletionExecutor(simulatorExecutor: mock)
+        let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let target = DeletionTarget.simulatorErase(
             udid: "BOOTED-1", name: "iPhone 17 Pro", isBooted: true,
@@ -25,7 +25,7 @@ struct DeletionExecutorSimulatorTests {
     @Test("Erasing a shut-down simulator sends no shutdown")
     func shutdownEraseSkipsShutdown() async {
         let mock = MockSimulatorExecutor()
-        let executor = DeletionExecutor(simulatorExecutor: mock)
+        let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let target = DeletionTarget.simulatorErase(
             udid: "OFF-1", name: "iPhone 17", isBooted: false,
@@ -40,7 +40,7 @@ struct DeletionExecutorSimulatorTests {
     @Test("Deleting a booted simulator shuts it down first")
     func bootedDeleteShutsDownFirst() async {
         let mock = MockSimulatorExecutor()
-        let executor = DeletionExecutor(simulatorExecutor: mock)
+        let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let target = DeletionTarget.simulatorDelete(
             udid: "BOOTED-2", name: "iPad", isBooted: true,

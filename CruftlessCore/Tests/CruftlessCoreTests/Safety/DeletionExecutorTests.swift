@@ -328,7 +328,7 @@ struct DeletionExecutorReentrancyTests {
     @Test("A second execute arriving mid-run is refused, not interleaved", .timeLimit(.minutes(1)))
     func overlappingExecuteIsRefused() async {
         let mock = GatedSimulatorExecutor()
-        let executor = DeletionExecutor(simulatorExecutor: mock)
+        let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let first = Task {
             await executor.execute(DeletionPlan.single(Self.erase(udid: "FIRST")))
@@ -355,7 +355,7 @@ struct DeletionExecutorReentrancyTests {
     func guardClearsAfterRun() async {
         let mock = GatedSimulatorExecutor()
         await mock.release.open()
-        let executor = DeletionExecutor(simulatorExecutor: mock)
+        let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let first = await executor.execute(DeletionPlan.single(Self.erase(udid: "ONE")))
         let second = await executor.execute(DeletionPlan.single(Self.erase(udid: "TWO")))
