@@ -289,7 +289,7 @@ struct RefreshGlyphButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.trianglehead.clockwise")
+            Image(systemName: "arrow.clockwise")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 .frame(width: 20, height: 20)
