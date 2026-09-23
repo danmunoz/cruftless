@@ -1,8 +1,8 @@
 import Foundation
 
-extension DeletionPlanner {
+public extension DeletionPlanner {
     /// Plans a clear of the known-bloat sub-paths inside a shut-down simulator.
-    public static func simulatorBloat(
+    static func simulatorBloat(
         for device: SimDevice,
         context: PlanningContext
     ) throws -> DeletionPlan {
@@ -10,7 +10,7 @@ extension DeletionPlanner {
     }
 
     /// Plans an erase of a simulator's installed apps and data.
-    public static func simulatorErase(
+    static func simulatorErase(
         for device: SimDevice,
         size: Int64 = 0,
         context: PlanningContext
@@ -27,11 +27,11 @@ extension DeletionPlanner {
                 : "Removes all installed apps and their data from this simulator.",
             reclaimableBytes: size
         )
-        return DeletionPlan.single(target, confirmLabel: label)
+        return DeletionPlan.single(target, confirmLabel: label, affectedLocationIds: [LocationCatalog.simulatorDevices.id])
     }
 
     /// Plans a complete deletion of a simulator device.
-    public static func simulatorDelete(
+    static func simulatorDelete(
         for device: SimDevice,
         size: Int64 = 0,
         context: PlanningContext
@@ -45,11 +45,15 @@ extension DeletionPlanner {
             consequence: "Deletes this simulator completely. Installed apps and configuration will be permanently lost.",
             reclaimableBytes: size
         )
-        return DeletionPlan.single(target, confirmLabel: "Delete Permanently")
+        return DeletionPlan.single(
+            target,
+            confirmLabel: "Delete Permanently",
+            affectedLocationIds: [LocationCatalog.simulatorDevices.id]
+        )
     }
 
     /// Plans the deletion of an installed runtime.
-    public static func runtimeDelete(
+    static func runtimeDelete(
         _ runtime: SimRuntime,
         context: PlanningContext
     ) throws -> DeletionPlan {
@@ -74,11 +78,16 @@ extension DeletionPlanner {
                 "Simulators that use it stop working until it is installed again.",
             reclaimableBytes: runtime.sizeBytes
         )
-        return DeletionPlan.single(target, confirmLabel: "Delete Permanently")
+        // Runtime deletion also invalidates device availability.
+        return DeletionPlan.single(
+            target,
+            confirmLabel: "Delete Permanently",
+            affectedLocationIds: [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id]
+        )
     }
 
     /// Everything `simctl runtime delete` can touch lives under here.
-    static let systemRuntimeStore = URL(
+    internal static let systemRuntimeStore = URL(
         fileURLWithPath: "/Library/Developer/CoreSimulator",
         isDirectory: true
     )

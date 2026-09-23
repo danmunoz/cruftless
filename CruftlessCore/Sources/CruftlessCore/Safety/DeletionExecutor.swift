@@ -37,6 +37,10 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 /// The sole executor permitted to permanently delete files or mutate simulators.
 public actor DeletionExecutor {
     private let simulatorExecutor: SimulatorCommandExecuting
+    let capacitySampler: @Sendable () async -> Int64
+    let deviceDirectoryProvider: @Sendable (String) -> URL?
+    let settleSleep: @Sendable () async throws -> Void
+    var onProgress: (@Sendable (DeletionProgress) -> Void)?
 
     /// Serialises every overlapping `execute` call.
     private var isExecuting = false
@@ -46,17 +50,34 @@ public actor DeletionExecutor {
         qos: .userInitiated
     )
 
-    public init(simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor()) {
+    public init(
+        simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor(),
+        capacitySampler: @escaping @Sendable () async -> Int64 = { VolumeCapacity.query().freeBytes },
+        deviceDirectory: @escaping @Sendable (String) -> URL? = { udid in
+            RootResolver.simulatorDevicesRoot().first?.appendingPathComponent(udid, isDirectory: true)
+        },
+        settleSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }
+    ) {
         self.simulatorExecutor = simulatorExecutor
+        self.capacitySampler = capacitySampler
+        deviceDirectoryProvider = deviceDirectory
+        self.settleSleep = settleSleep
     }
 
     /// Executes all items in the plan sequentially, collecting per-item outcomes.
-    public func execute(_ plan: DeletionPlan) async -> DeletionResult {
+    public func execute(
+        _ plan: DeletionPlan,
+        onProgress: (@Sendable (DeletionProgress) -> Void)? = nil
+    ) async -> DeletionResult {
         guard !isExecuting else {
             return Self.refusedAsConcurrent(plan)
         }
         isExecuting = true
-        defer { isExecuting = false }
+        self.onProgress = onProgress
+        defer {
+            isExecuting = false
+            self.onProgress = nil
+        }
 
         var outcomes: [ItemOutcome] = []
         outcomes.reserveCapacity(plan.items.count)
@@ -110,7 +131,8 @@ public actor DeletionExecutor {
         bytes: Int64,
         precondition: DeletionPrecondition?
     ) async -> ItemOutcome {
-        await Self.offCooperativePool {
+        report(DeletionProgress(verb: .clear, targetName: target.name, phase: .mutating))
+        return await Self.offCooperativePool {
             Self.performPathDeletion(
                 target,
                 validatedPath: validatedPath,
@@ -122,7 +144,7 @@ public actor DeletionExecutor {
     }
 
     /// Runs `work` on `fileSystemQueue` and suspends until it returns.
-    private static func offCooperativePool<Value: Sendable>(
+    static func offCooperativePool<Value: Sendable>(
         _ work: @escaping @Sendable () -> Value
     ) async -> Value {
         await withCheckedContinuation { continuation in
@@ -245,15 +267,21 @@ public actor DeletionExecutor {
         isBooted: Bool,
         bytes: Int64
     ) async -> ItemOutcome {
+        report(DeletionProgress(verb: .erase, targetName: target.name, phase: .mutating))
+        let baselineFree = await capacitySampler()
         do {
             if isBooted {
                 try await simulatorExecutor.shutdownSimulator(udid: udid)
             }
             try await simulatorExecutor.eraseSimulator(udid: udid)
-            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
         } catch {
             return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
         }
+        _ = await confirmEraseLanded(udid: udid)
+        let settle = await waitForSpaceToSettle(
+            verb: .erase, targetName: target.name, expectedBytes: bytes, baselineFreeBytes: baselineFree
+        )
+        return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes, spaceSettle: settle)
     }
 
     private func executeSimulatorDelete(
@@ -262,23 +290,35 @@ public actor DeletionExecutor {
         isBooted: Bool,
         bytes: Int64
     ) async -> ItemOutcome {
+        report(DeletionProgress(verb: .delete, targetName: target.name, phase: .mutating))
+        let baselineFree = await capacitySampler()
         do {
             if isBooted {
                 try await simulatorExecutor.shutdownSimulator(udid: udid)
             }
             try await simulatorExecutor.deleteSimulator(udid: udid)
-            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
         } catch {
             return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
         }
+        _ = await confirmDeviceGone(udid: udid)
+        let settle = await waitForSpaceToSettle(
+            verb: .delete, targetName: target.name, expectedBytes: bytes, baselineFreeBytes: baselineFree
+        )
+        return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes, spaceSettle: settle)
     }
 
     private func executeRuntimeDelete(_ target: DeletionTarget, identifier: String, bytes: Int64) async -> ItemOutcome {
+        report(DeletionProgress(verb: .remove, targetName: target.name, phase: .mutating))
+        let baselineFree = await capacitySampler()
         do {
+            // Runtime deletion includes removal confirmation.
             try await simulatorExecutor.deleteRuntime(identifier: identifier)
-            return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
         } catch {
             return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
         }
+        let settle = await waitForSpaceToSettle(
+            verb: .remove, targetName: target.name, expectedBytes: bytes, baselineFreeBytes: baselineFree
+        )
+        return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes, spaceSettle: settle)
     }
 }

@@ -51,6 +51,7 @@ public final class AppModel {
     func setScanFailure(_ reason: String, for locationId: String) {
         scanFailures[locationId] = reason
     }
+
     /// Which developer apps are running right now, nil when neither is.
     public var runningApps: RunningDeveloperApps?
 
@@ -63,6 +64,7 @@ public final class AppModel {
     public var runningAppsFooterLabel: String? {
         runningApps?.footerLabel
     }
+
     /// What each drill-down screen renders, produced by the scan that measured the location, keyed by location id.
     public internal(set) var drillDowns: [String: DrillDownContent] = [:]
 
@@ -77,6 +79,9 @@ public final class AppModel {
     public var navigationPath: [AppRoute] = []
     public var freeSpaceDelta: FreeSpaceDelta?
 
+    /// Free space captured when Review opens.
+    var reviewFreeSpaceBytes: Int64?
+
     /// Custom Xcode locations (Derived Data, Archives) refused for safety, with the default root used in their place.
     public var preferenceIssues: [RootPreferenceIssue] = []
 
@@ -84,6 +89,9 @@ public final class AppModel {
 
     /// True while a plan is being executed.
     public private(set) var isDeleting = false
+
+    /// Current deletion progress shown in Review.
+    public internal(set) var deletionProgress: DeletionProgress?
 
     public let scanEngine: ScanEngine
     public let simulatorService: SimulatorService
@@ -95,7 +103,8 @@ public final class AppModel {
 
     var hasStartedMonitoring = false
     var hasStartedInitialScan = false
-    var hasCompletedScanThisSession = false
+    /// Location IDs measured during this session.
+    var scannedLocationIds: Set<String> = []
 
     /// The delayed first scan, cancelled if the popover asks for one sooner.
     var launchScanTask: Task<Void, Never>?
@@ -107,9 +116,13 @@ public final class AppModel {
 
     let inventoryStore: InventoryStore
 
-    public var isInventoryRestored: Bool {
-        inventory != nil && !hasCompletedScanThisSession
+    /// Whether the location still uses restored snapshot data.
+    public func isRestored(_ entry: InventoryEntry) -> Bool {
+        inventory != nil && !scannedLocationIds.contains(entry.location.id)
     }
+
+    /// Timestamp of the restored snapshot rows.
+    var restoredInventoryDate: Date?
 
     /// Bounds how often a filesystem event may rescan the same location.
     var throttle = RescanThrottle()
@@ -194,9 +207,13 @@ public final class AppModel {
         defer { isDeleting = false }
 
         let before = VolumeCapacity.query().freeBytes
-        let result = await deletionExecutor.execute(plan)
+        let result = await deletionExecutor.execute(plan) { [weak self] progress in
+            Task { @MainActor in self?.deletionProgress = progress }
+        }
+        deletionProgress = nil
         freeSpaceDelta = FreeSpaceDelta(before: before, after: VolumeCapacity.query().freeBytes)
-        refreshScan()
+        // Rescans only locations affected by the plan.
+        startScan(plan.rescanScope, trigger: .user)
 
         // Result replaces Review in place, so Back from Result never lands on a plan that has already been executed.
         pushing {

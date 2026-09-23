@@ -13,19 +13,23 @@ public struct CategoryRowView: View {
     public var isMeasuring: Bool = false
     public let onSelect: () -> Void
     public let onAction: () -> Void
+    /// Re-measures this location.
+    public let onRescan: (() -> Void)?
 
     public init(
         entry: InventoryEntry,
         isOpening: Bool = false,
         isMeasuring: Bool = false,
         onSelect: @escaping () -> Void,
-        onAction: @escaping () -> Void
+        onAction: @escaping () -> Void,
+        onRescan: (() -> Void)? = nil
     ) {
         self.entry = entry
         self.isOpening = isOpening
         self.isMeasuring = isMeasuring
         self.onSelect = onSelect
         self.onAction = onAction
+        self.onRescan = onRescan
     }
 
     private var tier: Tier {
@@ -49,8 +53,10 @@ public struct CategoryRowView: View {
             iconFileURL: entry.rootURLs.first,
             title: entry.location.title,
             sizeBytes: entry.isUnavailable ? nil : entry.reclaimableBytes,
-            flagTint: tier.isFlagged ? DesignTokens.tierColor(for: tier) : nil,
+            // Shows warnings only on flagged Detail rows.
+            flagTint: nil,
             action: action,
+            rescan: onRescan,
             // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
             showsChevron: entry.location.hasDrillDown && !entry.isUnavailable && !isMeasuring,
             isReadOnly: tier == .info,
@@ -71,23 +77,25 @@ public struct CategoryRowView: View {
 
 #if DEBUG
     private func previewRow(_ index: Int) -> some View {
-        CategoryRowView(entry: PreviewFixtures.sampleEntries[index], onSelect: {}, onAction: {})
+        CategoryRowView(entry: PreviewFixtures.sampleEntries[index], onSelect: {}, onAction: {}, onRescan: {})
     }
 
     #Preview("Rows: being re-measured") {
         VStack(spacing: 2) {
-            CategoryRowView(entry: PreviewFixtures.sampleEntries[3], onSelect: {}, onAction: {})
+            CategoryRowView(entry: PreviewFixtures.sampleEntries[3], onSelect: {}, onAction: {}, onRescan: {})
             CategoryRowView(
                 entry: PreviewFixtures.sampleEntries[3],
                 isMeasuring: true,
                 onSelect: {},
-                onAction: {}
+                onAction: {},
+                onRescan: {}
             )
             CategoryRowView(
                 entry: PreviewFixtures.sampleEntries[0],
                 isMeasuring: true,
                 onSelect: {},
-                onAction: {}
+                onAction: {},
+                onRescan: {}
             )
         }
         .padding(8)
@@ -100,12 +108,24 @@ public struct CategoryRowView: View {
             previewRow(3) // derived data, regen
             previewRow(5) // Xcode installs, reveal
             previewRow(6) // dyld cache, read-only: dimmed, padlock
-            previewRow(10) // archives, flagged ⚠ inline, sub-GB size
+            previewRow(10) // archives, flagged, sub-GB size
             previewRow(12) // products/logs, sub-GB size
+            CategoryRowView(
+                entry: .sized(
+                    location: LocationCatalog.ibSupport,
+                    reclaimableBytes: 0,
+                    staleness: StalenessInfo(lastUsedDate: nil),
+                    roots: []
+                ),
+                onSelect: {},
+                onAction: {},
+                onRescan: {}
+            )
             CategoryRowView(
                 entry: .unavailable(location: LocationCatalog.toolchains, reason: "permission denied"),
                 onSelect: {},
-                onAction: {}
+                onAction: {},
+                onRescan: {}
             )
         }
         .padding(8)

@@ -66,11 +66,19 @@ public struct ItemOutcome: Sendable, Hashable, Identifiable {
     public let target: DeletionTarget
     public let status: ItemOutcomeStatus
     public let freedBytes: Int64
+    /// Space-settle outcome for a successful simctl target.
+    public let spaceSettle: SpaceSettleOutcome?
 
-    public init(target: DeletionTarget, status: ItemOutcomeStatus, freedBytes: Int64) {
+    public init(
+        target: DeletionTarget,
+        status: ItemOutcomeStatus,
+        freedBytes: Int64,
+        spaceSettle: SpaceSettleOutcome? = nil
+    ) {
         self.target = target
         self.status = status
         self.freedBytes = freedBytes
+        self.spaceSettle = spaceSettle
     }
 }
 

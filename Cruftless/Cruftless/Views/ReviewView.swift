@@ -11,6 +11,10 @@ public struct ReviewView: View {
     public let runningAppsWarning: String?
     /// Whether the plan is being executed right now.
     public let isExecuting: Bool
+    /// Current deletion progress.
+    public let progress: DeletionProgress?
+    /// Free space captured when Review opens.
+    public let currentFreeBytes: Int64?
     public let onConfirm: () async -> Void
     public let onCancel: () -> Void
 
@@ -28,6 +32,8 @@ public struct ReviewView: View {
         backTitle: String = "Overview",
         runningAppsWarning: String? = nil,
         isExecuting: Bool = false,
+        progress: DeletionProgress? = nil,
+        currentFreeBytes: Int64? = nil,
         onConfirm: @escaping () async -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -35,6 +41,8 @@ public struct ReviewView: View {
         self.backTitle = backTitle
         self.runningAppsWarning = runningAppsWarning
         self.isExecuting = isExecuting
+        self.progress = progress
+        self.currentFreeBytes = currentFreeBytes
         self.onConfirm = onConfirm
         self.onCancel = onCancel
     }
@@ -48,6 +56,10 @@ public struct ReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     summary
+
+                    if isExecuting {
+                        executionStatus
+                    }
 
                     if let runningAppsWarning {
                         NoticeStrip(
@@ -89,7 +101,42 @@ public struct ReviewView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let currentFreeBytes {
+                Text(
+                    "Free now \(ByteFormatter.format(currentFreeBytes)) · "
+                        + "After ~\(ByteFormatter.format(currentFreeBytes + plan.totalReclaimableBytes))"
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// Status text for the current deletion phase.
+    private var executionStatus: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(progress?.label ?? plan.confirmLabel)
+                    .font(.system(size: 12, weight: .medium))
+
+                if let detail = progress?.phase.detail {
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(in: .rect(cornerRadius: 10))
     }
 
     private var items: some View {
@@ -209,6 +256,25 @@ public struct ReviewView: View {
         .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
     }
 
+    #Preview("Review: free space estimate") {
+        ReviewView(
+            plan: previewPlan([
+                previewPathTarget(
+                    name: "SuperApp-eszycidpyopumzgdpamntyyawoix",
+                    tier: .regen,
+                    consequence: "Xcode rebuilds indexes and intermediates on the next build. "
+                        + "The next build is slower.",
+                    reclaimableBytes: 4_500_000_000
+                )
+            ]),
+            currentFreeBytes: 24_500_000_000,
+            onConfirm: {},
+            onCancel: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
     #Preview("Review: executing") {
         ReviewView(
             plan: previewPlan([
@@ -220,6 +286,26 @@ public struct ReviewView: View {
                 )
             ]),
             isExecuting: true,
+            progress: DeletionProgress(verb: .erase, targetName: "iPhone 17 Pro", phase: .mutating),
+            onConfirm: {},
+            onCancel: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
+    #Preview("Review: freeing space") {
+        ReviewView(
+            plan: previewPlan([
+                previewPathTarget(
+                    name: "SuperApp-eszycidpyopumzgdpamntyyawoix",
+                    tier: .regen,
+                    consequence: "Xcode rebuilds indexes and intermediates on the next build.",
+                    reclaimableBytes: 4_500_000_000
+                )
+            ]),
+            isExecuting: true,
+            progress: DeletionProgress(verb: .erase, targetName: "iPhone 17 Pro", phase: .waitingForSpace),
             onConfirm: {},
             onCancel: {}
         )

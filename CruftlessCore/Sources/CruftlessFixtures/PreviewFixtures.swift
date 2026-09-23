@@ -91,6 +91,24 @@
             )
         ]
 
+        /// Zero-byte and unavailable rows.
+        public static let emptyStateEntries: [InventoryEntry] = [
+            .sized(
+                location: LocationCatalog.swiftPMCache,
+                reclaimableBytes: 0,
+                staleness: StalenessInfo(lastUsedDate: nil),
+                roots: [RootSize(url: URL(fileURLWithPath: "/tmp/swiftpm"), allocatedBytes: 0)]
+            ),
+            .sized(
+                location: LocationCatalog.ibSupport,
+                reclaimableBytes: 0,
+                staleness: StalenessInfo(lastUsedDate: nil),
+                roots: [RootSize(url: URL(fileURLWithPath: "/tmp/ibsupport"), allocatedBytes: 0)]
+            ),
+            .unavailable(location: LocationCatalog.toolchains, reason: "permission denied"),
+            .unavailable(location: LocationCatalog.simulatorRuntimes, reason: "simctl did not answer")
+        ]
+
         public static let populatedInventory = Inventory(
             entries: sampleEntries,
             capacity: sampleCapacity,

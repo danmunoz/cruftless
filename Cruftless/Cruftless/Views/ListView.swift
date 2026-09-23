@@ -36,7 +36,7 @@ public struct ListView: View {
                         .monospacedDigit()
                         .contentTransition(.numericText())
 
-                    Text("reclaimable")
+                    Text("cleanable")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
 
@@ -179,9 +179,10 @@ public struct ListView: View {
     private func entryList(_ inventory: Inventory) -> some View {
         // Once, not once per row: every row asks the same question of it, and the animation below is keyed on the same value.
         let measuring = measuringIds
+        let sized = inventory.sizedRows
+        let rest = inventory.zeroOrUnavailableRows
         return ScrollView {
             LazyVStack(spacing: 2) {
-
                 ForEach(model.preferenceIssues, id: \.self) { issue in
                     NoticeStrip(symbol: "gearshape.fill", tint: .orange, text: issue.message)
                 }
@@ -194,15 +195,19 @@ public struct ListView: View {
                     NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
                 }
 
-                // A rescan skeletons only the row it is measuring right now.
-                ForEach(inventory.entries) { entry in
-                    CategoryRowView(
-                        entry: entry,
-                        isOpening: model.preparingLocationId == entry.location.id,
-                        isMeasuring: measuring.contains(entry.location.id),
-                        onSelect: { select(entry) },
-                        onAction: { performAction(for: entry) }
-                    )
+                // Places zero-byte and unavailable rows below the separator.
+                // Skeletons only the row currently being measured.
+                ForEach(sized) { entry in
+                    row(for: entry, measuring: measuring)
+                }
+
+                if !sized.isEmpty, !rest.isEmpty {
+                    Hairline()
+                        .padding(.vertical, 4)
+                }
+
+                ForEach(rest) { entry in
+                    row(for: entry, measuring: measuring)
                 }
             }
             .padding(.horizontal, 6)
@@ -211,6 +216,17 @@ public struct ListView: View {
             .animation(.snappy(duration: 0.2), value: measuring)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private func row(for entry: InventoryEntry, measuring: Set<String>) -> some View {
+        CategoryRowView(
+            entry: entry,
+            isOpening: model.preparingLocationId == entry.location.id,
+            isMeasuring: measuring.contains(entry.location.id),
+            onSelect: { select(entry) },
+            onAction: { performAction(for: entry) },
+            onRescan: { model.rescan(locationIds: [entry.location.id]) }
+        )
     }
 
     private var footer: some View {
@@ -254,7 +270,7 @@ public struct ListView: View {
                 )
             }
         case .regen, .judgment:
-            guard !model.isInventoryRestored else {
+            guard !model.isRestored(entry) else {
                 model.refuseActionOnRestoredInventory()
                 return
             }
@@ -264,16 +280,15 @@ public struct ListView: View {
 
     private func planWholeLocation(_ entry: InventoryEntry) async {
         let location = entry.location
-        let children: [ChildEntry]
-        if entry.roots.contains(where: { location.isCustomRoot($0.url) }) {
+        let children: [ChildEntry] = if entry.roots.contains(where: { location.isCustomRoot($0.url) }) {
             // The scan's own listing when it has one; a walk only when it does not, which is the same cold path `openDetail` takes.
             if let listed = model.drillDowns[location.id]?.children {
-                children = listed
+                listed
             } else {
-                children = await model.scanEngine.children(of: location.id)
+                await model.scanEngine.children(of: location.id)
             }
         } else {
-            children = []
+            []
         }
         model.plan { context in
             try DeletionPlanner.wholeLocation(entry, context: context.withChildren { _ in children })
@@ -289,7 +304,7 @@ struct RefreshGlyphButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.trianglehead.clockwise")
+            Image(systemName: "arrow.clockwise")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 .frame(width: 20, height: 20)

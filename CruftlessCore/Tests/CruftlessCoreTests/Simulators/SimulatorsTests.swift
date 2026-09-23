@@ -138,6 +138,7 @@ struct SimulatorsTests {
 
         let plan = try KnownBloat.createBloatDeletionPlan(for: simDevice)
         #expect(plan.items.count == 3)
+        #expect(plan.affectedLocationIds == Set([LocationCatalog.simulatorDevices.id]))
 
         let customProtection = ProtectedPaths(customProtectedPaths: [cachesDir])
         let refusal = DeletionPlanningError.refused(
@@ -201,6 +202,17 @@ struct SimulatorsTests {
         }
     }
 
+    @Test("An erase plan rescans the devices location")
+    func erasePlanScopesRescan() throws {
+        let device = SimDevice(
+            udid: "00000000-0000-4000-8000-0000000000E0", name: "Erase iPhone",
+            runtime: "", state: .shutdown, lastUsedAt: nil,
+            deviceDirectory: URL(fileURLWithPath: "/tmp/cruftless-erase-scope")
+        )
+        let plan = try DeletionPlanner.simulatorErase(for: device, context: PlanningContext())
+        #expect(plan.affectedLocationIds == Set([LocationCatalog.simulatorDevices.id]))
+    }
+
     @Test("SimctlRunner returns typed errors on failure and malformed JSON")
     func simctlRunnerErrors() async {
         let failExecutor = SimctlDouble(status: 1, stderr: "simctl error occurred")
@@ -248,6 +260,7 @@ struct SimulatorsTests {
         #expect(plan.totalReclaimableBytes == 7_000_000_000)
         #expect(plan.items[0].consequence.contains("must be re-downloaded to run simulators on this OS version."))
         #expect(plan.items[0].consequence.contains("Simulators that use it stop working until it is installed again."))
+        #expect(plan.affectedLocationIds == Set([LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id]))
     }
 
     @Test("Shutdown tolerates a device that is already shut down")

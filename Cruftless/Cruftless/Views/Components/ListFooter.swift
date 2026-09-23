@@ -30,7 +30,7 @@ struct ListFooter: View {
                 Spacer(minLength: 8)
 
                 HStack(spacing: 14) {
-                    FooterButton("Settings…", action: onOpenSettings)
+                    FooterButton("Settings", action: onOpenSettings)
                         .keyboardShortcut(",", modifiers: .command)
 
                     FooterButton("Quit") {
@@ -94,25 +94,25 @@ struct ListFooter: View {
         VStack(spacing: 0) {
             ListFooter(
                 scanningLabel: "Scanning 6 of 13…",
-                scannedAt: .now.addingTimeInterval(-7_200),
+                scannedAt: .now.addingTimeInterval(-7200),
                 isAutomaticScanPaused: false,
                 onOpenSettings: {}
             )
             ListFooter(
                 scanningLabel: nil,
-                scannedAt: .now.addingTimeInterval(-7_200),
+                scannedAt: .now.addingTimeInterval(-7200),
                 isAutomaticScanPaused: false,
                 onOpenSettings: {}
             )
             ListFooter(
                 scanningLabel: nil,
-                scannedAt: .now.addingTimeInterval(-7_200),
+                scannedAt: .now.addingTimeInterval(-7200),
                 isAutomaticScanPaused: true,
                 onOpenSettings: {}
             )
             ListFooter(
                 scanningLabel: nil,
-                scannedAt: .now.addingTimeInterval(-7_200),
+                scannedAt: .now.addingTimeInterval(-7200),
                 isAutomaticScanPaused: false,
                 runningAppsLabel: RunningDeveloperApps.both.footerLabel,
                 runningAppsWarning: RunningDeveloperApps.both.warning,

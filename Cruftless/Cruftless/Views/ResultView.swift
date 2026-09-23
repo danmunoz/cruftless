@@ -99,7 +99,7 @@ public struct ResultView: View {
     }
 
     private static func joined(_ parts: [Text?], separator: LocalizedStringKey) -> Text? {
-        let parts = parts.compactMap { $0 }
+        let parts = parts.compactMap(\.self)
         guard let first = parts.first else { return nil }
         return parts.dropFirst().reduce(first) { accumulated, part in
             Text("\(accumulated)\(Text(separator))\(part)")
@@ -150,6 +150,13 @@ public struct ResultView: View {
                                 .foregroundStyle(glyph.tint)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        if let note = item.spaceSettle?.note {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     Spacer(minLength: 8)
@@ -181,11 +188,17 @@ public struct ResultView: View {
 }
 
 #if DEBUG
-    private func previewOutcome(_ name: String, _ status: ItemOutcomeStatus, _ bytes: Int64) -> ItemOutcome {
+    private func previewOutcome(
+        _ name: String,
+        _ status: ItemOutcomeStatus,
+        _ bytes: Int64,
+        spaceSettle: SpaceSettleOutcome? = nil
+    ) -> ItemOutcome {
         ItemOutcome(
             target: .simulatorErase(udid: name, name: name, isBooted: false, consequence: "", reclaimableBytes: bytes),
             status: status,
-            freedBytes: status.isSuccess ? bytes : 0
+            freedBytes: status.isSuccess ? bytes : 0,
+            spaceSettle: spaceSettle
         )
     }
 
@@ -273,6 +286,20 @@ public struct ResultView: View {
                 previewOutcome("ModuleCache.noindex", .notAttempted(reason: .executorBusy), 3_200_000_000)
             ]),
             freeSpaceDelta: nil,
+            onDone: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
+    // A capped settle remains successful.
+    #Preview("Result: space still arriving") {
+        ResultView(
+            result: DeletionResult(items: [
+                previewOutcome("iPhone 17 Pro", .succeeded, 4_500_000_000, spaceSettle: .capped),
+                previewOutcome("ModuleCache.noindex", .succeeded, 3_200_000_000)
+            ]),
+            freeSpaceDelta: FreeSpaceDelta(before: 2_500_000_000, after: 5_500_000_000),
             onDone: {}
         )
         .frame(width: PopoverMetrics.width)

@@ -4,7 +4,9 @@ import Foundation
 /// What the app does before anyone opens the popover, and what it remembers between launches.
 extension AppModel {
     /// How long after launch the unattended first scan runs.
-    static var launchScanDelay: Duration { .seconds(5) }
+    static var launchScanDelay: Duration {
+        .seconds(5)
+    }
 
     /// Who asked for the first scan of the session.
     enum InitialScanSource: Sendable {
@@ -99,6 +101,8 @@ extension AppModel {
         else { return }
 
         inventory = restored
+        // Keeps the snapshot date independent of partial-rescan timestamps.
+        restoredInventoryDate = restored.scannedAt
         preferenceIssues = RootResolver.preferenceIssues()
     }
 
@@ -110,7 +114,7 @@ extension AppModel {
 
     /// Refuses an action on a row that came from the last session, and starts the scan that will make it actionable.
     func refuseActionOnRestoredInventory() {
-        let measured = inventory.map { "from \($0.scannedAt.formatted(.relative(presentation: .named)))" }
+        let measured = restoredInventoryDate.map { "from \($0.formatted(.relative(presentation: .named)))" }
             ?? "from the last session"
         reportPlanFailure("These sizes are \(measured). Measuring now: try again in a moment.")
 

@@ -89,7 +89,8 @@ struct DeletionExecutorBootStateTests {
             consequence: "Erase", reclaimableBytes: 4096
         )
 
-        let result = await DeletionExecutor(simulatorExecutor: simulator).execute(DeletionPlan.single(target))
+        let result = await DeletionExecutor.testExecutor(simulatorExecutor: simulator)
+            .execute(DeletionPlan.single(target))
 
         #expect(result.allSucceeded)
         #expect(simulator.commands == ["shutdown:DRIFT-2", "erase:DRIFT-2"])

@@ -4,7 +4,6 @@ import Foundation
 /// Running a scan: admitting a request, following its event stream, and folding what it produced back into the model.
 @MainActor
 extension AppModel {
-
     /// Runs the scan a scope calls for: everything, or just the locations a filesystem event touched.
     func startScan(_ requested: InvalidationScope, trigger: ScanTrigger) {
         guard let scope = admit(requested, trigger: trigger) else { return }
@@ -31,13 +30,14 @@ extension AppModel {
             if tracksProgress { scanProgress.begin(locationId) }
         case let .locationScanned(entry):
             tally.scannedIds.insert(entry.location.id)
+            tally.landedIds.insert(entry.location.id)
             if tracksProgress { scanProgress.record(entry) }
         case let .locationContents(locationId, contents):
             drillDowns[locationId] = contents
             tally.contentsReceived.insert(locationId)
         case let .completed(newInventory):
             inventory = newInventory
-            hasCompletedScanThisSession = true
+            scannedLocationIds.formUnion(tally.landedIds)
             isAutomaticScanPaused = false
             persistInventory()
         case let .failed(locationId, reason):
@@ -62,6 +62,8 @@ extension AppModel {
     private struct ScanTally {
         var failures: [String: String] = [:]
         var scannedIds: Set<String> = []
+        /// Records locations that produce `.locationScanned`.
+        var landedIds: Set<String> = []
         /// Only `.locationContents` lands here.
         var contentsReceived: Set<String> = []
     }

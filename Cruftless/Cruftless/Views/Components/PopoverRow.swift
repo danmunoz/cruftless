@@ -24,6 +24,8 @@ struct PopoverRow<Caption: View>: View {
     /// Tint for the inline ⚠ marker that follows the title.
     var flagTint: Color?
     var action: RowAction?
+    /// Optional rescan action shown on hover.
+    var rescan: (() -> Void)?
     var showsChevron: Bool = false
     /// A location the app cannot delete from (the root-owned dyld cache).
     var isReadOnly: Bool = false
@@ -36,7 +38,7 @@ struct PopoverRow<Caption: View>: View {
     @State private var isHovered = false
 
     private var isInteractive: Bool {
-        onSelect != nil || action != nil
+        onSelect != nil || action != nil || rescan != nil
     }
 
     /// Everything but the hover capsule fades on a read-only row.
@@ -110,6 +112,9 @@ struct PopoverRow<Caption: View>: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(onSelect != nil ? .isButton : [])
         .accessibilityActions {
+            if let rescan {
+                Button("Rescan", action: rescan)
+            }
             if let action {
                 Button(action.label, action: action.handler)
             }
@@ -118,14 +123,17 @@ struct PopoverRow<Caption: View>: View {
             if let onSelect, showsChevron {
                 Button("Show Details", action: onSelect)
             }
+            if let rescan {
+                Button("Rescan", action: rescan)
+            }
             if let action {
                 Button(action.label, role: action.isDestructive ? .destructive : nil, action: action.handler)
             }
         }
     }
 
-    private var showsAction: Bool {
-        isHovered && action != nil
+    private var showsHoverControls: Bool {
+        isHovered && (action != nil || rescan != nil)
     }
 
     @ViewBuilder
@@ -151,19 +159,36 @@ struct PopoverRow<Caption: View>: View {
                 .font(.system(size: 13))
                 .monospacedDigit()
                 .foregroundStyle(sizeIsSignificant ? AnyShapeStyle(.primary.opacity(0.7)) : AnyShapeStyle(.secondary))
-                .opacity(showsAction ? 0 : 1)
+                .opacity(showsHoverControls ? 0 : 1)
                 .opacity(contentOpacity)
 
-            if let action {
-                Button(action.label, action: action.handler)
+            HStack(spacing: 6) {
+                if let rescan {
+                    Button(action: rescan) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(width: 20, height: 20)
+                    }
                     .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(action.isDestructive ? Color.red : .primary)
-                    .fixedSize()
-                    .opacity(showsAction ? 1 : 0)
-                    .allowsHitTesting(showsAction)
-                    .accessibilityHidden(!showsAction)
+                    .clipShape(.circle)
+                    .help("Rescan \(title)")
+                    .accessibilityLabel("Rescan \(title)")
+                    .opacity(showsHoverControls ? 1 : 0)
+                    .allowsHitTesting(showsHoverControls)
+                    .accessibilityHidden(!showsHoverControls)
+                }
+
+                if let action {
+                    Button(action.label, action: action.handler)
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(action.isDestructive ? Color.red : .primary)
+                        .fixedSize()
+                        .opacity(showsHoverControls ? 1 : 0)
+                        .allowsHitTesting(showsHoverControls)
+                        .accessibilityHidden(!showsHoverControls)
+                }
             }
         }
         .frame(minWidth: PopoverMetrics.sizeColumn, alignment: .trailing)
@@ -179,6 +204,7 @@ extension PopoverRow where Caption == EmptyView {
         sizeBytes: Int64? = nil,
         flagTint: Color? = nil,
         action: RowAction? = nil,
+        rescan: (() -> Void)? = nil,
         showsChevron: Bool = false,
         isReadOnly: Bool = false,
         isPlaceholder: Bool = false,
@@ -192,6 +218,7 @@ extension PopoverRow where Caption == EmptyView {
             sizeBytes: sizeBytes,
             flagTint: flagTint,
             action: action,
+            rescan: rescan,
             showsChevron: showsChevron,
             isReadOnly: isReadOnly,
             isPlaceholder: isPlaceholder,
