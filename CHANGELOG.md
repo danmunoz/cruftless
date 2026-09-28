@@ -1,13 +1,13 @@
 # Changelog
 
-## [1.1.0]
+## [1.1.0] - 2026-09-28
 
-### Changes
+### Improved
 
-- Fixed homebrew call (4d0000c)
-- Added (partial) CI automation (28457a1)
-- Improved UI (8b59c94)
-- Updated refresh symbol (d5bf841)
+- Refresh one inventory category without rescanning everything.
+- Follow progress during scans and deletions, with more accurate free-space
+  results after simulator cleanup.
+- Improved the menu bar list, review, and result screens.
 
 All notable changes to Cruftless are recorded here. Versions use
 [Semantic Versioning](https://semver.org/).
