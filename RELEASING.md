@@ -42,10 +42,10 @@ Before starting, confirm that:
 - The Cruftless checkout is clean and on `main`, and its local `main` matches
   `origin/main`. The release commands verify this before proceeding.
 
-For the Homebrew step, also install Homebrew and have `curl`, Ruby, Git, and
-`gh` authenticated with permission to push and open a PR in
-`danmunoz/homebrew-tap`. Use a clean local tap checkout on `main` that matches
-`origin/main`.
+For the Homebrew step, have `curl`, Ruby, Git, and `gh` authenticated with
+permission to push and open a PR in `danmunoz/homebrew-tap`. Use a clean local
+tap checkout on `main` that matches `origin/main`. The tap PR's Cask CI runs
+Homebrew style and strict online audit checks against that PR's cask.
 
 ## Cut a release
 
@@ -69,7 +69,10 @@ For the Homebrew step, also install Homebrew and have `curl`, Ruby, Git, and
    GitHub Release for tag `v<version>`. The script attaches the DMG and SHA-256
    checksum; review the draft, then publish after verification.
 7. Verify the public download, then open a Homebrew tap PR using the immutable
-   release URL and checksum.
+   release URL and checksum. Wait for the tap's Cask CI checks to pass before
+   merging; they run the strict online audit against the PR's checked-out cask
+   and validate the published DMG and app signatures, notarization, and
+   Gatekeeper assessments.
 
 For example, for version `1.1.0`:
 
