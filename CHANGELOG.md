@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0]
+
+### Changes
+
+- Fixed homebrew call (4d0000c)
+- Added (partial) CI automation (28457a1)
+- Improved UI (8b59c94)
+- Updated refresh symbol (d5bf841)
+
 All notable changes to Cruftless are recorded here. Versions use
 [Semantic Versioning](https://semver.org/).
 
