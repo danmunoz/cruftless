@@ -36,7 +36,7 @@ done
 [[ -n "$tap_dir" ]] || die "--tap-dir is required"
 [[ "$confirm" == true ]] || die "opening the Homebrew PR requires --confirm-homebrew-pr"
 validate_version "$version"
-for tool in gh git shasum curl codesign xcrun spctl brew ruby; do require_command "$tool"; done
+for tool in gh git shasum curl codesign xcrun spctl ruby; do require_command "$tool"; done
 require_directory "$tap_dir"
 
 commit="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"
@@ -96,11 +96,6 @@ File.write(path, content)
 RUBY
 
 git -C "$tap_dir" switch -c "$branch"
-(
-  cd "$tap_dir"
-  brew style --cask Casks/cruftless.rb
-  brew audit --new --cask Casks/cruftless.rb
-)
 git -C "$tap_dir" add Casks/cruftless.rb
 git -C "$tap_dir" diff --cached --check
 git -C "$tap_dir" commit -m "cask: update Cruftless to $version"
@@ -109,4 +104,4 @@ gh pr create --repo "$TAP_REPOSITORY" --head "$branch" --base main \
   --title "cask: update Cruftless to $version" \
   --body "Updates Cruftless to the published $tag release. The local release script verified the downloaded asset checksum, Developer ID signature, stapled ticket, and Gatekeeper assessment."
 
-note "Homebrew PR opened from $branch."
+note "Homebrew PR opened from $branch. Wait for Cask CI checks before merging."
