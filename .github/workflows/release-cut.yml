@@ -1,0 +1,83 @@
+name: Release · Cut
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version in X.Y.Z format
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-cut
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Cut release branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Check out main and release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Confirm dispatch source and release queue
+        run: |
+          test "$GITHUB_REF_NAME" = main || {
+            echo "Release cuts must be dispatched from main." >&2
+            exit 1
+          }
+          remote_releases="$(git ls-remote --heads origin 'refs/heads/release/*')"
+          if [[ -n "$remote_releases" ]]; then
+            echo "Finish or abandon the existing release branch before cutting another:" >&2
+            printf '%s\n' "$remote_releases" >&2
+            exit 1
+          fi
+          open_releases="$(gh pr list --state open --base main --json headRefName --jq '.[].headRefName' | grep '^release/' || true)"
+          if [[ -n "$open_releases" ]]; then
+            echo "Finish or abandon the existing release PR before cutting another:" >&2
+            printf '%s\n' "$open_releases" >&2
+            exit 1
+          fi
+
+      - name: Configure release commit author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare version, build number, and changelog
+        run: scripts/release/cut.sh "$VERSION"
+
+      - name: Push release branch
+        run: git push origin "release/$VERSION"
+
+      - name: Open release pull request
+        run: |
+          gh pr create \
+            --base main \
+            --head "release/$VERSION" \
+            --title "Release $VERSION" \
+            --body "This PR prepares Cruftless $VERSION. Review and edit the generated changelog before merging. The DMG is built, signed, and notarized locally from the merged main commit; it is not stored on this branch. After merge, follow RELEASING.md to create and verify a draft GitHub Release and update the Homebrew tap."
+
+      - name: Summarize release cut
+        run: |
+          release_branch="release/$VERSION"
+          build_number="$(sed -nE 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' Cruftless/Version.xcconfig)"
+          {
+            echo "### Release $VERSION prepared"
+            echo ""
+            printf -- '- Branch: %s\n' "$release_branch"
+            printf -- '- Build number: %s\n' "$build_number"
+            echo "- Review the generated changelog before merging the PR."
+          } >> "$GITHUB_STEP_SUMMARY"
