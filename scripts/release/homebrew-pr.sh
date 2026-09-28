@@ -50,7 +50,7 @@ require_file "$checksum_file"
 
 is_draft="$(gh release view "$tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq .isDraft)"
 [[ "$is_draft" == false ]] || die "GitHub release must be published before opening the Homebrew PR"
-published_asset="$(gh release view "$tag" --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[] | select(.name == "Cruftless-'"${version}"'.dmg") | .browserDownloadUrl')"
+published_asset="$(gh release view "$tag" --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[] | select(.name == "Cruftless-'"${version}"'.dmg") | .url')"
 [[ -n "$published_asset" ]] || die "published GitHub Release is missing Cruftless-$version.dmg"
 
 download_dir="$RELEASE_ROOT/dist/releases/homebrew-check"
