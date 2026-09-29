@@ -5,10 +5,16 @@ public enum CruftlessVersion: Sendable {
     public static let shortVersionKey = "CFBundleShortVersionString"
     public static let buildKey = "CFBundleVersion"
 
+    public static func shortVersion(from bundle: Bundle = .main) -> String? {
+        (bundle.object(forInfoDictionaryKey: shortVersionKey) as? String)?
+            .trimmingCharacters(in: .whitespaces)
+            .nilIfEmpty
+    }
+
     /// `"Version 1.2 (34)"`, or `"Version 1.2"` when the build number is absent or duplicates the short version.
     public static func display(from bundle: Bundle = .main) -> String? {
         display(
-            shortVersion: bundle.object(forInfoDictionaryKey: shortVersionKey) as? String,
+            shortVersion: shortVersion(from: bundle),
             build: bundle.object(forInfoDictionaryKey: buildKey) as? String
         )
     }
