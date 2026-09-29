@@ -10,7 +10,10 @@ struct LocationCatalogTests {
         let roots = location.resolveRoots()
 
         guard !roots.isEmpty else {
-            #expect(location.mutationPolicy == .simctl, "\(location.id) has no roots and no simctl policy")
+            #expect(
+                location.mutationPolicy == .simctl || location.mutationPolicy == .readOnly,
+                "\(location.id) has no roots and no explicit non-path mutation policy"
+            )
             return
         }
 
@@ -116,7 +119,9 @@ struct LocationCatalogTests {
     func drillDownLocationsCanBeSized(location: TrackedLocation) {
         guard location.sizeSource == .filesystemRoots else { return }
 
-        guard location.id != LocationCatalog.xcodeInstalls.id else { return }
+        guard location.id != LocationCatalog.xcodeInstalls.id,
+              location.platform != .android
+        else { return }
 
         #expect(
             !location.resolveRoots().isEmpty,

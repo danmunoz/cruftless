@@ -1,8 +1,9 @@
+import Darwin
 import Foundation
 
 /// Resolves filesystem root URLs for all tracked locations.
 public enum RootResolver: Sendable {
-    private static var homeURL: URL {
+    static var homeURL: URL {
         URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     }
 

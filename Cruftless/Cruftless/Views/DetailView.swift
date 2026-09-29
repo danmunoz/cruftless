@@ -33,6 +33,18 @@ public struct DetailView: View {
         children.reduce(0) { $0 + $1.reclaimableBytes }
     }
 
+    private var sourcePaths: [String] {
+        guard let entry = model.inventory?.entries.first(where: { $0.id == location.id }) else { return [] }
+        return entry.roots.map { root in
+            let path = root.url.path(percentEncoded: false)
+            guard location.platform == .android else { return path }
+            let provenance = [root.source, root.layout.map { "\($0), volume \(root.volumeIdentifier ?? "unknown")" }]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+            return "\(provenance.isEmpty ? "Android root" : provenance) · \(path)"
+        }
+    }
+
     private var batchableChildren: [ChildEntry] {
         children.filter { !$0.isFlagged }
     }
@@ -59,7 +71,8 @@ public struct DetailView: View {
                 content: { content }
             )
 
-            if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable {
+            if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable,
+               !location.mutationPolicy.isReadOnly {
                 footer
             }
         }
@@ -69,6 +82,10 @@ public struct DetailView: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 summary
+
+                if let planFailure = model.planFailure {
+                    NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+                }
 
                 ForEach(children) { child in
                     childRow(child)
@@ -92,11 +109,29 @@ public struct DetailView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let issue = contents?.inventoryIssue {
+                Label(issue, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Text(
                 "\(tierWordText) \(Text(verbatim: "·").foregroundStyle(.tertiary)) \(consequenceText)"
             )
             .font(.system(size: 11))
             .lineLimit(2)
+
+            if location.platform == .android {
+                ForEach(sourcePaths, id: \.self) { path in
+                    Text(path)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, PopoverMetrics.rowInset)
@@ -104,23 +139,37 @@ public struct DetailView: View {
     }
 
     private func childRow(_ child: ChildEntry) -> some View {
-        PopoverRow(
+        let cacheRoots = location.id == LocationCatalog.gradleCaches.id ? location.resolveRoots() : []
+        let isRiskEligibleGradleEntry = location.id == LocationCatalog.gradleCaches.id
+            && GradleCacheEntryPolicy.isEligible(child, cacheRoots: cacheRoots)
+        return PopoverRow(
             icon: nil,
             title: displayName(for: child),
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
-            action: rowAction(for: child)
+            action: rowAction(for: child, gradleCacheRoots: cacheRoots),
+            isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry
         )
-        .help(child.name)
+        .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
-    private func rowAction(for child: ChildEntry) -> RowAction {
+    private func rowAction(for child: ChildEntry, gradleCacheRoots: [URL]) -> RowAction? {
+        if location.id == LocationCatalog.gradleCaches.id {
+            guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: gradleCacheRoots) else {
+                return nil
+            }
+            return RowAction("Clear") {
+                model.openGradleCacheRiskWarning(for: child, in: location)
+            }
+        }
+        guard !location.mutationPolicy.isReadOnly else { return nil }
+
         if location.tier == .reveal {
-            RowAction(DesignTokens.actionLabel(for: .reveal)) {
+            return RowAction(DesignTokens.actionLabel(for: .reveal)) {
                 NSWorkspace.shared.activateFileViewerSelecting([child.url])
             }
         } else {
-            RowAction(DesignTokens.actionLabel(for: child.tier), isDestructive: child.isFlagged) {
+            return RowAction(DesignTokens.actionLabel(for: child.tier), isDestructive: child.isFlagged) {
                 model.plan { context in
                     try DeletionPlanner.child(child, in: location, context: context)
                 }

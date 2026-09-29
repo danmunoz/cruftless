@@ -6,7 +6,10 @@ public enum DesignTokens {
     public static let dyldCacheCommand = "sudo rm -rf /Library/Developer/CoreSimulator/Caches/dyld"
 
     public static func tierWord(for tier: Tier, locationId: String = "") -> String {
-        switch tier {
+        if let androidWord = androidStorageWord(for: locationId) {
+            return androidWord
+        }
+        return switch tier {
         case .regen:
             "Regenerates"
         case .judgment:
@@ -22,6 +25,18 @@ public enum DesignTokens {
             "Show in Finder only"
         case .info:
             "Needs sudo"
+        }
+    }
+
+    private static func androidStorageWord(for locationId: String) -> String? {
+        switch locationId {
+        case LocationCatalog.gradleCaches.id:
+            "Risk review required"
+        case LocationCatalog.androidStudioSystem.id, LocationCatalog.androidSDK.id,
+            LocationCatalog.androidAVDs.id:
+            "Read only"
+        default:
+            nil
         }
     }
 

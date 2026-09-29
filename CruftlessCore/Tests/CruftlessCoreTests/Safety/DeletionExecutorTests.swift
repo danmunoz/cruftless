@@ -8,7 +8,7 @@ struct DeletionExecutorTests {
     @Test("Empty plan returns empty result with 0 freed bytes")
     func emptyPlanExecution() async {
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let result = await executor.execute(DeletionPlan.batch([]))
+        let result = await executor.execute(DeletionPlan.plannedBatch([]))
         #expect(result.items.isEmpty)
         #expect(result.totalFreedBytes == 0)
         #expect(!result.hasFailures)
@@ -38,7 +38,7 @@ struct DeletionExecutorTests {
         )
 
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let plan = DeletionPlan.single(target)
+        let plan = DeletionPlan.plannedSingle(target)
         let result = await executor.execute(plan)
 
         #expect(result.allSucceeded)
@@ -72,7 +72,7 @@ struct DeletionExecutorTests {
         )
 
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let result = await executor.execute(DeletionPlan.single(target))
+        let result = await executor.execute(DeletionPlan.plannedSingle(target))
 
         #expect(result.items.count == 1)
         #expect(!result.items[0].status.isSuccess)
@@ -106,7 +106,7 @@ struct DeletionExecutorTests {
         )
 
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let result = await executor.execute(DeletionPlan.single(target))
+        let result = await executor.execute(DeletionPlan.plannedSingle(target))
 
         #expect(result.items.count == 1)
         #expect(!result.items[0].status.isSuccess)
@@ -142,7 +142,7 @@ struct DeletionExecutorTests {
         )
 
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let result = await executor.execute(DeletionPlan.single(target))
+        let result = await executor.execute(DeletionPlan.plannedSingle(target))
 
         #expect(result.items.count == 1)
         #expect(!result.items[0].status.isSuccess)
@@ -186,7 +186,7 @@ struct DeletionExecutorTests {
         )
 
         let executor = DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-        let plan = DeletionPlan.batch([target1, target2, target3])
+        let plan = DeletionPlan.plannedBatch([target1, target2, target3])
         let result = await executor.execute(plan)
 
         #expect(result.items.count == 3)
@@ -222,7 +222,7 @@ struct DeletionExecutorTests {
             consequence: "Erase data", reclaimableBytes: 1000
         )
 
-        let batch = DeletionPlan.batch([flaggedTarget, normalTarget])
+        let batch = DeletionPlan.plannedBatch([flaggedTarget, normalTarget])
         #expect(batch.items.count == 1)
         #expect(batch.items[0].id == normalTarget.id)
         #expect(batch.totalReclaimableBytes == 1000)
@@ -245,11 +245,11 @@ struct DeletionExecutorTests {
             tier: .irreversible, consequence: "Loss of dSYMs", reclaimableBytes: 2000
         )
 
-        let batched = DeletionPlan.batch([flaggedTarget])
+        let batched = DeletionPlan.plannedBatch([flaggedTarget])
         #expect(batched.isEmpty)
         #expect(!batched.hasFlaggedItem)
 
-        let single = DeletionPlan.single(flaggedTarget)
+        let single = DeletionPlan.plannedSingle(flaggedTarget)
         #expect(single.items.count == 1)
         #expect(single.hasFlaggedItem)
     }
@@ -331,11 +331,11 @@ struct DeletionExecutorReentrancyTests {
         let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
         let first = Task {
-            await executor.execute(DeletionPlan.single(Self.erase(udid: "FIRST")))
+            await executor.execute(DeletionPlan.plannedSingle(Self.erase(udid: "FIRST")))
         }
         await mock.entered.wait()
 
-        let second = await executor.execute(DeletionPlan.single(Self.erase(udid: "SECOND")))
+        let second = await executor.execute(DeletionPlan.plannedSingle(Self.erase(udid: "SECOND")))
 
         #expect(second.items.count == 1)
         #expect(!second.hasFailures)
@@ -357,8 +357,8 @@ struct DeletionExecutorReentrancyTests {
         await mock.release.open()
         let executor = DeletionExecutor.testExecutor(simulatorExecutor: mock)
 
-        let first = await executor.execute(DeletionPlan.single(Self.erase(udid: "ONE")))
-        let second = await executor.execute(DeletionPlan.single(Self.erase(udid: "TWO")))
+        let first = await executor.execute(DeletionPlan.plannedSingle(Self.erase(udid: "ONE")))
+        let second = await executor.execute(DeletionPlan.plannedSingle(Self.erase(udid: "TWO")))
 
         #expect(first.allSucceeded)
         #expect(second.allSucceeded)

@@ -6,7 +6,11 @@ public extension DeletionPlanner {
         for device: SimDevice,
         context: PlanningContext
     ) throws -> DeletionPlan {
-        try KnownBloat.createBloatDeletionPlan(for: device, protectedPaths: context.protectedPaths)
+        try KnownBloat.createBloatDeletionPlan(
+            for: device,
+            protectedPaths: context.protectedPaths,
+            policyGeneration: context.policyGeneration
+        )
     }
 
     /// Plans an erase of a simulator's installed apps and data.
@@ -27,7 +31,12 @@ public extension DeletionPlanner {
                 : "Removes all installed apps and their data from this simulator.",
             reclaimableBytes: size
         )
-        return DeletionPlan.single(target, confirmLabel: label, affectedLocationIds: [LocationCatalog.simulatorDevices.id])
+        return DeletionPlan.plannedSingle(
+            target,
+            confirmLabel: label,
+            affectedLocationIds: [LocationCatalog.simulatorDevices.id],
+            policyGeneration: context.policyGeneration
+        )
     }
 
     /// Plans a complete deletion of a simulator device.
@@ -45,10 +54,11 @@ public extension DeletionPlanner {
             consequence: "Deletes this simulator completely. Installed apps and configuration will be permanently lost.",
             reclaimableBytes: size
         )
-        return DeletionPlan.single(
+        return DeletionPlan.plannedSingle(
             target,
             confirmLabel: "Delete Permanently",
-            affectedLocationIds: [LocationCatalog.simulatorDevices.id]
+            affectedLocationIds: [LocationCatalog.simulatorDevices.id],
+            policyGeneration: context.policyGeneration
         )
     }
 
@@ -79,10 +89,11 @@ public extension DeletionPlanner {
             reclaimableBytes: runtime.sizeBytes
         )
         // Runtime deletion also invalidates device availability.
-        return DeletionPlan.single(
+        return DeletionPlan.plannedSingle(
             target,
             confirmLabel: "Delete Permanently",
-            affectedLocationIds: [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id]
+            affectedLocationIds: [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id],
+            policyGeneration: context.policyGeneration
         )
     }
 

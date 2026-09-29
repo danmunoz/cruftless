@@ -1,4 +1,5 @@
 import SwiftUI
+import CruftlessCore
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     case general
@@ -54,9 +55,14 @@ enum SettingsMetrics {
     static let paneWidth: CGFloat = 540
 
     /// A grouped `Form` is a scroll view with no intrinsic height, so the General pane states one.
-    static func generalPaneHeight(protectedPathCount: Int, errorRowCount: Int = 0) -> CGFloat {
+    static func generalPaneHeight(
+        protectedPathCount: Int,
+        errorRowCount: Int = 0,
+        includesPlatformSelection: Bool = false,
+        includesPlatformOrder: Bool = false
+    ) -> CGFloat {
         // Height with the empty-state placeholder row showing and no errors.
-        let base: CGFloat = 463
+        let base: CGFloat = 463 + (includesPlatformSelection ? 90 : 0) + (includesPlatformOrder ? 84 : 0)
         let placeholderRow: CGFloat = 37
         let pathRow: CGFloat = 51
         let errorRow: CGFloat = 32
@@ -70,6 +76,17 @@ enum SettingsMetrics {
 #if DEBUG
     #Preview("Settings: General") {
         SettingsView(settings: .preview())
+    }
+
+    #Preview("Settings: Android selected") {
+        SettingsView(settings: .preview(platforms: [.android]))
+    }
+
+    #Preview("Settings: Android first") {
+        SettingsView(settings: .preview(
+            platforms: Set(DevelopmentPlatform.allCases),
+            platformSectionOrder: .androidFirst
+        ))
     }
 
     #Preview("Settings: Protected paths") {

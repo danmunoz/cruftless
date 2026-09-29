@@ -52,7 +52,7 @@ struct DeletionPreconditionTests {
     func bootedAfterPlanningRefuses() async throws {
         let fixture = try makeDevice(state: 1)
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
 
         try writePlist(state: 3, to: fixture.plist, udid: fixture.device.lastPathComponent)
 
@@ -66,7 +66,7 @@ struct DeletionPreconditionTests {
     func stillShutdownProceeds() async throws {
         let fixture = try makeDevice(state: 1)
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor()).execute(plan)
         #expect(result.allSucceeded)
@@ -78,7 +78,7 @@ struct DeletionPreconditionTests {
     func unreadablePlistRefuses() async throws {
         let fixture = try makeDevice(state: 1)
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
 
         TestFileSystem.removeFile(at: fixture.plist)
 

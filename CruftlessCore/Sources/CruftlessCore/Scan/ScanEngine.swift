@@ -8,11 +8,12 @@ public actor ScanEngine {
     public typealias DeviceLister = @Sendable ([SimRuntime]) -> [SimDevice]
 
     private var cachedCurrentInventory: Inventory?
+    private var currentGeneration: UInt64 = 0
+    private var cachedGradleCacheCleanableBytes: Int64 = 0
 
     /// Sizes captured during the scan, keyed by location id, then by resolved root path, then by each measured path under it.
     private var childSizeCache: [String: [String: [String: SizeResult]]] = [:]
 
-    private let inodeSet = InodeSet()
     private let signposts = ScanSignposts.shared
     private let runtimeLister: RuntimeLister
     private let deviceLister: DeviceLister
@@ -35,10 +36,14 @@ public actor ScanEngine {
         cachedCurrentInventory
     }
 
-    public func invalidate() {
+    public func invalidate(generation: UInt64? = nil) {
+        if let generation {
+            guard generation >= currentGeneration else { return }
+            currentGeneration = generation
+        }
         cachedCurrentInventory = nil
         childSizeCache = [:]
-        inodeSet.reset()
+        cachedGradleCacheCleanableBytes = 0
     }
 
     /// Sizes of a location's immediate children, keyed by name, flattened across its roots.
@@ -73,40 +78,53 @@ public actor ScanEngine {
     }
 
     /// Performs a full scan over all catalog locations with concurrent per-root execution.
-    public func scan(catalog: [TrackedLocation] = LocationCatalog.all) -> AsyncStream<ScanEvent> {
-        run(locations: catalog, merging: false)
+    public func scan(
+        catalog: [TrackedLocation] = LocationCatalog.all,
+        generation: UInt64 = 0
+    ) -> AsyncStream<ScanEvent> {
+        guard generation >= currentGeneration else { return Self.finishedStream() }
+        currentGeneration = generation
+        return run(locations: catalog, merging: false, generation: generation)
     }
 
     public func rescan(
         locationIds: Set<String>,
-        catalog: [TrackedLocation] = LocationCatalog.all
+        catalog: [TrackedLocation] = LocationCatalog.all,
+        generation: UInt64 = 0
     ) -> AsyncStream<ScanEvent> {
+        guard generation >= currentGeneration else { return Self.finishedStream() }
+        currentGeneration = generation
         guard cachedCurrentInventory != nil else {
-            return scan(catalog: catalog)
+            return scan(catalog: catalog, generation: generation)
         }
         let subset = catalog.filter { locationIds.contains($0.id) }
         guard !subset.isEmpty else {
             return AsyncStream { $0.finish() }
         }
-        return run(locations: subset, merging: true)
+        return run(locations: subset, merging: true, generation: generation)
     }
 
-    private func run(locations: [TrackedLocation], merging: Bool) -> AsyncStream<ScanEvent> {
+    private static func finishedStream() -> AsyncStream<ScanEvent> {
+        AsyncStream { $0.finish() }
+    }
+
+    private func run(locations: [TrackedLocation], merging: Bool, generation: UInt64) -> AsyncStream<ScanEvent> {
         AsyncStream { continuation in
             Task {
                 continuation.yield(.started)
                 if locations.contains(where: { $0.id == LocationCatalog.xcodeInstalls.id }) {
                     await RootResolver.prepare()
                 }
+                guard generation == self.currentGeneration else {
+                    continuation.finish()
+                    return
+                }
 
                 // A full scan shares one inode set across every location, so a file hardlinked into two of them is counted once overall.
-                let inodes: InodeSet
-                if merging {
-                    inodes = InodeSet()
-                } else {
-                    self.inodeSet.reset()
+                let inodes = InodeSet()
+                if !merging {
                     self.childSizeCache = [:]
-                    inodes = self.inodeSet
+                    self.cachedGradleCacheCleanableBytes = 0
                 }
 
                 // Resolved once, here, and carried into the walk.
@@ -116,15 +134,25 @@ public actor ScanEngine {
                     resolved.filter { Self.willProduceRow($0.location, roots: $0.roots) }.map(\.location)
                 ))
 
-                let collectedEntries = await self.walkAndYield(resolved, inodes: inodes, into: continuation)
+                let collectedEntries = await self.walkAndYield(
+                    resolved,
+                    inodes: inodes,
+                    generation: generation,
+                    into: continuation
+                )
+                guard generation == self.currentGeneration else {
+                    continuation.finish()
+                    return
+                }
                 // Captures volume capacity after walking.
                 let volumeCapacity = VolumeCapacity.query()
 
-                let inventory = self.assembled(
+                let inventory = Self.assembledInventory(
                     from: collectedEntries,
                     scanned: locations,
                     capacity: volumeCapacity,
-                    merging: merging
+                    cachedInventory: merging ? self.cachedCurrentInventory : nil,
+                    optInReclaimableBytes: self.cachedGradleCacheCleanableBytes
                 )
 
                 self.cachedCurrentInventory = inventory
@@ -138,9 +166,11 @@ public actor ScanEngine {
     private func walkAndYield(
         _ resolved: [(location: TrackedLocation, roots: [URL])],
         inodes: InodeSet,
+        generation: UInt64,
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> [InventoryEntry] {
         let lister = runtimeLister
+        let gradleRoots = resolved.first { $0.location.id == LocationCatalog.gradleCaches.id }?.roots ?? []
         let runtimesTask: Task<[SimRuntime], any Error>? =
             resolved.contains(where: { Self.needsRuntimes($0.location) })
                 ? Task { try await lister() }
@@ -162,7 +192,14 @@ public actor ScanEngine {
             }
 
             for await outcome in group {
+                guard generation == currentGeneration else { continue }
                 childSizeCache[outcome.locationId] = outcome.childBreakdowns
+                if outcome.locationId == LocationCatalog.gradleCaches.id {
+                    cachedGradleCacheCleanableBytes = GradleCacheEntryPolicy.cleanableBytes(
+                        in: outcome.contents?.children ?? [],
+                        cacheRoots: gradleRoots
+                    )
+                }
                 if let entry = outcome.entry {
                     collected.append(entry)
                     continuation.yield(.locationScanned(entry))
@@ -180,24 +217,6 @@ public actor ScanEngine {
         return collected
     }
 
-    /// Folds a scan's entries into an inventory.
-    private func assembled(
-        from entries: [InventoryEntry],
-        scanned: [TrackedLocation],
-        capacity: VolumeCapacity,
-        merging: Bool
-    ) -> Inventory {
-        guard merging, let cached = cachedCurrentInventory else {
-            return Inventory(entries: entries, capacity: capacity, scannedAt: Date(), sizesAreUpperBound: true)
-        }
-
-        let rescannedIds = Set(scanned.map(\.id))
-        var merged = cached.entries.filter { !rescannedIds.contains($0.id) }
-        merged.append(contentsOf: entries)
-
-        return Inventory(entries: merged, capacity: capacity, scannedAt: Date(), sizesAreUpperBound: true)
-    }
-
     /// Lazily loads drill-down children for a specific location.
     public func children(of locationId: String, catalog: [TrackedLocation] = LocationCatalog.all) async -> [ChildEntry] {
         guard let location = catalog.first(where: { $0.id == locationId }) else {
@@ -210,6 +229,17 @@ public actor ScanEngine {
         return await offActor {
             ScanSignposts.shared.measure("LazyDrillDown") {
                 DrillDownProvider.loadChildren(for: location, knownSizes: knownSizes)
+            }
+        }
+    }
+
+    /// Measures read-only Android roots and builds their coherent detail inventory.
+    public func androidDrillDown(for location: TrackedLocation) async -> DrillDownContent? {
+        guard location.platform == .android else { return nil }
+        let roots = location.resolveRoots()
+        return await offActor {
+            ScanSignposts.shared.measure("AndroidDrillDown") {
+                ScanEngine.scanFilesystemLocation(location, roots: roots, inodeSet: InodeSet()).contents
             }
         }
     }

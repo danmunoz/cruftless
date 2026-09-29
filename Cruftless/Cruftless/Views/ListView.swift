@@ -1,5 +1,8 @@
 import AppKit
 import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
 import SwiftUI
 
 /// Root screen of the popover: capacity header, the tracked locations, footer.
@@ -78,7 +81,7 @@ public struct ListView: View {
             if let inventory = model.inventory {
                 CapacityBarView(
                     capacity: inventory.capacity,
-                    reclaimableBytes: inventory.reclaimableBytes
+                    cleanableBytes: inventory.cleanableBytes
                 )
             }
         }
@@ -148,12 +151,12 @@ public struct ListView: View {
     /// The number the hero shows: the finished total when there is one, and the running total of a first ever scan otherwise.
     private var heroBytes: Int64? {
         if let inventory = model.inventory {
-            return inventory.reclaimableBytes
+            return inventory.cleanableBytes
         }
         guard model.isScanning, model.scanProgress.hasPlan, !model.scanProgress.rows.isEmpty else {
             return nil
         }
-        return model.scanProgress.reclaimableBytes
+        return model.scanProgress.cleanableBytes
     }
 
     /// "Scanning 6 of 13…" while a full scan the user asked for is running, nil otherwise.
@@ -177,10 +180,10 @@ public struct ListView: View {
     }
 
     private func entryList(_ inventory: Inventory) -> some View {
-        // Once, not once per row: every row asks the same question of it, and the animation below is keyed on the same value.
         let measuring = measuringIds
-        let sized = inventory.sizedRows
-        let rest = inventory.zeroOrUnavailableRows
+        let visiblePlatforms = model.settings.platformSectionOrder.orderedPlatforms.filter { platform in
+            inventory.entries.contains { $0.location.platform == platform }
+        }
         return ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(model.preferenceIssues, id: \.self) { issue in
@@ -195,19 +198,17 @@ public struct ListView: View {
                     NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
                 }
 
-                // Places zero-byte and unavailable rows below the separator.
-                // Skeletons only the row currently being measured.
-                ForEach(sized) { entry in
-                    row(for: entry, measuring: measuring)
-                }
-
-                if !sized.isEmpty, !rest.isEmpty {
-                    Hairline()
-                        .padding(.vertical, 4)
-                }
-
-                ForEach(rest) { entry in
-                    row(for: entry, measuring: measuring)
+                ForEach(visiblePlatforms, id: \.self) { platform in
+                    PlatformInventorySection(
+                        platform: platform,
+                        entries: inventory.entries.filter { $0.location.platform == platform },
+                        measuring: measuring,
+                        preparingLocationId: model.preparingLocationId,
+                        showsTopSeparator: platform != visiblePlatforms.first,
+                        onSelect: { select($0) },
+                        onAction: { performAction(for: $0) },
+                        onRescan: { model.rescan(locationIds: [$0]) }
+                    )
                 }
             }
             .padding(.horizontal, 6)
@@ -216,17 +217,6 @@ public struct ListView: View {
             .animation(.snappy(duration: 0.2), value: measuring)
         }
         .scrollBounceBehavior(.basedOnSize)
-    }
-
-    private func row(for entry: InventoryEntry, measuring: Set<String>) -> some View {
-        CategoryRowView(
-            entry: entry,
-            isOpening: model.preparingLocationId == entry.location.id,
-            isMeasuring: measuring.contains(entry.location.id),
-            onSelect: { select(entry) },
-            onAction: { performAction(for: entry) },
-            onRescan: { model.rescan(locationIds: [entry.location.id]) }
-        )
     }
 
     private var footer: some View {
@@ -258,6 +248,7 @@ public struct ListView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([appURL])
             }
         case .info:
+            guard entry.location.id == LocationCatalog.simulatorDyldCache.id else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(DesignTokens.dyldCacheCommand, forType: .string)
         case .irreversible:
@@ -278,10 +269,121 @@ public struct ListView: View {
         }
     }
 
-    private func planWholeLocation(_ entry: InventoryEntry) async {
+}
+
+private struct PlatformInventorySection: View {
+    let platform: DevelopmentPlatform
+    let entries: [InventoryEntry]
+    let measuring: Set<String>
+    let preparingLocationId: String?
+    let showsTopSeparator: Bool
+    let onSelect: (InventoryEntry) -> Void
+    let onAction: (InventoryEntry) -> Void
+    let onRescan: (String) -> Void
+
+    private var sizedRows: [InventoryEntry] {
+        entries.filter { !$0.isUnavailable && $0.reclaimableBytes > 0 }
+    }
+
+    private var restRows: [InventoryEntry] {
+        let zeros = entries.filter { !$0.isUnavailable && $0.reclaimableBytes == 0 }
+        return zeros + entries.filter(\.isUnavailable)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if showsTopSeparator {
+                Hairline().padding(.vertical, 4)
+            }
+
+            Text(platform.sectionTitle)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, PopoverMetrics.rowInset)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+
+            if platform == .android {
+                NoticeStrip(
+                    symbol: "lock.shield",
+                    tint: .orange,
+                    text: "SDK, virtual devices, and Android Studio data remain read-only. "
+                        + "Eligible Gradle cache folders can be cleared after a one-time risk review."
+                )
+            }
+
+            ForEach(sizedRows) { entry in
+                row(for: entry)
+            }
+
+            if !sizedRows.isEmpty, !restRows.isEmpty {
+                Hairline().padding(.vertical, 4)
+            }
+
+            ForEach(restRows) { entry in
+                row(for: entry)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: measuring)
+    }
+
+    private func row(for entry: InventoryEntry) -> some View {
+        CategoryRowView(
+            entry: entry,
+            isOpening: preparingLocationId == entry.location.id,
+            isMeasuring: measuring.contains(entry.location.id),
+            onSelect: { onSelect(entry) },
+            onAction: { onAction(entry) },
+            onRescan: { onRescan(entry.location.id) }
+        )
+    }
+}
+
+private extension DevelopmentPlatform {
+    var sectionTitle: String {
+        switch self {
+        case .apple: "Apple development"
+        case .android: "Android development"
+        }
+    }
+}
+
+#if DEBUG
+    #Preview("Platform section: Apple") {
+        PlatformInventorySection(
+            platform: .apple,
+            entries: PreviewFixtures.sampleEntries.filter { $0.location.platform == .apple },
+            measuring: [],
+            preparingLocationId: nil,
+            showsTopSeparator: false,
+            onSelect: { _ in },
+            onAction: { _ in },
+            onRescan: { _ in }
+        )
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Platform section: Android") {
+        PlatformInventorySection(
+            platform: .android,
+            entries: PreviewFixtures.androidReadOnlyEntries,
+            measuring: [],
+            preparingLocationId: nil,
+            showsTopSeparator: true,
+            onSelect: { _ in },
+            onAction: { _ in },
+            onRescan: { _ in }
+        )
+        .frame(width: PopoverMetrics.width)
+    }
+#endif
+
+private extension ListView {
+    func planWholeLocation(_ entry: InventoryEntry) async {
         let location = entry.location
+        let catalog = model.settings.activeCatalog
+        guard catalog.locations.contains(where: { $0.id == location.id }), !model.isRestored(entry) else { return }
         let children: [ChildEntry] = if entry.roots.contains(where: { location.isCustomRoot($0.url) }) {
-            // The scan's own listing when it has one; a walk only when it does not, which is the same cold path `openDetail` takes.
             if let listed = model.drillDowns[location.id]?.children {
                 listed
             } else {
@@ -290,6 +392,10 @@ public struct ListView: View {
         } else {
             []
         }
+        let currentCatalog = model.settings.activeCatalog
+        guard currentCatalog.generation == catalog.generation,
+              currentCatalog.locations.contains(where: { $0.id == location.id })
+        else { return }
         model.plan { context in
             try DeletionPlanner.wholeLocation(entry, context: context.withChildren { _ in children })
         }

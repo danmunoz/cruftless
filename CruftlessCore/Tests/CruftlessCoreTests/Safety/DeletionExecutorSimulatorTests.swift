@@ -94,7 +94,7 @@ struct DeletionExecutorSimulatorTests {
         )
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-            .execute(DeletionPlan.single(target))
+            .execute(DeletionPlan.plannedSingle(target))
 
         #expect(result.allSucceeded)
         #expect(!FileManager.default.fileExists(atPath: derived.path))
@@ -123,7 +123,7 @@ struct DeletionExecutorSimulatorTests {
         )
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-            .execute(DeletionPlan.single(target))
+            .execute(DeletionPlan.plannedSingle(target))
 
         #expect(!result.items[0].status.isSuccess)
         #expect(FileManager.default.fileExists(atPath: dir.path))
@@ -150,7 +150,7 @@ struct DeletionExecutorSimulatorTests {
         )
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor())
-            .execute(DeletionPlan.single(target))
+            .execute(DeletionPlan.plannedSingle(target))
 
         #expect(!result.items[0].status.isSuccess)
         #expect(FileManager.default.fileExists(atPath: victim.path))

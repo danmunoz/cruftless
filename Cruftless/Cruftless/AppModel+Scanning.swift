@@ -4,37 +4,99 @@ import Foundation
 /// Running a scan: admitting a request, following its event stream, and folding what it produced back into the model.
 @MainActor
 extension AppModel {
+    func platformSelectionDidChange(_ catalog: ActiveCatalog) {
+        guard !isDeleting else { return }
+        cancelPreparation()
+        planFailure = nil
+        scannedLocationIds = []
+        throttleWake?.cancel()
+        throttleWake = nil
+        throttle = RescanThrottle()
+        pendingInvalidation = nil
+        pendingTrigger = .background
+        scanProgress.reset()
+        scanFailures = scanFailures.filter { catalog.ids.contains($0.key) }
+        if !catalog.selection.platforms.contains(.apple) {
+            preferenceIssues = []
+        }
+        drillDowns = drillDowns.filter { catalog.ids.contains($0.key) }
+
+        if let inventory {
+            let retainsGradleCleanableBytes = catalog.ids.contains(LocationCatalog.gradleCaches.id)
+                && inventory.entries.contains { $0.location.id == LocationCatalog.gradleCaches.id }
+            self.inventory = Inventory(
+                entries: inventory.entries.filter { catalog.ids.contains($0.id) },
+                capacity: inventory.capacity,
+                scannedAt: inventory.scannedAt,
+                sizesAreUpperBound: inventory.sizesAreUpperBound,
+                optInReclaimableBytes: retainsGradleCleanableBytes
+                    ? inventory.optInReclaimableBytes
+                    : 0
+            )
+        }
+
+        pushing { navigationPath.removeAll(where: shouldRemoveRouteAfterPlatformChange) }
+
+        Task {
+            await scanEngine.invalidate(generation: catalog.generation)
+        }
+        startMonitoring(for: catalog)
+        refreshScan()
+    }
+
     /// Runs the scan a scope calls for: everything, or just the locations a filesystem event touched.
     func startScan(_ requested: InvalidationScope, trigger: ScanTrigger) {
-        guard let scope = admit(requested, trigger: trigger) else { return }
+        let catalog = activeCatalog
+        guard let scope = admit(requested, trigger: trigger, catalog: catalog) else { return }
         guard !enqueueIfBusy(scope, trigger: trigger) else { return }
 
         activeScan = trigger
         checkRunningApps()
-        Task { await self.run(scope) }
+        Task { await self.run(scope, catalog: catalog) }
     }
 
-    private func admit(_ requested: InvalidationScope, trigger: ScanTrigger) -> InvalidationScope? {
+    private func admit(
+        _ requested: InvalidationScope,
+        trigger: ScanTrigger,
+        catalog: ActiveCatalog
+    ) -> InvalidationScope? {
         guard trigger == .background else { return requested }
         defer { scheduleThrottleWake() }
-        return throttle.admit(requested, at: .now, catalog: Self.catalogIds)
+        return throttle.admit(requested, at: .now, catalog: Array(catalog.ids))
     }
 
-    private func apply(_ event: ScanEvent, to tally: inout ScanTally, tracksProgress: Bool) {
+    private func shouldRemoveRouteAfterPlatformChange(_ route: AppRoute) -> Bool {
+        if case .result = route { return false }
+        return true
+    }
+
+    private func apply(
+        _ event: ScanEvent,
+        to tally: inout ScanTally,
+        tracksProgress: Bool,
+        generation: UInt64
+    ) {
+        guard settings.platformGeneration == generation else { return }
+        if tracksProgress { updateProgress(for: event) }
         switch event {
         case .started:
             break
-        case let .planned(locations):
-            if tracksProgress { scanProgress.plan(locations) }
-        case let .locationStarted(locationId):
-            if tracksProgress { scanProgress.begin(locationId) }
+        case .planned, .locationStarted:
+            break
         case let .locationScanned(entry):
             tally.scannedIds.insert(entry.location.id)
             tally.landedIds.insert(entry.location.id)
-            if tracksProgress { scanProgress.record(entry) }
         case let .locationContents(locationId, contents):
             drillDowns[locationId] = contents
             tally.contentsReceived.insert(locationId)
+            if tracksProgress, locationId == LocationCatalog.gradleCaches.id {
+                scanProgress.recordOptInReclaimableBytes(
+                    GradleCacheEntryPolicy.cleanableBytes(
+                        in: contents.children ?? [],
+                        cacheRoots: LocationCatalog.gradleCaches.resolveRoots()
+                    )
+                )
+            }
         case let .completed(newInventory):
             inventory = newInventory
             scannedLocationIds.formUnion(tally.landedIds)
@@ -43,6 +105,19 @@ extension AppModel {
         case let .failed(locationId, reason):
             tally.scannedIds.insert(locationId)
             tally.failures[locationId] = reason
+        }
+    }
+
+    private func updateProgress(for event: ScanEvent) {
+        switch event {
+        case .started, .completed, .locationContents, .failed:
+            break
+        case let .planned(locations):
+            scanProgress.plan(locations)
+        case let .locationStarted(locationId):
+            scanProgress.begin(locationId)
+        case let .locationScanned(entry):
+            scanProgress.record(entry)
         }
     }
 
@@ -68,14 +143,26 @@ extension AppModel {
         var contentsReceived: Set<String> = []
     }
 
-    private func run(_ scope: InvalidationScope) async {
+    private func run(_ scope: InvalidationScope, catalog: ActiveCatalog) async {
         var tally = ScanTally()
 
         let tracksProgress = activeScan == .user
         scanProgress.reset()
 
-        for await event in await stream(for: scope) {
-            apply(event, to: &tally, tracksProgress: tracksProgress)
+        for await event in await stream(for: scope, catalog: catalog) {
+            apply(event, to: &tally, tracksProgress: tracksProgress, generation: catalog.generation)
+        }
+
+        guard settings.platformGeneration == catalog.generation else {
+            activeScan = nil
+            scanProgress.reset()
+            if let queued = pendingInvalidation {
+                let queuedTrigger = pendingTrigger
+                pendingInvalidation = nil
+                pendingTrigger = .background
+                startScan(queued, trigger: queuedTrigger)
+            }
+            return
         }
 
         let failures = tally.failures
@@ -83,7 +170,7 @@ extension AppModel {
         let contentsReceived = tally.contentsReceived
 
         // A scan is authoritative for what it walked, listings included.
-        for id in walked(from: scope, touching: scannedIds).subtracting(contentsReceived) {
+        for id in walked(from: scope, touching: scannedIds, catalog: catalog).subtracting(contentsReceived) {
             drillDowns[id] = nil
         }
 
@@ -91,9 +178,9 @@ extension AppModel {
         scanProgress.reset()
         record(failures: failures, from: scope, touching: scannedIds)
 
-        throttle.recordCompletion(of: walked(from: scope, touching: scannedIds), at: .now)
+        throttle.recordCompletion(of: walked(from: scope, touching: scannedIds, catalog: catalog), at: .now)
 
-        preferenceIssues = RootResolver.preferenceIssues()
+        preferenceIssues = catalog.selection.platforms.contains(.apple) ? RootResolver.preferenceIssues() : []
 
         if let queued = pendingInvalidation {
             let queuedTrigger = pendingTrigger
@@ -104,10 +191,14 @@ extension AppModel {
     }
 
     /// The locations a finished scan is authoritative about: the same set `record(failures:)` replaces notices for.
-    private func walked(from scope: InvalidationScope, touching scannedIds: Set<String>) -> Set<String> {
+    private func walked(
+        from scope: InvalidationScope,
+        touching scannedIds: Set<String>,
+        catalog: ActiveCatalog
+    ) -> Set<String> {
         switch scope {
         case .everything:
-            Set(Self.catalogIds)
+            catalog.ids
         case let .locations(requestedIds):
             requestedIds.union(scannedIds)
         }
@@ -133,12 +224,16 @@ extension AppModel {
         }
     }
 
-    private func stream(for scope: InvalidationScope) async -> AsyncStream<ScanEvent> {
+    private func stream(for scope: InvalidationScope, catalog: ActiveCatalog) async -> AsyncStream<ScanEvent> {
         switch scope {
         case .everything:
-            await scanEngine.scan()
+            await scanEngine.scan(catalog: catalog.locations, generation: catalog.generation)
         case let .locations(ids):
-            await scanEngine.rescan(locationIds: ids)
+            await scanEngine.rescan(
+                locationIds: ids.intersection(catalog.ids),
+                catalog: catalog.locations,
+                generation: catalog.generation
+            )
         }
     }
 

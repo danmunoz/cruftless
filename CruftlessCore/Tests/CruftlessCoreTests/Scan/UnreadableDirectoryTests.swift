@@ -127,4 +127,5 @@ struct UnreadableDirectoryTests {
 
         #expect(failures == 0)
     }
+
 }

@@ -4,6 +4,8 @@ public enum NotAttemptedReason: Sendable, Hashable {
     /// The run was cancelled before execution reached this item.
     case cancelled
     case executorBusy
+    case policyChanged
+    case unverifiedPlan
 
     /// User-facing copy for this reason.
     public var copy: String {
@@ -12,6 +14,10 @@ public enum NotAttemptedReason: Sendable, Hashable {
             "Not attempted: the operation was cancelled."
         case .executorBusy:
             "Not attempted: another deletion is already running."
+        case .policyChanged:
+            "Not attempted: platform selection changed after this review was created. Review the current inventory again."
+        case .unverifiedPlan:
+            "Not attempted: path deletion plans must come from the deletion planner. Review the current inventory again."
         }
     }
 }

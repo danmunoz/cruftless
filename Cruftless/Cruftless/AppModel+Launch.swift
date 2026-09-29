@@ -19,7 +19,7 @@ extension AppModel {
     /// Called once, from the app delegate.
     func startAtLaunch() {
         restoreSavedInventory()
-        startMonitoring()
+        startMonitoring(for: activeCatalog)
 
         launchScanTask = Task { [weak self] in
             try? await Task.sleep(for: Self.launchScanDelay)
@@ -53,7 +53,7 @@ extension AppModel {
 
         hasStartedInitialScan = true
         isAutomaticScanPaused = false
-        startMonitoring()
+        startMonitoring(for: activeCatalog)
         refreshScan()
     }
 
@@ -74,20 +74,17 @@ extension AppModel {
 
     // MARK: - Filesystem monitoring
 
-    /// Registers the FSEvents stream, once.
-    func startMonitoring() {
-        guard !hasStartedMonitoring else { return }
-        hasStartedMonitoring = true
-
+    /// Replaces the FSEvents stream for the active scope.
+    func startMonitoring(for catalog: ActiveCatalog) {
         Task {
             let roots = await Task.detached {
-                LocationCatalog.all
-                    .filter(\.tier.isDeletable)
+                catalog.locations
                     .flatMap { location in
                         location.resolveRoots().map { WatchedRoot(locationId: location.id, url: $0) }
                     }
             }.value
-            self.invalidator?.startMonitoring(roots: roots)
+            guard settings.platformGeneration == catalog.generation else { return }
+            invalidator?.replaceMonitoring(roots: roots, policyGeneration: catalog.generation)
         }
     }
 
@@ -97,7 +94,7 @@ extension AppModel {
     private func restoreSavedInventory() {
         guard inventory == nil,
               let snapshot = inventoryStore.load(),
-              let restored = snapshot.inventory(capacity: VolumeCapacity.query())
+              let restored = snapshot.inventory(capacity: VolumeCapacity.query(), catalog: activeCatalog.locations)
         else { return }
 
         inventory = restored

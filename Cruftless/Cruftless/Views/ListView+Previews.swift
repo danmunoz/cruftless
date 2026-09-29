@@ -10,6 +10,18 @@ import SwiftUI
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("List: Android inventory only") {
+        let model = AppModel(settings: .preview(platforms: [.android]))
+        model.inventory = Inventory(
+            entries: PreviewFixtures.androidReadOnlyEntries,
+            capacity: PreviewFixtures.sampleCapacity,
+            scannedAt: .now
+        )
+        model.scannedLocationIds = Set(model.inventory!.entries.map(\.location.id))
+        return ListView(model: model, onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("List: rows below the separator") {
         let model = AppModel()
         model.inventory = Inventory(

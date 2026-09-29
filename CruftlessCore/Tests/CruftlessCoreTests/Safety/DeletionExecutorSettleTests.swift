@@ -38,7 +38,7 @@ struct DeletionExecutorSettleTests {
             settleSleep: { try await sleeps.tick() }
         )
 
-        let result = await executor.execute(DeletionPlan.single(target)) { recorder.record($0) }
+        let result = await executor.execute(DeletionPlan.plannedSingle(target)) { recorder.record($0) }
 
         #expect(result.allSucceeded)
         #expect(sleeps.isEmpty)

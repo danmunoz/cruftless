@@ -109,6 +109,21 @@
             .unavailable(location: LocationCatalog.simulatorRuntimes, reason: "simctl did not answer")
         ]
 
+        public static let androidReadOnlyEntries: [InventoryEntry] = [
+            .sized(
+                location: LocationCatalog.androidSDK,
+                reclaimableBytes: 18_000_000_000,
+                staleness: StalenessInfo(lastUsedDate: nil),
+                roots: [RootSize(url: URL(fileURLWithPath: "/tmp/android-sdk"), allocatedBytes: 18_000_000_000)]
+            ),
+            .sized(
+                location: LocationCatalog.androidAVDs,
+                reclaimableBytes: 9_000_000_000,
+                staleness: StalenessInfo(lastUsedDate: nil),
+                roots: [RootSize(url: URL(fileURLWithPath: "/tmp/android-avds"), allocatedBytes: 9_000_000_000)]
+            )
+        ]
+
         public static let populatedInventory = Inventory(
             entries: sampleEntries,
             capacity: sampleCapacity,

@@ -4,6 +4,7 @@ import SwiftUI
 
 public enum AppRoute: Hashable {
     case detail(TrackedLocation)
+    case gradleCacheRisk(location: TrackedLocation, child: ChildEntry)
     case review(DeletionPlan)
     case result(DeletionResult)
 }
@@ -18,6 +19,17 @@ public extension AppModel {
             return
         }
         pushing { navigationPath.append(.detail(location)) }
+    }
+
+    func openGradleCacheRiskWarning(for child: ChildEntry, in location: TrackedLocation) {
+        guard location.id == LocationCatalog.gradleCaches.id,
+              GradleCacheEntryPolicy.isEligible(child, cacheRoots: location.resolveRoots())
+        else {
+            reportPlanFailure("This Gradle cache entry is no longer eligible. Rescan and try again.")
+            return
+        }
+        planFailure = nil
+        pushing { navigationPath.append(.gradleCacheRisk(location: location, child: child)) }
     }
 
     /// Fetches a drill-down the scan has not reached yet, then pushes.
@@ -59,6 +71,9 @@ public extension AppModel {
             } catch {
                 return .unavailable(error.localizedDescription)
             }
+
+        case LocationCatalog.androidSDK.id, LocationCatalog.androidAVDs.id:
+            return await scanEngine.androidDrillDown(for: location)
 
         default:
             return await .children(scanEngine.children(of: location.id))

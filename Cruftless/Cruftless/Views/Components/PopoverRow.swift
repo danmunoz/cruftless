@@ -31,6 +31,8 @@ struct PopoverRow<Caption: View>: View {
     var isReadOnly: Bool = false
     /// A row for a location that is still being measured: dimmed, with a spinner where its size will go.
     var isPlaceholder: Bool = false
+    /// A row whose content could not be read.
+    var isUnavailable: Bool = false
     var isOpening: Bool = false
     var onSelect: (() -> Void)?
     @ViewBuilder var caption: Caption
@@ -41,9 +43,8 @@ struct PopoverRow<Caption: View>: View {
         onSelect != nil || action != nil || rescan != nil
     }
 
-    /// Everything but the hover capsule fades on a read-only row.
     private var contentOpacity: Double {
-        isReadOnly ? 0.5 : 1
+        isPlaceholder || isUnavailable ? 0.5 : 1
     }
 
     var body: some View {
@@ -78,23 +79,23 @@ struct PopoverRow<Caption: View>: View {
 
             trailingSlot
 
-            Group {
+            HStack(spacing: 5) {
                 if isOpening {
-                    ProgressView()
-                        .controlSize(.mini)
-                } else if isReadOnly {
-                    Image(systemName: "lock")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                } else if showsChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                    ProgressView().controlSize(.mini)
                 } else {
-                    Color.clear
+                    if isReadOnly {
+                        Image(systemName: "lock")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+                    if showsChevron {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
-            .frame(width: PopoverMetrics.chevronColumn)
+            .frame(minWidth: PopoverMetrics.chevronColumn, alignment: .trailing)
             .opacity(contentOpacity)
         }
         .padding(.horizontal, PopoverMetrics.rowInset)
@@ -110,6 +111,7 @@ struct PopoverRow<Caption: View>: View {
             onSelect?()
         }
         .accessibilityElement(children: .combine)
+        .accessibilityHint(accessibilityHint)
         .accessibilityAddTraits(onSelect != nil ? .isButton : [])
         .accessibilityActions {
             if let rescan {
@@ -132,6 +134,14 @@ struct PopoverRow<Caption: View>: View {
         }
     }
 
+    private var accessibilityHint: String {
+        if showsChevron, isReadOnly { return "Opens details. Cleanup is unavailable." }
+        if showsChevron { return "Opens details." }
+        if isReadOnly, action != nil { return "Locked. Review the risks before cleanup." }
+        if isReadOnly { return "Cleanup is unavailable." }
+        return ""
+    }
+
     private var showsHoverControls: Bool {
         isHovered && (action != nil || rescan != nil)
     }
@@ -148,17 +158,12 @@ struct PopoverRow<Caption: View>: View {
         }
     }
 
-    /// A gigabyte or more reads as primary; anything smaller recedes.
-    private var sizeIsSignificant: Bool {
-        (sizeBytes ?? 0) >= 1_000_000_000
-    }
-
     private var sizeOrActionSlot: some View {
         ZStack(alignment: .trailing) {
             Text(sizeBytes.map { ByteFormatter.format($0) } ?? "-")
                 .font(.system(size: 13))
                 .monospacedDigit()
-                .foregroundStyle(sizeIsSignificant ? AnyShapeStyle(.primary.opacity(0.7)) : AnyShapeStyle(.secondary))
+                .foregroundStyle(.primary)
                 .opacity(showsHoverControls ? 0 : 1)
                 .opacity(contentOpacity)
 
@@ -208,6 +213,7 @@ extension PopoverRow where Caption == EmptyView {
         showsChevron: Bool = false,
         isReadOnly: Bool = false,
         isPlaceholder: Bool = false,
+        isUnavailable: Bool = false,
         onSelect: (() -> Void)? = nil
     ) {
         self.init(
@@ -222,6 +228,7 @@ extension PopoverRow where Caption == EmptyView {
             showsChevron: showsChevron,
             isReadOnly: isReadOnly,
             isPlaceholder: isPlaceholder,
+            isUnavailable: isUnavailable,
             onSelect: onSelect,
             caption: { EmptyView() }
         )

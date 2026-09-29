@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum PathGuardError: Error, Sendable, Equatable {
@@ -62,7 +63,54 @@ public struct PathGuard: Sendable {
         }
 
         let resolvedURL = URL(fileURLWithPath: resolvedTargetPath, isDirectory: target.hasDirectoryPath)
-        return ValidatedPath(validatedURL: resolvedURL, path: resolvedTargetPath)
+        return ValidatedPath(
+            validatedURL: resolvedURL,
+            path: resolvedTargetPath,
+            allowlistedRootPaths: resolvedRoots
+        )
+    }
+
+    /// Validates one recognized Gradle cache directory without making Gradle User Home writable.
+    package func validateGradleCacheEntry(_ target: URL) throws -> ValidatedPath {
+        let rawPath = try Self.absolutePath(of: target)
+        guard !target.pathComponents.contains("..") else {
+            throw PathGuardError.emptyOrRelativePath(rawPath)
+        }
+        try Self.refuseSymlinkFinalComponent(target)
+
+        let resolvedTargetPath = ProtectedPaths.normalize(target)
+        for cacheRoot in RootResolver.gradleCacheRoots() {
+            let rootPath = ProtectedPaths.normalize(cacheRoot)
+            guard cacheRoot.lastPathComponent == "caches",
+                  resolvedTargetPath.hasPrefix(rootPath + "/")
+            else { continue }
+
+            let entryName = String(resolvedTargetPath.dropFirst(rootPath.count + 1))
+            guard !entryName.isEmpty,
+                  !entryName.contains("/"),
+                  entryName == target.lastPathComponent,
+                  GradleCacheEntryPolicy.isRecognizedCacheEntryName(entryName)
+            else { continue }
+
+            var info = stat()
+            var rootInfo = stat()
+            guard lstat(resolvedTargetPath, &info) == 0,
+                  (info.st_mode & S_IFMT) == S_IFDIR,
+                  stat(rootPath, &rootInfo) == 0,
+                  info.st_dev == rootInfo.st_dev
+            else { throw PathGuardError.protectedPath(resolvedTargetPath) }
+
+            guard protectedPaths.allowsGradleCacheEntry(target, under: cacheRoot),
+                  !protectedPaths.containsProtectedDescendant(in: target)
+            else { throw PathGuardError.protectedPath(resolvedTargetPath) }
+
+            return ValidatedPath(
+                validatedURL: URL(fileURLWithPath: resolvedTargetPath, isDirectory: true),
+                path: resolvedTargetPath,
+                allowlistedRootPaths: [rootPath]
+            )
+        }
+        throw PathGuardError.outsideAllowlistedRoots(resolvedTargetPath)
     }
 
     public func validateRoot(_ target: URL) throws -> ValidatedPath {
@@ -92,7 +140,12 @@ public struct PathGuard: Sendable {
         }
 
         let resolvedURL = URL(fileURLWithPath: resolvedTargetPath, isDirectory: true)
-        return ValidatedPath(validatedURL: resolvedURL, path: resolvedTargetPath)
+        return ValidatedPath(
+            validatedURL: resolvedURL,
+            path: resolvedTargetPath,
+            isRoot: true,
+            allowlistedRootPaths: roots.map(ProtectedPaths.normalize)
+        )
     }
 
     /// The target must be an absolute file URL with no host.

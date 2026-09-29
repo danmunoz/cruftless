@@ -54,7 +54,8 @@ public enum KnownBloat: Sendable {
     /// Creates a deletion plan for known bloat inside a device.
     public static func createBloatDeletionPlan(
         for device: SimDevice,
-        protectedPaths: ProtectedPaths = .default
+        protectedPaths: ProtectedPaths = .default,
+        policyGeneration: UInt64 = 0
     ) throws -> DeletionPlan {
         guard device.state.isShutdown else {
             throw DeletionPlanningError.simulatorNotShutdown(name: device.name)
@@ -65,49 +66,7 @@ public enum KnownBloat: Sendable {
             throw DeletionPlanningError.missingOnDisk(name: device.name)
         }
 
-        // PathGuard strictly rooted at this device's data directory.
-        let guardInstance = PathGuard(roots: [dataDir], protectedPaths: protectedPaths)
-        let inodeSet = InodeSet()
-        var targets: [DeletionTarget] = []
-
-        for candidate in candidatePaths {
-            let targetURL = dataDir.appendingPathComponent(candidate.relative)
-            let path = ProtectedPaths.normalize(targetURL)
-            let name = "\(device.name) · \(candidate.title)"
-
-            guard FileManager.default.fileExists(atPath: path) else {
-                continue
-            }
-
-            let validatedPath: ValidatedPath
-            do {
-                validatedPath = try guardInstance.validate(targetURL)
-            } catch let error as PathGuardError {
-                throw DeletionPlanningError.refused(name: name, error: error)
-            }
-
-            guard let fingerprint = Fingerprint.capture(at: targetURL) else {
-                throw DeletionPlanningError.missingOnDisk(name: name)
-            }
-
-            let size = DirectoryWalker.walk(url: targetURL, inodeSet: inodeSet).allocatedBytes
-
-            targets.append(
-                .path(
-                    id: "bloat-\(device.udid)-\(candidate.relative)",
-                    name: name,
-                    validatedPath: validatedPath,
-                    fingerprint: fingerprint,
-                    tier: .regen,
-                    consequence: "Removes cached simulator system data. The simulator regenerates it when needed.",
-                    reclaimableBytes: size,
-                    precondition: .simulatorShutdown(
-                        devicePlist: device.deviceDirectory.appendingPathComponent("device.plist"),
-                        deviceName: device.name
-                    )
-                )
-            )
-        }
+        let targets = try deletionTargets(for: device, protectedPaths: protectedPaths, dataDirectory: dataDir)
 
         // Nothing to clear is a refusal, not a "Clear Zero KB" plan.
         guard !targets.isEmpty else {
@@ -115,7 +74,50 @@ public enum KnownBloat: Sendable {
         }
 
         let totalSize = targets.reduce(0) { $0 + $1.reclaimableBytes }
-        return DeletionPlan.batch(targets, confirmLabel: "Clear \(ByteFormatter.format(totalSize))",
-                                  affectedLocationIds: [LocationCatalog.simulatorDevices.id])
+        return DeletionPlan.plannedBatch(
+            targets,
+            confirmLabel: "Clear \(ByteFormatter.format(totalSize))",
+            affectedLocationIds: [LocationCatalog.simulatorDevices.id],
+            policyGeneration: policyGeneration
+        )
+    }
+
+    private static func deletionTargets(
+        for device: SimDevice,
+        protectedPaths: ProtectedPaths,
+        dataDirectory: URL
+    ) throws -> [DeletionTarget] {
+        let guardInstance = PathGuard(roots: [dataDirectory], protectedPaths: protectedPaths)
+        let inodeSet = InodeSet()
+        var targets: [DeletionTarget] = []
+        for candidate in candidatePaths {
+            let targetURL = dataDirectory.appendingPathComponent(candidate.relative)
+            guard FileManager.default.fileExists(atPath: ProtectedPaths.normalize(targetURL)) else { continue }
+            let name = "\(device.name) · \(candidate.title)"
+            let validatedPath: ValidatedPath
+            do {
+                validatedPath = try guardInstance.validate(targetURL)
+            } catch let error as PathGuardError {
+                throw DeletionPlanningError.refused(name: name, error: error)
+            }
+            guard let fingerprint = Fingerprint.capture(at: targetURL) else {
+                throw DeletionPlanningError.missingOnDisk(name: name)
+            }
+            let size = DirectoryWalker.walk(url: targetURL, inodeSet: inodeSet).allocatedBytes
+            targets.append(.path(
+                id: "bloat-\(device.udid)-\(candidate.relative)",
+                name: name,
+                validatedPath: validatedPath,
+                fingerprint: fingerprint,
+                tier: .regen,
+                consequence: "Removes cached simulator system data. The simulator regenerates it when needed.",
+                reclaimableBytes: size,
+                precondition: .simulatorShutdown(
+                    devicePlist: device.deviceDirectory.appendingPathComponent("device.plist"),
+                    deviceName: device.name
+                )
+            ))
+        }
+        return targets
     }
 }

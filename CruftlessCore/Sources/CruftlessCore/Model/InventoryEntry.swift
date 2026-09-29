@@ -4,10 +4,22 @@ import Foundation
 public struct RootSize: Sendable, Hashable {
     public let url: URL
     public let allocatedBytes: Int64
+    public let source: String?
+    public let volumeIdentifier: String?
+    public let layout: String?
 
-    public init(url: URL, allocatedBytes: Int64) {
+    public init(
+        url: URL,
+        allocatedBytes: Int64,
+        source: String? = nil,
+        volumeIdentifier: String? = nil,
+        layout: String? = nil
+    ) {
         self.url = url
         self.allocatedBytes = allocatedBytes
+        self.source = source
+        self.volumeIdentifier = volumeIdentifier
+        self.layout = layout
     }
 }
 

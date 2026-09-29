@@ -6,6 +6,12 @@ public enum MutationPolicy: Sendable, Hashable {
     case pathDeletion
     /// Everything goes through `simctl`.
     case simctl
+    /// Inventory only. Every planner entry point refuses mutation.
+    case readOnly
+
+    public var isReadOnly: Bool {
+        self == .readOnly
+    }
 }
 
 /// Where a tracked location's size comes from.
@@ -19,6 +25,7 @@ public enum SizeSource: Sendable, Hashable {
 /// Defines a tracked bloat location, its tier, icon, staleness logic, and root directories.
 public struct TrackedLocation: Sendable, Hashable, Identifiable {
     public let id: String
+    public let platform: DevelopmentPlatform
     public let title: String
     public let icon: RowIcon
     public let tier: Tier
@@ -29,12 +36,14 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
     public let resolveRoots: @Sendable () -> [URL]
 
     public let consequence: String
+    public let discoveryIssue: @Sendable () -> String?
 
     /// The roots this location has when nothing outside the app redirects it.
     public let resolveDefaultRoots: (@Sendable () -> [URL])?
 
     public init(
         id: String,
+        platform: DevelopmentPlatform = .apple,
         title: String,
         icon: RowIcon,
         tier: Tier,
@@ -43,10 +52,12 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
         sizeSource: SizeSource = .filesystemRoots,
         mutationPolicy: MutationPolicy = .pathDeletion,
         consequence: String? = nil,
+        discoveryIssue: @escaping @Sendable () -> String? = { nil },
         resolveRoots: @escaping @Sendable () -> [URL],
         resolveDefaultRoots: (@Sendable () -> [URL])? = nil
     ) {
         self.id = id
+        self.platform = platform
         self.title = title
         self.icon = icon
         self.tier = tier
@@ -55,6 +66,7 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
         self.sizeSource = sizeSource
         self.mutationPolicy = mutationPolicy
         self.consequence = consequence ?? Self.defaultConsequence(for: tier)
+        self.discoveryIssue = discoveryIssue
         self.resolveRoots = resolveRoots
         self.resolveDefaultRoots = resolveDefaultRoots
     }

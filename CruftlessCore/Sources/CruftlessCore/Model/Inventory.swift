@@ -6,13 +6,20 @@ public struct Inventory: Sendable, Hashable {
     public let capacity: VolumeCapacity
     public let scannedAt: Date
     public let sizesAreUpperBound: Bool
+    /// Bytes in recognized Gradle cache children that need per-attempt risk acceptance.
+    public let optInReclaimableBytes: Int64
+
+    /// Cleanable bytes include ordinary deletion targets and the explicitly reviewed Gradle cache subset.
+    public var cleanableBytes: Int64 {
+        reclaimableBytes + optInReclaimableBytes
+    }
 
     /// Total reclaimable bytes across the `regen`, `judgment` and `irreversible` entries.
     public var reclaimableBytes: Int64 {
         entries.reduce(0) { total, entry in
             switch entry {
             case let .sized(loc, bytes, _, _):
-                if loc.tier.isDeletable {
+                if loc.mutationPolicy != .readOnly, loc.tier.isDeletable {
                     return total + bytes
                 }
                 return total
@@ -26,12 +33,14 @@ public struct Inventory: Sendable, Hashable {
         entries: [InventoryEntry],
         capacity: VolumeCapacity,
         scannedAt: Date = Date(),
-        sizesAreUpperBound: Bool = true
+        sizesAreUpperBound: Bool = true,
+        optInReclaimableBytes: Int64 = 0
     ) {
         self.entries = Self.displaySorted(entries)
         self.capacity = capacity
         self.scannedAt = scannedAt
         self.sizesAreUpperBound = sizesAreUpperBound
+        self.optInReclaimableBytes = max(0, optInReclaimableBytes)
     }
 
     /// Sorts by bytes, catalog order, title, then ID.

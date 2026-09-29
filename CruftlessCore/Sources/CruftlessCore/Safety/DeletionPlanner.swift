@@ -8,6 +8,7 @@ public enum DeletionPlanner {
         context: PlanningContext
     ) throws -> DeletionPlan {
         let location = entry.location
+        try requireMutationSupport(location)
         guard location.tier.isDeletable else {
             throw DeletionPlanningError.notDeletable(title: location.title)
         }
@@ -43,7 +44,11 @@ public enum DeletionPlanner {
         }
 
         try rejectOverlaps(among: targets)
-        let plan = DeletionPlan.batch(targets, affectedLocationIds: [location.id])
+        let plan = DeletionPlan.plannedBatch(
+            targets,
+            affectedLocationIds: [location.id],
+            policyGeneration: context.policyGeneration
+        )
         guard !plan.isEmpty else {
             throw DeletionPlanningError.nothingToPlan(title: location.title)
         }
@@ -114,6 +119,7 @@ public enum DeletionPlanner {
         in location: TrackedLocation,
         context: PlanningContext
     ) throws -> DeletionPlan {
+        try requireMutationSupport(location)
         try requireDeletableLocation(location)
         try requirePathDeletion(location)
         let pathGuard = PathGuard(roots: location.resolveRoots(), protectedPaths: context.protectedPaths)
@@ -123,7 +129,11 @@ public enum DeletionPlanner {
             pathGuard: pathGuard,
             context: context
         )
-        return DeletionPlan.single(builtTarget, affectedLocationIds: [location.id])
+        return DeletionPlan.plannedSingle(
+            builtTarget,
+            affectedLocationIds: [location.id],
+            policyGeneration: context.policyGeneration
+        )
     }
 
     /// Plans a clear of several drill-down children at once.
@@ -132,6 +142,7 @@ public enum DeletionPlanner {
         in location: TrackedLocation,
         context: PlanningContext
     ) throws -> DeletionPlan {
+        try requireMutationSupport(location)
         try requireDeletableLocation(location)
         try requirePathDeletion(location)
         let pathGuard = PathGuard(roots: location.resolveRoots(), protectedPaths: context.protectedPaths)
@@ -145,7 +156,11 @@ public enum DeletionPlanner {
         }
         try rejectOverlaps(among: targets)
 
-        let plan = DeletionPlan.batch(targets, affectedLocationIds: [location.id])
+        let plan = DeletionPlan.plannedBatch(
+            targets,
+            affectedLocationIds: [location.id],
+            policyGeneration: context.policyGeneration
+        )
         guard !plan.isEmpty else {
             throw DeletionPlanningError.nothingToPlan(title: location.title)
         }
@@ -179,6 +194,12 @@ public enum DeletionPlanner {
     private static func requirePathDeletion(_ location: TrackedLocation) throws {
         guard location.mutationPolicy == .pathDeletion else {
             throw DeletionPlanningError.simulatorLocation(title: location.title)
+        }
+    }
+
+    private static func requireMutationSupport(_ location: TrackedLocation) throws {
+        if location.mutationPolicy == .readOnly {
+            throw DeletionPlanningError.readOnlyLocation(title: location.title)
         }
     }
 

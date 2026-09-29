@@ -49,7 +49,7 @@ struct DeletionExecutorPartialTests {
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
         defer { _ = chflags(outer.path(percentEncoded: false), 0) }
 
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
         #expect(chflags(outer.path(percentEncoded: false), UInt32(UF_IMMUTABLE)) == 0)
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor()).execute(plan)
@@ -72,7 +72,7 @@ struct DeletionExecutorPartialTests {
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
 
         let writer = RecreatingWriter(directory: fixture.target)
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
         writer.start()
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor()).execute(plan)
         writer.stop()
@@ -93,7 +93,7 @@ struct DeletionExecutorPartialTests {
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
         defer { _ = chflags(fixture.target.path(percentEncoded: false), 0) }
 
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
         #expect(chflags(fixture.target.path(percentEncoded: false), UInt32(UF_IMMUTABLE)) == 0)
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor()).execute(plan)
@@ -114,7 +114,7 @@ struct DeletionExecutorPartialTests {
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
         defer { _ = chflags(locked, 0) }
 
-        let plan = try DeletionPlan.single(target(for: fixture))
+        let plan = try DeletionPlan.plannedSingle(target(for: fixture))
         #expect(chflags(locked, UInt32(UF_IMMUTABLE)) == 0)
 
         let result = await DeletionExecutor(simulatorExecutor: MockSimulatorExecutor()).execute(plan)
@@ -184,7 +184,7 @@ struct DeletionExecutorPartialTests {
 
         let mock = MockSimulatorExecutor()
         let executor = DeletionExecutor(simulatorExecutor: mock)
-        let plan = try DeletionPlan.batch([
+        let plan = try DeletionPlan.plannedBatch([
             target(for: fixture),
             .simulatorErase(udid: "OFF-9", name: "iPhone 17", isBooted: false, consequence: "", reclaimableBytes: 512)
         ])

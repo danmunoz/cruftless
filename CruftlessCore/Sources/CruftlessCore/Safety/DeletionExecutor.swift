@@ -37,13 +37,15 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 /// The sole executor permitted to permanently delete files or mutate simulators.
 public actor DeletionExecutor {
     private let simulatorExecutor: SimulatorCommandExecuting
+    let policyGenerationAuthority: PolicyGenerationAuthority
+    let protectedPathsStore: ProtectedPathsStore
     let capacitySampler: @Sendable () async -> Int64
     let deviceDirectoryProvider: @Sendable (String) -> URL?
     let settleSleep: @Sendable () async throws -> Void
     var onProgress: (@Sendable (DeletionProgress) -> Void)?
 
     /// Serialises every overlapping `execute` call.
-    private var isExecuting = false
+    var isExecuting = false
 
     private static let fileSystemQueue = DispatchQueue(
         label: "com.cruftless.core.deletion-executor",
@@ -52,6 +54,8 @@ public actor DeletionExecutor {
 
     public init(
         simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor(),
+        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority(),
+        protectedPathsStore: ProtectedPathsStore = .shared,
         capacitySampler: @escaping @Sendable () async -> Int64 = { VolumeCapacity.query().freeBytes },
         deviceDirectory: @escaping @Sendable (String) -> URL? = { udid in
             RootResolver.simulatorDevicesRoot().first?.appendingPathComponent(udid, isDirectory: true)
@@ -59,61 +63,31 @@ public actor DeletionExecutor {
         settleSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }
     ) {
         self.simulatorExecutor = simulatorExecutor
+        self.policyGenerationAuthority = policyGenerationAuthority
+        self.protectedPathsStore = protectedPathsStore
         self.capacitySampler = capacitySampler
         deviceDirectoryProvider = deviceDirectory
         self.settleSleep = settleSleep
     }
 
-    /// Executes all items in the plan sequentially, collecting per-item outcomes.
-    public func execute(
-        _ plan: DeletionPlan,
-        onProgress: (@Sendable (DeletionProgress) -> Void)? = nil
-    ) async -> DeletionResult {
-        guard !isExecuting else {
-            return Self.refusedAsConcurrent(plan)
-        }
-        isExecuting = true
-        self.onProgress = onProgress
-        defer {
-            isExecuting = false
-            self.onProgress = nil
-        }
-
-        var outcomes: [ItemOutcome] = []
-        outcomes.reserveCapacity(plan.items.count)
-
-        for item in plan.items {
-            if Task.isCancelled {
-                outcomes.append(
-                    ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0)
-                )
-                continue
-            }
-            let outcome = await executeSingle(item)
-            outcomes.append(outcome)
-        }
-
-        return DeletionResult(items: outcomes)
-    }
-
-    private static func refusedAsConcurrent(_ plan: DeletionPlan) -> DeletionResult {
-        DeletionResult(
-            items: plan.items.map {
-                ItemOutcome(target: $0, status: .notAttempted(reason: .executorBusy), freedBytes: 0)
-            }
-        )
-    }
-
-    private func executeSingle(_ target: DeletionTarget) async -> ItemOutcome {
+    func executeSingle(
+        _ target: DeletionTarget,
+        affectedLocationIds: Set<String>,
+        policyGeneration: UInt64,
+        gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
+    ) async -> ItemOutcome {
         switch target {
         case let .path(_, _, validatedPath, fingerprint, _, _, bytes, precondition):
-            await executePath(
-                target,
+            await executePath(PathDeletionRequest(
+                target: target,
                 validatedPath: validatedPath,
                 fingerprint: fingerprint,
                 bytes: bytes,
-                precondition: precondition
-            )
+                precondition: precondition,
+                affectedLocationIds: affectedLocationIds,
+                policyGeneration: policyGeneration,
+                gradleCacheRiskAcknowledgement: gradleCacheRiskAcknowledgement
+            ))
         case let .simulatorErase(udid, _, isBooted, _, bytes):
             await executeSimulatorErase(target, udid: udid, isBooted: isBooted, bytes: bytes)
         case let .simulatorDelete(udid, _, isBooted, _, bytes):
@@ -124,25 +98,6 @@ public actor DeletionExecutor {
     }
 
     /// Hops the whole check-then-delete sequence onto `fileSystemQueue`.
-    private func executePath(
-        _ target: DeletionTarget,
-        validatedPath: ValidatedPath,
-        fingerprint: Fingerprint,
-        bytes: Int64,
-        precondition: DeletionPrecondition?
-    ) async -> ItemOutcome {
-        report(DeletionProgress(verb: .clear, targetName: target.name, phase: .mutating))
-        return await Self.offCooperativePool {
-            Self.performPathDeletion(
-                target,
-                validatedPath: validatedPath,
-                fingerprint: fingerprint,
-                bytes: bytes,
-                precondition: precondition
-            )
-        }
-    }
-
     /// Runs `work` on `fileSystemQueue` and suspends until it returns.
     static func offCooperativePool<Value: Sendable>(
         _ work: @escaping @Sendable () -> Value
@@ -154,58 +109,55 @@ public actor DeletionExecutor {
         }
     }
 
-    private static func performPathDeletion(
-        _ target: DeletionTarget,
-        validatedPath: ValidatedPath,
-        fingerprint: Fingerprint,
-        bytes: Int64,
-        precondition: DeletionPrecondition?
-    ) -> ItemOutcome {
-        // The fingerprint's resolved path and the validated path are both derived from the same URL at plan time.
-        guard fingerprint.path == validatedPath.path else {
+    package static func performPathDeletion(_ request: PathDeletionRequest) -> ItemOutcome {
+        guard request.fingerprint.path == request.validatedPath.path else {
             return ItemOutcome(
-                target: target,
+                target: request.target,
                 status: .failed(reason: "Refused: validated path and fingerprint disagree"),
                 freedBytes: 0
             )
         }
-
-        if let precondition, let refusal = Self.check(precondition) {
-            return ItemOutcome(target: target, status: .failed(reason: "Refused: \(refusal)"), freedBytes: 0)
+        if let precondition = request.precondition, let refusal = check(precondition) {
+            return ItemOutcome(target: request.target, status: .failed(reason: "Refused: \(refusal)"), freedBytes: 0)
         }
-
-        let check = fingerprint.verify(at: validatedPath.url)
-        switch check {
+        guard request.revalidate() else {
+            return ItemOutcome(
+                target: request.target,
+                status: .failed(reason: "Refused: tracked roots or protected paths changed after Review"),
+                freedBytes: 0
+            )
+        }
+        switch request.fingerprint.verify(at: request.validatedPath.url) {
         case .valid:
             let startedAt = Date()
             do {
                 // Sole invocation of removeItem in the codebase.
-                try FileManager.default.removeItem(at: validatedPath.url)
-                return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes)
+                try FileManager.default.removeItem(at: request.validatedPath.url)
+                return ItemOutcome(target: request.target, status: .succeeded, freedBytes: request.bytes)
             } catch {
-                return Self.outcomeAfterRemoveFailure(
-                    target: target,
-                    url: validatedPath.url,
-                    plannedBytes: bytes,
+                return outcomeAfterRemoveFailure(
+                    target: request.target,
+                    url: request.validatedPath.url,
+                    plannedBytes: request.bytes,
                     startedAt: startedAt,
                     error: error
                 )
             }
         case .missing:
-            return ItemOutcome(target: target, status: .failed(reason: "Item no longer exists on disk"), freedBytes: 0)
+            return ItemOutcome(target: request.target, status: .failed(reason: "Item no longer exists on disk"), freedBytes: 0)
         case let .pathChanged(expected, actual):
             return ItemOutcome(
-                target: target,
+                target: request.target,
                 status: .failed(reason: "Resolved path changed: expected \(expected), got \(actual)"),
                 freedBytes: 0
             )
         case let .changedSinceScan(reason):
-            return ItemOutcome(target: target, status: .failed(reason: "Refused: \(reason)"), freedBytes: 0)
+            return ItemOutcome(target: request.target, status: .failed(reason: "Refused: \(reason)"), freedBytes: 0)
         }
     }
 
     /// Works out what a failed `removeItem` actually left behind.
-    private static func outcomeAfterRemoveFailure(
+    package static func outcomeAfterRemoveFailure(
         target: DeletionTarget,
         url: URL,
         plannedBytes: Int64,
@@ -241,13 +193,13 @@ public actor DeletionExecutor {
     }
 
     /// Adds sentence-ending punctuation when needed.
-    private static func sentence(_ error: any Error) -> String {
+    package static func sentence(_ error: any Error) -> String {
         let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.hasSuffix(".") ? text : text + "."
     }
 
     /// Re-checks a plan-time precondition at execute time.
-    private static func check(_ precondition: DeletionPrecondition) -> String? {
+    package static func check(_ precondition: DeletionPrecondition) -> String? {
         switch precondition {
         case let .simulatorShutdown(devicePlist, deviceName):
             let deviceDirectory = devicePlist.deletingLastPathComponent()
