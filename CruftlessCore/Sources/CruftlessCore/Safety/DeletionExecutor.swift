@@ -70,7 +70,12 @@ public actor DeletionExecutor {
         self.settleSleep = settleSleep
     }
 
-    func executeSingle(_ target: DeletionTarget, affectedLocationIds: Set<String>) async -> ItemOutcome {
+    func executeSingle(
+        _ target: DeletionTarget,
+        affectedLocationIds: Set<String>,
+        policyGeneration: UInt64,
+        gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
+    ) async -> ItemOutcome {
         switch target {
         case let .path(_, _, validatedPath, fingerprint, _, _, bytes, precondition):
             await executePath(PathDeletionRequest(
@@ -79,7 +84,9 @@ public actor DeletionExecutor {
                 fingerprint: fingerprint,
                 bytes: bytes,
                 precondition: precondition,
-                affectedLocationIds: affectedLocationIds
+                affectedLocationIds: affectedLocationIds,
+                policyGeneration: policyGeneration,
+                gradleCacheRiskAcknowledgement: gradleCacheRiskAcknowledgement
             ))
         case let .simulatorErase(udid, _, isBooted, _, bytes):
             await executeSimulatorErase(target, udid: udid, isBooted: isBooted, bytes: bytes)

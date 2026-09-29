@@ -83,6 +83,10 @@ public struct DetailView: View {
             LazyVStack(spacing: 2) {
                 summary
 
+                if let planFailure = model.planFailure {
+                    NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+                }
+
                 ForEach(children) { child in
                     childRow(child)
                 }
@@ -140,19 +144,29 @@ public struct DetailView: View {
             title: displayName(for: child),
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
-            action: location.mutationPolicy == .readOnly ? nil : rowAction(for: child),
+            action: rowAction(for: child),
             isReadOnly: location.mutationPolicy == .readOnly
         )
         .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
-    private func rowAction(for child: ChildEntry) -> RowAction {
+    private func rowAction(for child: ChildEntry) -> RowAction? {
+        if location.id == LocationCatalog.gradleCaches.id {
+            guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: location.resolveRoots()) else {
+                return nil
+            }
+            return RowAction("Clear") {
+                model.openGradleCacheRiskWarning(for: child, in: location)
+            }
+        }
+        guard !location.mutationPolicy.isReadOnly else { return nil }
+
         if location.tier == .reveal {
-            RowAction(DesignTokens.actionLabel(for: .reveal)) {
+            return RowAction(DesignTokens.actionLabel(for: .reveal)) {
                 NSWorkspace.shared.activateFileViewerSelecting([child.url])
             }
         } else {
-            RowAction(DesignTokens.actionLabel(for: child.tier), isDestructive: child.isFlagged) {
+            return RowAction(DesignTokens.actionLabel(for: child.tier), isDestructive: child.isFlagged) {
                 model.plan { context in
                     try DeletionPlanner.child(child, in: location, context: context)
                 }

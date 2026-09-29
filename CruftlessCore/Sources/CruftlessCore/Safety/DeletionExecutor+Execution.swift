@@ -9,12 +9,12 @@ extension DeletionExecutor {
         if plan.items.contains(where: { $0.validatedPath != nil }), !plan.isPlannerAuthorized {
             return Self.refusedAsUnverified(plan)
         }
-        let admissionIDs = plan.affectedLocationIds.union(
-            policyGenerationAuthority.readOnlyLocationIDs(matching: plan.items)
-        )
+        guard let admission = admissionScope(for: plan) else {
+            return Self.refusedAsUnverified(plan)
+        }
         let admitted = policyGenerationAuthority.withCurrentGeneration(
             plan.policyGeneration,
-            affectedLocationIDs: admissionIDs
+            affectedLocationIDs: admission.locationIDs
         ) {
             guard !isExecuting else { return false }
             isExecuting = true
@@ -41,8 +41,35 @@ extension DeletionExecutor {
                 outcomes.append(ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0))
                 continue
             }
-            outcomes.append(await executeSingle(item, affectedLocationIds: plan.affectedLocationIds))
+            outcomes.append(await executeSingle(
+                item,
+                affectedLocationIds: plan.affectedLocationIds,
+                policyGeneration: plan.policyGeneration,
+                gradleCacheRiskAcknowledgement: admission.gradleAcknowledgement
+            ))
         }
         return DeletionResult(items: outcomes)
+    }
+
+    private func admissionScope(
+        for plan: DeletionPlan
+    ) -> (locationIDs: Set<String>, gradleAcknowledgement: GradleCacheRiskAcknowledgement?)? {
+        let acknowledgement = plan.gradleCacheRiskAcknowledgement
+        if let acknowledgement,
+           !acknowledgement.consume(
+               planItems: plan.items,
+               affectedLocationIDs: plan.affectedLocationIds,
+               planPolicyGeneration: plan.policyGeneration
+           ) {
+            return nil
+        }
+        let authorizedIDs: Set<String> = acknowledgement == nil
+            ? []
+            : [LocationCatalog.gradleCaches.id]
+        let locationIDs = plan.affectedLocationIds.subtracting(authorizedIDs).union(
+            policyGenerationAuthority.readOnlyLocationIDs(matching: plan.items)
+                .subtracting(authorizedIDs)
+        )
+        return (locationIDs, acknowledgement)
     }
 }

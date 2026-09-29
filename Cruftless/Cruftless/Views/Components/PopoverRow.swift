@@ -137,6 +137,7 @@ struct PopoverRow<Caption: View>: View {
     private var accessibilityHint: String {
         if showsChevron, isReadOnly { return "Opens details. Cleanup is unavailable." }
         if showsChevron { return "Opens details." }
+        if isReadOnly, action != nil { return "Locked. Review the risks before cleanup." }
         if isReadOnly { return "Cleanup is unavailable." }
         return ""
     }

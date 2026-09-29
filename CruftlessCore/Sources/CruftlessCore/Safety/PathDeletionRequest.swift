@@ -7,6 +7,8 @@ package struct PathDeletionRequest: Sendable {
     let bytes: Int64
     let precondition: DeletionPrecondition?
     let affectedLocationIds: Set<String>
+    let policyGeneration: UInt64
+    let gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
     let revalidate: @Sendable () -> Bool
 
     package init(
@@ -16,6 +18,8 @@ package struct PathDeletionRequest: Sendable {
         bytes: Int64,
         precondition: DeletionPrecondition?,
         affectedLocationIds: Set<String>,
+        policyGeneration: UInt64 = 0,
+        gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement? = nil,
         revalidate: @escaping @Sendable () -> Bool = { true }
     ) {
         self.target = target
@@ -24,6 +28,8 @@ package struct PathDeletionRequest: Sendable {
         self.bytes = bytes
         self.precondition = precondition
         self.affectedLocationIds = affectedLocationIds
+        self.policyGeneration = policyGeneration
+        self.gradleCacheRiskAcknowledgement = gradleCacheRiskAcknowledgement
         self.revalidate = revalidate
     }
 }

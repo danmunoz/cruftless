@@ -15,6 +15,7 @@ public struct ProtectedPaths: Sendable {
     private let structuralAnchors: [ProtectedPathForms]
 
     private let androidProtectedPrefixes: [String]
+    private let gradleUserHomePrefixes: [String]
 
     private let accountHome: String?
     private let homePath: String
@@ -63,6 +64,7 @@ public struct ProtectedPaths: Sendable {
             protectExactly((homePath as NSString).appendingPathComponent(suffix))
         }
         let androidPrefixes = Self.androidProtectedPrefixes(home: home, homePath: homePath)
+        let gradlePrefixes = Self.gradleUserHomePrefixes(homePath: homePath)
         for path in androidPrefixes {
             let forms = ProtectedPathForms(path: path)
             exact.insert(forms.lexical)
@@ -70,16 +72,13 @@ public struct ProtectedPaths: Sendable {
         }
         systemProtectedPaths = exact
         androidProtectedPrefixes = androidPrefixes.map { PathNormalizer.lexical($0).lowercased() }
+        gradleUserHomePrefixes = gradlePrefixes.map { PathNormalizer.lexical($0).lowercased() }
 
-        var anchors = Self.builtInProtectedRoots
-            .filter { $0 != "/" }
-            .map { ProtectedPathForms(path: $0) }
-        anchors.append(ProtectedPathForms(path: homePath))
-        for suffix in Self.protectedHomeSubdirectories + Self.anchoredHomeSubdirectories {
-            anchors.append(ProtectedPathForms(path: (homePath as NSString).appendingPathComponent(suffix)))
-        }
-        anchors.append(contentsOf: androidPrefixes.map { ProtectedPathForms(path: $0) })
-        structuralAnchors = anchors
+        structuralAnchors = Self.protectedAnchors(
+            homePath: homePath,
+            androidPrefixes: androidPrefixes,
+            gradlePrefixes: gradlePrefixes
+        )
     }
 
     // MARK: - Normalization
@@ -138,6 +137,19 @@ public struct ProtectedPaths: Sendable {
 
     public func containsCustomProtectedPath(in root: URL) -> Bool {
         containsProtectedDescendant(in: root)
+    }
+
+    /// Whether the normal Gradle-home denylist is the only built-in rule covering this cache entry.
+    package func allowsGradleCacheEntry(_ target: URL, under cacheRoot: URL) -> Bool {
+        guard !intersectsCustomProtection(target) else { return false }
+        let forms = ProtectedPathForms(url: target)
+        guard !isSystemProtected(forms, allowingGradleCacheRoot: cacheRoot),
+              !isInsideProtectedHomeArea(forms),
+              !Self.isCoreSimulatorStructure(forms.lexical),
+              !Self.isCoreSimulatorStructure(forms.resolved),
+              !containsStructuralAnchor(forms)
+        else { return false }
+        return true
     }
 
     /// Whether `url` may serve as a `PathGuard` root at all.
@@ -212,35 +224,6 @@ public struct ProtectedPaths: Sendable {
 
     // MARK: - Rules
 
-    /// The default APFS volume is case-insensitive, so `/system/library` names the same directory as `/System/Library`.
-    private func isSystemProtected(_ forms: ProtectedPathForms) -> Bool {
-        for spelling in forms.variants {
-            if hasUnresolvedAndroidRedirects,
-               spelling == homePath || spelling.hasPrefix(homePath + "/") {
-                return true
-            }
-            if systemProtectedPaths.contains(spelling) {
-                return true
-            }
-            if androidProtectedPrefixes.contains(where: { spelling == $0 || spelling.hasPrefix($0 + "/") }) {
-                return true
-            }
-            if Self.isAndroidStudioPath(spelling) {
-                return true
-            }
-            if Self.rootRestrictedPrefixes.contains(where: { spelling.hasPrefix($0) }) {
-                return true
-            }
-            if Self.isVolumeMountPoint(spelling) {
-                return true
-            }
-            if isForeignUserPath(spelling) {
-                return true
-            }
-        }
-        return false
-    }
-
     private static func isAndroidStudioPath(_ path: String) -> Bool {
         let components = path.split(separator: "/", omittingEmptySubsequences: true)
         for index in components.indices {
@@ -294,11 +277,65 @@ public struct ProtectedPaths: Sendable {
 }
 
 private extension ProtectedPaths {
+    static func protectedAnchors(
+        homePath: String,
+        androidPrefixes: [String],
+        gradlePrefixes: [String]
+    ) -> [ProtectedPathForms] {
+        var anchors = builtInProtectedRoots
+            .filter { $0 != "/" }
+            .map { ProtectedPathForms(path: $0) }
+        anchors.append(ProtectedPathForms(path: homePath))
+        anchors.append(contentsOf: (protectedHomeSubdirectories + anchoredHomeSubdirectories).map {
+            ProtectedPathForms(path: (homePath as NSString).appendingPathComponent($0))
+        })
+        anchors.append(contentsOf: (androidPrefixes + gradlePrefixes).map { ProtectedPathForms(path: $0) })
+        return anchors
+    }
+
+    /// Checks protected roots while allowing a Gradle cache child only.
+    func isSystemProtected(_ forms: ProtectedPathForms, allowingGradleCacheRoot: URL? = nil) -> Bool {
+        for spelling in forms.variants {
+            if hasUnresolvedAndroidRedirects,
+               spelling == homePath || spelling.hasPrefix(homePath + "/") {
+                return true
+            }
+            if systemProtectedPaths.contains(spelling)
+                || androidProtectedPrefixes.contains(where: { spelling == $0 || spelling.hasPrefix($0 + "/") })
+                || isGradleSystemProtected(spelling, allowingCacheRoot: allowingGradleCacheRoot)
+                || Self.isAndroidStudioPath(spelling)
+                || Self.rootRestrictedPrefixes.contains(where: { spelling.hasPrefix($0) })
+                || Self.isVolumeMountPoint(spelling)
+                || isForeignUserPath(spelling) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func isGradleSystemProtected(_ spelling: String, allowingCacheRoot: URL?) -> Bool {
+        let matchingHomes = gradleUserHomePrefixes.filter {
+            spelling == $0 || spelling.hasPrefix($0 + "/")
+        }
+        guard !matchingHomes.isEmpty else { return false }
+        guard let allowingCacheRoot else { return true }
+        let cacheRoot = ProtectedPaths.normalize(allowingCacheRoot).lowercased()
+        return !spelling.hasPrefix(cacheRoot + "/")
+            || !matchingHomes.allSatisfy({ cacheRoot.hasPrefix($0 + "/") })
+    }
+
+    private func isInsideProtectedHomeArea(_ forms: ProtectedPathForms) -> Bool {
+        let protectedRoots = (Self.protectedHomeSubdirectories + Self.anchoredHomeSubdirectories)
+            .map { (homePath as NSString).appendingPathComponent($0).lowercased() }
+        return forms.variants.contains { spelling in
+            protectedRoots.contains { spelling == $0 || spelling.hasPrefix($0 + "/") }
+        }
+    }
+
     static func androidProtectedPrefixes(home: URL, homePath: String) -> [String] {
         let environment = ProcessInfo.processInfo.environment
         var paths = [
             (homePath as NSString).appendingPathComponent(".android"),
-            (homePath as NSString).appendingPathComponent(".gradle"),
             (homePath as NSString).appendingPathComponent("Library/Android/sdk"),
             (homePath as NSString).appendingPathComponent("Library/Caches/Google/AndroidStudio"),
             (homePath as NSString).appendingPathComponent("Library/Application Support/Google/AndroidStudio")
@@ -306,9 +343,6 @@ private extension ProtectedPaths {
         paths.append(contentsOf: RootResolver.androidStudioConfiguredSystemPaths(home: home).map {
             $0.path(percentEncoded: false)
         })
-        if let gradle = RootResolver.absoluteAndroidPath(environment["GRADLE_USER_HOME"]) {
-            paths.append(gradle.path(percentEncoded: false))
-        }
         for key in ["ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_AVD_HOME", "ANDROID_EMULATOR_HOME", "ANDROID_USER_HOME"] {
             if let root = RootResolver.absoluteAndroidPath(environment[key]) {
                 paths.append(root.path(percentEncoded: false))
@@ -322,6 +356,14 @@ private extension ProtectedPaths {
         paths.append(contentsOf: RootResolver.androidAVDRedirectPaths(home: home, environment: environment).map {
             $0.path(percentEncoded: false)
         })
+        return Array(Set(paths.map(PathNormalizer.lexical))).sorted()
+    }
+
+    static func gradleUserHomePrefixes(homePath: String) -> [String] {
+        var paths = [(homePath as NSString).appendingPathComponent(".gradle")]
+        if let gradle = RootResolver.absoluteAndroidPath(ProcessInfo.processInfo.environment["GRADLE_USER_HOME"]) {
+            paths.append(gradle.path(percentEncoded: false))
+        }
         return Array(Set(paths.map(PathNormalizer.lexical))).sorted()
     }
 }

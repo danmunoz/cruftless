@@ -8,6 +8,7 @@ public struct DeletionPlan: Sendable, Hashable {
     public let affectedLocationIds: Set<String>
     public let policyGeneration: UInt64
     package let isPlannerAuthorized: Bool
+    package let gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
 
     public var totalReclaimableBytes: Int64 {
         items.reduce(0) { $0 + $1.reclaimableBytes }
@@ -35,13 +36,15 @@ public struct DeletionPlan: Sendable, Hashable {
         confirmLabel: String = "Delete Permanently",
         affectedLocationIds: Set<String> = [],
         policyGeneration: UInt64 = 0,
-        isPlannerAuthorized: Bool = false
+        isPlannerAuthorized: Bool = false,
+        gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement? = nil
     ) {
         self.items = items
         self.confirmLabel = confirmLabel
         self.affectedLocationIds = affectedLocationIds
         self.policyGeneration = policyGeneration
         self.isPlannerAuthorized = isPlannerAuthorized
+        self.gradleCacheRiskAcknowledgement = gradleCacheRiskAcknowledgement
     }
 
     /// Creates a plan for a single explicitly chosen target (supports flagged items).
@@ -89,7 +92,8 @@ public struct DeletionPlan: Sendable, Hashable {
         _ target: DeletionTarget,
         confirmLabel: String? = nil,
         affectedLocationIds: Set<String> = [],
-        policyGeneration: UInt64 = 0
+        policyGeneration: UInt64 = 0,
+        gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement? = nil
     ) -> DeletionPlan {
         let plan = single(
             target,
@@ -102,7 +106,8 @@ public struct DeletionPlan: Sendable, Hashable {
             confirmLabel: plan.confirmLabel,
             affectedLocationIds: affectedLocationIds,
             policyGeneration: policyGeneration,
-            isPlannerAuthorized: true
+            isPlannerAuthorized: true,
+            gradleCacheRiskAcknowledgement: gradleCacheRiskAcknowledgement
         )
     }
 

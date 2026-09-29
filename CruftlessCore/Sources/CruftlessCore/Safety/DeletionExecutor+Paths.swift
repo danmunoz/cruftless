@@ -11,8 +11,17 @@ extension DeletionExecutor {
             bytes: request.bytes,
             precondition: request.precondition,
             affectedLocationIds: request.affectedLocationIds,
-            revalidate: { [protectedPathsStore] in
+            policyGeneration: request.policyGeneration,
+            gradleCacheRiskAcknowledgement: request.gradleCacheRiskAcknowledgement,
+            revalidate: { [protectedPathsStore, policyGenerationAuthority] in
                 let policy = protectedPathsStore.protectedPaths()
+                if request.gradleCacheRiskAcknowledgement != nil {
+                    return Self.revalidateGradleCacheRequest(
+                        request,
+                        protectedPaths: policy,
+                        policyGenerationAuthority: policyGenerationAuthority
+                    )
+                }
                 guard !policy.isProtected(request.validatedPath.url),
                       !policy.containsProtectedDescendant(in: request.validatedPath.url)
                 else { return false }
@@ -35,6 +44,30 @@ extension DeletionExecutor {
             }
         )
         return await Self.offCooperativePool { Self.performPathDeletion(pathRequest) }
+    }
+
+    private static func revalidateGradleCacheRequest(
+        _ request: PathDeletionRequest,
+        protectedPaths: ProtectedPaths,
+        policyGenerationAuthority: PolicyGenerationAuthority
+    ) -> Bool {
+        guard let acknowledgement = request.gradleCacheRiskAcknowledgement,
+              acknowledgement.matches(
+                  request.target,
+                  affectedLocationIDs: request.affectedLocationIds,
+                  planPolicyGeneration: request.policyGeneration
+              ),
+              policyGenerationAuthority.currentGeneration == request.policyGeneration
+        else { return false }
+        do {
+            _ = try PathGuard(roots: [], protectedPaths: protectedPaths)
+                .validateGradleCacheEntry(request.validatedPath.url)
+            return DirectoryWalker
+                .walk(url: request.validatedPath.url, inodeSet: InodeSet())
+                .skippedMountCount == 0
+        } catch {
+            return false
+        }
     }
 
     private static func validate(

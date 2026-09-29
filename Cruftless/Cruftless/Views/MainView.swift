@@ -43,6 +43,14 @@ public struct MainView: View {
         case let .detail(location):
             DetailScreen(location: location, model: model, backTitle: backTitle(under: route))
 
+        case let .gradleCacheRisk(location, child):
+            GradleCacheRiskView(
+                location: location,
+                child: child,
+                model: model,
+                backTitle: backTitle(under: route)
+            )
+
         case let .review(plan):
             ReviewView(
                 plan: plan,
@@ -70,6 +78,8 @@ public struct MainView: View {
             min(max(reportedContentHeight, PopoverMetrics.contentMinHeight), PopoverMetrics.height)
         case nil, .detail:
             PopoverMetrics.height
+        case .gradleCacheRisk:
+            PopoverMetrics.height
         }
     }
 
@@ -80,6 +90,7 @@ public struct MainView: View {
         return switch parent {
         case nil: "Overview"
         case let .detail(location): location.title
+        case .gradleCacheRisk: "Gradle warning"
         case .review: "Review"
         case .result: "Result"
         }
