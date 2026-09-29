@@ -69,7 +69,9 @@ public struct ScanProgress: Sendable, Equatable {
 
     public var reclaimableBytes: Int64 {
         landed.reduce(0) { total, entry in
-            entry.location.tier.isDeletable ? total + entry.reclaimableBytes : total
+            entry.location.mutationPolicy != .readOnly && entry.location.tier.isDeletable
+                ? total + entry.reclaimableBytes
+                : total
         }
     }
 }

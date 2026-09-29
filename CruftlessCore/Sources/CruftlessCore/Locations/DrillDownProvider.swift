@@ -4,7 +4,9 @@ import Foundation
 /// Resolves child entries lazily when the user navigates into a drill-down detail view.
 public enum DrillDownProvider: Sendable {
     public static func sizeRecordingDepth(for location: TrackedLocation) -> Int {
-        location.id == archivesLocationId ? 2 : 1
+        if location.id == archivesLocationId { return 2 }
+        if location.id == "androidSDK" { return 6 }
+        return 1
     }
 
     private static let archivesLocationId = "archives"
@@ -14,6 +16,12 @@ public enum DrillDownProvider: Sendable {
         knownSizes: [String: [String: SizeResult]] = [:]
     ) -> [ChildEntry] {
         let roots = location.resolveRoots()
+        if location.id == "androidSDK" {
+            return androidSDKPackages(in: roots).children
+        }
+        if location.id == "androidAVDs" {
+            return androidAVDs(in: roots)
+        }
         let inodeSet = InodeSet()
         var children: [ChildEntry] = []
 
@@ -89,7 +97,7 @@ public enum DrillDownProvider: Sendable {
             let sizeResult = sizesForRoot[childPath] ?? DirectoryWalker.walk(url: childURL, inodeSet: inodeSet)
             let staleness = calculateStaleness(url: childURL, source: location.stalenessSource, statMtime: statBuf.st_mtimespec)
 
-            let consequence = defaultConsequence(tier: location.tier, name: name)
+            let consequence = defaultConsequence(for: location, name: name)
 
             children.append(
                 ChildEntry(
@@ -129,7 +137,7 @@ public enum DrillDownProvider: Sendable {
             reclaimableBytes: size.allocatedBytes,
             staleness: calculateStaleness(url: root, source: location.stalenessSource, statMtime: mtime),
             tier: location.tier,
-            consequence: defaultConsequence(tier: location.tier, name: root.lastPathComponent)
+            consequence: defaultConsequence(for: location, name: root.lastPathComponent)
         )
     }
 
@@ -243,8 +251,9 @@ public enum DrillDownProvider: Sendable {
         return maxMtime
     }
 
-    private static func defaultConsequence(tier: Tier, name _: String) -> String {
-        switch tier {
+    private static func defaultConsequence(for location: TrackedLocation, name _: String) -> String {
+        if location.mutationPolicy == .readOnly { return location.consequence }
+        return switch location.tier {
         case .regen:
             "Xcode recreates this on the next build."
         case .judgment:

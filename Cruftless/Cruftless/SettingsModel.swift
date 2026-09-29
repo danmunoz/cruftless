@@ -11,12 +11,15 @@ public final class SettingsModel {
     public private(set) var launchAtLoginStatus: SMAppService.Status
     public private(set) var scanReminderEnabled: Bool
     public private(set) var protectedPaths: [URL]
+    public private(set) var platformSelection: PlatformSelection
+    public private(set) var platformGeneration: UInt64 = 0
+    public private(set) var platformSelectionError: String?
+    public var isDeletionExecuting = false
     public private(set) var launchAtLoginError: String?
     public private(set) var scanReminderError: String?
     public private(set) var protectedPathError: String?
 
-    /// Called after the protected list changes.
-    public var onProtectedPathsChanged: (() -> Void)?
+    public var onPlatformSelectionChanged: ((ActiveCatalog) -> Void)?
 
     /// Bumped on every write attempt, and read by `isLaunchAtLoginEnabled` so the getter re-evaluates each time.
     private var launchAtLoginRevision = 0
@@ -40,21 +43,33 @@ public final class SettingsModel {
 
     /// Rows the General pane renders only when something failed.
     public var visibleErrorRowCount: Int {
-        [launchAtLoginError, scanReminderError, protectedPathError].count { $0 != nil }
+        [launchAtLoginError, scanReminderError, protectedPathError, platformSelectionError].count { $0 != nil }
     }
 
     private let defaults: UserDefaults
-    private let protectedPathsStore: ProtectedPathsStore
+    public let protectedPathsStore: ProtectedPathsStore
+    public let policyGenerationAuthority: PolicyGenerationAuthority
     private var reminderTask: Task<Void, Never>?
 
     public init(
         defaults: UserDefaults = .standard,
-        protectedPathsStore: ProtectedPathsStore = .shared
+        protectedPathsStore: ProtectedPathsStore = .shared,
+        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority()
     ) {
         self.defaults = defaults
         self.protectedPathsStore = protectedPathsStore
+        self.policyGenerationAuthority = policyGenerationAuthority
         launchAtLoginStatus = SMAppService.mainApp.status
         scanReminderEnabled = defaults.bool(forKey: Keys.scanReminderEnabled)
+        let migratedSelection = PlatformSelection.migrate(defaults.stringArray(forKey: Keys.selectedPlatforms))
+        let initialGeneration: UInt64 = 0
+        platformSelection = migratedSelection
+        platformGeneration = initialGeneration
+        defaults.set(migratedSelection.identifiers, forKey: Keys.selectedPlatforms)
+        policyGenerationAuthority.update(
+            to: initialGeneration,
+            readOnlyLocationIDs: Set(LocationCatalog.all.filter { $0.mutationPolicy == .readOnly }.map(\.id))
+        )
         protectedPaths = protectedPathsStore.customPaths()
 
         if scanReminderEnabled {
@@ -93,6 +108,30 @@ public final class SettingsModel {
 
     // MARK: - Scanning
 
+    public func setPlatformEnabled(_ platform: DevelopmentPlatform, _ enabled: Bool) {
+        guard !isDeletionExecuting else {
+            platformSelectionError = "Platform selection is unavailable while a deletion is running."
+            return
+        }
+        var selected = platformSelection.platforms
+        if enabled {
+            selected.insert(platform)
+        } else {
+            guard selected.contains(platform), selected.count > 1 else { return }
+            selected.remove(platform)
+        }
+        let updated = PlatformSelection(selected)
+        guard updated != platformSelection else { return }
+        platformSelectionError = nil
+        platformSelection = updated
+        defaults.set(updated.identifiers, forKey: Keys.selectedPlatforms)
+        advancePolicyGeneration()
+    }
+
+    public var activeCatalog: ActiveCatalog {
+        platformSelection.catalog(generation: platformGeneration)
+    }
+
     public func setScanReminderEnabled(_ enabled: Bool) {
         scanReminderEnabled = enabled
         defaults.set(enabled, forKey: Keys.scanReminderEnabled)
@@ -109,12 +148,14 @@ public final class SettingsModel {
     }
 
     private func startReminderScheduling() {
+        reminderTask?.cancel()
+        let generation = platformGeneration
         reminderTask = Task { [weak self] in
-            await self?.scheduleReminder()
+            await self?.scheduleReminder(generation: generation)
         }
     }
 
-    private func scheduleReminder() async {
+    private func scheduleReminder(generation: UInt64) async {
         let center = UNUserNotificationCenter.current()
 
         let granted: Bool
@@ -124,7 +165,7 @@ public final class SettingsModel {
             failScanReminder("Cruftless could not request permission to send notifications.")
             return
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, generation == platformGeneration else { return }
 
         guard granted else {
             failScanReminder(
@@ -133,13 +174,11 @@ public final class SettingsModel {
             return
         }
 
-        let pending = await center.pendingNotificationRequests()
-        guard !Task.isCancelled else { return }
-        guard !pending.contains(where: { $0.identifier == Self.reminderIdentifier }) else { return }
+        guard !Task.isCancelled, generation == platformGeneration else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "Review developer disk bloat"
-        content.body = "Open Cruftless to review cleanable Xcode and simulator files."
+        content.body = reminderBody
         content.sound = .default
 
         do {
@@ -153,6 +192,7 @@ public final class SettingsModel {
                     )
                 )
             )
+            if generation != platformGeneration { startReminderScheduling() }
         } catch {
             failScanReminder("Cruftless could not schedule the weekly reminder.")
         }
@@ -168,21 +208,42 @@ public final class SettingsModel {
 
     /// Vets the folder before storing it.
     public func addProtectedPath(_ url: URL) {
+        guard !isDeletionExecuting else {
+            protectedPathError = "Protected paths cannot change while a deletion is running."
+            return
+        }
         if let rejection = ProtectedPathPolicy.rejection(for: url, existing: protectedPaths) {
             protectedPathError = rejection.message
             return
         }
         protectedPathError = nil
+        advancePolicyGeneration(notify: false)
         protectedPathsStore.addPath(url)
         protectedPaths = protectedPathsStore.customPaths()
-        onProtectedPathsChanged?()
+        onPlatformSelectionChanged?(activeCatalog)
     }
 
     public func removeProtectedPath(_ url: URL) {
+        guard !isDeletionExecuting else {
+            protectedPathError = "Protected paths cannot change while a deletion is running."
+            return
+        }
+        guard protectedPaths.contains(where: { ProtectedPaths.normalize($0) == ProtectedPaths.normalize(url) }) else {
+            return
+        }
         protectedPathError = nil
+        advancePolicyGeneration(notify: false)
         protectedPathsStore.removePath(url)
         protectedPaths = protectedPathsStore.customPaths()
-        onProtectedPathsChanged?()
+        onPlatformSelectionChanged?(activeCatalog)
+    }
+
+    private func advancePolicyGeneration(notify: Bool = true) {
+        platformGeneration &+= 1
+        let readOnlyIDs = LocationCatalog.all.filter { $0.mutationPolicy == .readOnly }.map(\.id)
+        policyGenerationAuthority.update(to: platformGeneration, readOnlyLocationIDs: Set(readOnlyIDs))
+        if scanReminderEnabled { startReminderScheduling() }
+        if notify { onPlatformSelectionChanged?(activeCatalog) }
     }
 
     // MARK: - Helpers
@@ -190,8 +251,19 @@ public final class SettingsModel {
     private static let reminderIdentifier = "cruftless.scan-reminder"
     private static let reminderInterval: TimeInterval = 7 * 24 * 60 * 60
 
+    private var reminderBody: String {
+        let selected = platformSelection.platforms
+        if selected == Set(DevelopmentPlatform.allCases) {
+            return "Open Cruftless to review Apple and Android development storage."
+        }
+        return selected.contains(.android)
+            ? "Open Cruftless to review Android development storage."
+            : "Open Cruftless to review Apple development storage."
+    }
+
     private enum Keys {
         static let scanReminderEnabled = "scanReminderEnabled"
+        static let selectedPlatforms = "selectedPlatforms"
     }
 }
 
@@ -201,7 +273,8 @@ public final class SettingsModel {
             protectedPaths: [URL] = [],
             launchAtLoginError: String? = nil,
             scanReminderError: String? = nil,
-            protectedPathError: String? = nil
+            protectedPathError: String? = nil,
+            platforms: Set<DevelopmentPlatform> = [.apple]
         ) -> SettingsModel {
             let suiteName = "Cruftless.SettingsPreview.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -210,6 +283,11 @@ public final class SettingsModel {
                 store.addPath(path)
             }
             let model = SettingsModel(defaults: defaults, protectedPathsStore: store)
+            if platforms != [.apple] {
+                for platform in DevelopmentPlatform.allCases {
+                    model.setPlatformEnabled(platform, platforms.contains(platform))
+                }
+            }
             model.launchAtLoginError = launchAtLoginError
             model.scanReminderError = scanReminderError
             model.protectedPathError = protectedPathError

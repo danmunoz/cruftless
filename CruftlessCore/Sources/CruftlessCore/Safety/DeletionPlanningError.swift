@@ -9,6 +9,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case flaggedLocation(title: String)
     /// The location is mutated through `simctl` only; it has no path plan.
     case simulatorLocation(title: String)
+    /// The location is visible for measurement but has no supported mutation route.
+    case readOnlyLocation(title: String)
     /// `PathGuard` refused the target.
     case refused(name: String, error: PathGuardError)
     /// The target has gone missing since the scan that showed it.
@@ -36,6 +38,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(title) holds irreversible items and can only be cleared one at a time."
         case let .simulatorLocation(title):
             "\(title) is managed by CoreSimulator. Open it and erase or delete entries individually."
+        case let .readOnlyLocation(title):
+            "\(title) is read-only in Cruftless."
         case let .refused(name, error):
             "\(name) can't be deleted: \(Self.describe(error))"
         case let .missingOnDisk(name):

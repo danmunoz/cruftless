@@ -130,6 +130,8 @@ public final class FSEventsInvalidator: @unchecked Sendable {
     private let lock = NSLock()
     private var isMonitoring = false
     private var pendingWorkItems: [DebounceKey: DispatchWorkItem] = [:]
+    private var watcherGeneration: UInt64 = 0
+    private var policyGeneration: UInt64 = 0
 
     /// Watched roots as resolved, absolute paths paired with their owning location.
     private var watchedRoots: [ResolvedRoot] = []
@@ -145,8 +147,27 @@ public final class FSEventsInvalidator: @unchecked Sendable {
     }
 
     public func startMonitoring(roots: [WatchedRoot]) {
+        replaceMonitoring(roots: roots)
+    }
+
+    public func replaceMonitoring(roots: [WatchedRoot], policyGeneration: UInt64? = nil) {
         lock.lock()
-        defer { lock.unlock() }
+        if let policyGeneration {
+            guard policyGeneration >= self.policyGeneration else {
+                lock.unlock()
+                return
+            }
+            self.policyGeneration = policyGeneration
+        }
+        watcherGeneration &+= 1
+        let generation = watcherGeneration
+        for item in pendingWorkItems.values { item.cancel() }
+        pendingWorkItems.removeAll()
+        watchedRoots = []
+        let wasMonitoring = isMonitoring
+        isMonitoring = false
+        lock.unlock()
+        if wasMonitoring { watcher.stopMonitoring() }
 
         var resolved: [ResolvedRoot] = []
         for root in roots {
@@ -158,23 +179,42 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         }
 
         guard !resolved.isEmpty else { return }
-        watchedRoots = resolved.sorted { $0.path.count > $1.path.count }
+        let nextRoots = resolved.sorted { $0.path.count > $1.path.count }
 
         var seen: Set<String> = []
-        let paths = watchedRoots.map(\.path).filter { seen.insert($0).inserted }
+        let paths = nextRoots.map(\.path).filter { seen.insert($0).inserted }
+
+        lock.lock()
+        guard generation == watcherGeneration else {
+            lock.unlock()
+            return
+        }
+        watchedRoots = nextRoots
+        lock.unlock()
 
         watcher.startMonitoring(paths: paths) { [weak self] path in
-            self?.handleEvent(path: path)
+            self?.handleEvent(path: path, generation: generation)
+        }
+        lock.lock()
+        guard generation == watcherGeneration else {
+            lock.unlock()
+            watcher.stopMonitoring()
+            return
         }
         isMonitoring = true
+        lock.unlock()
     }
 
     /// Attributes one event to the locations it invalidated, then debounces.
-    private func handleEvent(path: String) {
+    private func handleEvent(path: String, generation: UInt64) {
         lock.lock()
+        guard generation == watcherGeneration else {
+            lock.unlock()
+            return
+        }
         let scope = Self.scope(forEventPath: path, watchedRoots: watchedRoots)
         lock.unlock()
-        scheduleInvalidate(scope)
+        scheduleInvalidate(scope, generation: generation)
     }
 
     /// The locations owning the watched roots `path` sits under.
@@ -198,7 +238,16 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         return trimmed
     }
 
-    private func scheduleInvalidate(_ scope: InvalidationScope) {
+    private func lockForCurrentGeneration(_ generation: UInt64) -> Bool {
+        lock.lock()
+        guard generation == watcherGeneration else {
+            lock.unlock()
+            return false
+        }
+        return true
+    }
+
+    private func scheduleInvalidate(_ scope: InvalidationScope, generation: UInt64) {
         let keys: [DebounceKey]
         switch scope {
         case .everything:
@@ -207,7 +256,7 @@ public final class FSEventsInvalidator: @unchecked Sendable {
             keys = ids.map(DebounceKey.location)
         }
 
-        lock.lock()
+        guard lockForCurrentGeneration(generation) else { return }
         if case .everything = scope {
             // A full rescan covers every pending per-location one.
             for (_, item) in pendingWorkItems { item.cancel() }
@@ -216,20 +265,7 @@ public final class FSEventsInvalidator: @unchecked Sendable {
 
         var scheduled: [DispatchWorkItem] = []
         for key in keys {
-            pendingWorkItems[key]?.cancel()
-            let firing: InvalidationScope = switch key {
-            case .everything: .everything
-            case let .location(id): .locations([id])
-            }
-            let item = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                lock.lock()
-                pendingWorkItems[key] = nil
-                lock.unlock()
-                onInvalidate(firing)
-            }
-            pendingWorkItems[key] = item
-            scheduled.append(item)
+            scheduled.append(makeWorkItem(for: key, generation: generation))
         }
         lock.unlock()
 
@@ -238,16 +274,32 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         }
     }
 
+    private func makeWorkItem(for key: DebounceKey, generation: UInt64) -> DispatchWorkItem {
+        pendingWorkItems[key]?.cancel()
+        let firing: InvalidationScope = switch key {
+        case .everything: .everything
+        case let .location(id): .locations([id])
+        }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, lockForCurrentGeneration(generation) else { return }
+            pendingWorkItems[key] = nil
+            lock.unlock()
+            onInvalidate(firing)
+        }
+        pendingWorkItems[key] = item
+        return item
+    }
+
     public func stopMonitoring() {
         lock.lock()
-        defer { lock.unlock() }
+        watcherGeneration &+= 1
         for (_, item) in pendingWorkItems { item.cancel() }
         pendingWorkItems.removeAll()
         watchedRoots = []
-        if isMonitoring {
-            watcher.stopMonitoring()
-            isMonitoring = false
-        }
+        let wasMonitoring = isMonitoring
+        isMonitoring = false
+        lock.unlock()
+        if wasMonitoring { watcher.stopMonitoring() }
     }
 
     deinit {

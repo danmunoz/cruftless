@@ -48,6 +48,49 @@ struct InventorySnapshotTests {
         #expect(restored.sizesAreUpperBound)
     }
 
+    @Test("Android root provenance survives snapshot restoration")
+    func roundTripsAndroidProvenance() throws {
+        let root = RootSize(
+            url: URL(fileURLWithPath: "/tmp/android-sdk"),
+            allocatedBytes: 4_096,
+            source: "ANDROID_HOME",
+            volumeIdentifier: "16777220",
+            layout: "Recognized Android SDK directory structure"
+        )
+        let original = inventory(entries: [sizedEntry(LocationCatalog.androidSDK, roots: [root])])
+
+        let restored = try #require(InventorySnapshot(original).inventory(capacity: capacity))
+        let restoredRoot = try #require(restored.entries.first?.roots.first)
+
+        #expect(restoredRoot.source == root.source)
+        #expect(restoredRoot.volumeIdentifier == root.volumeIdentifier)
+        #expect(restoredRoot.layout == root.layout)
+    }
+
+    @Test("Version one snapshots without provenance remain readable")
+    func readsPreviousSnapshotVersion() throws {
+        let json = """
+        {
+          "version": 1,
+          "scannedAt": "2026-01-01T00:00:00Z",
+          "sizesAreUpperBound": true,
+          "rows": [{
+            "locationId": "derivedData",
+            "kind": {"sized": {"bytes": 4096}},
+            "lastUsedDate": null,
+            "roots": [{"path": "/tmp/derived", "allocatedBytes": 4096}]
+          }]
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let snapshot = try decoder.decode(InventorySnapshot.self, from: Data(json.utf8))
+        let restored = try #require(snapshot.inventory(capacity: capacity))
+
+        #expect(restored.entries.first?.roots.first?.source == nil)
+    }
+
     @Test("An unavailable row round-trips as unavailable, with its reason")
     func roundTripsUnavailableRow() throws {
         let original = inventory(entries: [

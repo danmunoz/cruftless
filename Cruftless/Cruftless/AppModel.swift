@@ -130,7 +130,7 @@ public final class AppModel {
     /// Wakes when the throttle's earliest held location comes due.
     var throttleWake: Task<Void, Never>?
 
-    static let catalogIds = LocationCatalog.all.map(\.id)
+    var activeCatalog: ActiveCatalog { settings.activeCatalog }
 
     /// True once there are rows to show: from a scan this session, or restored from the last one.
     public var hasScanned: Bool {
@@ -140,14 +140,17 @@ public final class AppModel {
     public init(
         scanEngine: ScanEngine = ScanEngine(),
         simulatorService: SimulatorService = SimulatorService(),
-        deletionExecutor: DeletionExecutor = DeletionExecutor(),
+        deletionExecutor: DeletionExecutor? = nil,
         settings: SettingsModel = SettingsModel(),
         inventoryStore: InventoryStore = InventoryStore()
     ) {
         self.scanEngine = scanEngine
         self.simulatorService = simulatorService
-        self.deletionExecutor = deletionExecutor
         self.settings = settings
+        self.deletionExecutor = deletionExecutor ?? DeletionExecutor(
+            policyGenerationAuthority: settings.policyGenerationAuthority,
+            protectedPathsStore: settings.protectedPathsStore
+        )
         self.inventoryStore = inventoryStore
 
         invalidator = FSEventsInvalidator { [weak self] scope in
@@ -156,13 +159,16 @@ public final class AppModel {
             }
         }
 
-        // Protected paths feed root resolution, not just planning, so the list is stale the moment one is added or removed.
-        settings.onProtectedPathsChanged = { [weak self] in
-            self?.refreshScan()
+        settings.onPlatformSelectionChanged = { [weak self] catalog in
+            self?.platformSelectionDidChange(catalog)
         }
     }
 
     public func checkRunningApps() {
+        guard activeCatalog.selection.platforms.contains(.apple) else {
+            runningApps = nil
+            return
+        }
         let running = NSWorkspace.shared.runningApplications
         let xcodeRunning = running.contains { $0.bundleIdentifier == "com.apple.dt.Xcode" }
         let simRunning = running.contains { $0.bundleIdentifier == "com.apple.iphonesimulator" }
@@ -194,7 +200,10 @@ public final class AppModel {
 
     public func plan(_ build: (PlanningContext) throws -> DeletionPlan) {
         do {
-            let plan = try build(PlanningContext.live(protectedPaths: settings.protectedPathPolicy))
+            let plan = try build(PlanningContext.live(
+                protectedPaths: settings.protectedPathPolicy,
+                policyGeneration: settings.platformGeneration
+            ))
             openReview(for: plan)
         } catch {
             reportPlanFailure(error.localizedDescription)
@@ -202,9 +211,17 @@ public final class AppModel {
     }
 
     public func executeDeletion(plan: DeletionPlan) async {
+        guard plan.policyGeneration == settings.platformGeneration else {
+            reportPlanFailure("Platform selection changed after this review was created. Review the current inventory again.")
+            return
+        }
         guard !isDeleting else { return }
         isDeleting = true
-        defer { isDeleting = false }
+        settings.isDeletionExecuting = true
+        defer {
+            isDeleting = false
+            settings.isDeletionExecuting = false
+        }
 
         let before = VolumeCapacity.query().freeBytes
         let result = await deletionExecutor.execute(plan) { [weak self] progress in

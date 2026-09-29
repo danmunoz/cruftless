@@ -32,6 +32,21 @@ public struct GeneralSettingsPane: View {
                 Text("The reminder is a weekly local notification and never scans your disk.")
             }
 
+            Section {
+                Toggle("Apple development", isOn: platformBinding(.apple))
+                    .disabled(cannotDisable(.apple))
+                Toggle("Android development", isOn: platformBinding(.android))
+                    .disabled(cannotDisable(.android))
+                SettingsErrorRow(message: settings.platformSelectionError)
+            } header: {
+                Text("Platforms to scan")
+            } footer: {
+                Text(
+                    "Android includes shared Gradle caches that can affect non-Android projects. " +
+                        "SDK, AVD, Studio, and Gradle storage is read-only."
+                )
+            }
+
             ProtectedPathsSection(
                 paths: settings.protectedPaths,
                 errorMessage: settings.protectedPathError,
@@ -46,8 +61,21 @@ public struct GeneralSettingsPane: View {
         }
         .frame(height: SettingsMetrics.generalPaneHeight(
             protectedPathCount: settings.protectedPaths.count,
-            errorRowCount: settings.visibleErrorRowCount
+            errorRowCount: settings.visibleErrorRowCount,
+            includesPlatformSelection: true
         ))
+    }
+
+    private func platformBinding(_ platform: DevelopmentPlatform) -> Binding<Bool> {
+        Binding(
+            get: { settings.platformSelection.platforms.contains(platform) },
+            set: { settings.setPlatformEnabled(platform, $0) }
+        )
+    }
+
+    private func cannotDisable(_ platform: DevelopmentPlatform) -> Bool {
+        settings.isDeletionExecuting ||
+            (settings.platformSelection.platforms.count == 1 && settings.platformSelection.platforms.contains(platform))
     }
 
     private func chooseFolder() {

@@ -9,17 +9,25 @@ public struct SizeResult: Sendable, Hashable {
     public let unreadableDirectoryCount: Int
     /// The first directory the walk could not open, for the message the list shows.
     public let firstUnreadablePath: String?
+    /// Directories skipped because they are mounted on another volume.
+    public let skippedMountCount: Int
+    /// The first nested volume skipped by the walk.
+    public let firstSkippedMountPath: String?
 
     public init(
         allocatedBytes: Int64,
         newestMtime: Date?,
         unreadableDirectoryCount: Int = 0,
-        firstUnreadablePath: String? = nil
+        firstUnreadablePath: String? = nil,
+        skippedMountCount: Int = 0,
+        firstSkippedMountPath: String? = nil
     ) {
         self.allocatedBytes = allocatedBytes
         self.newestMtime = newestMtime
         self.unreadableDirectoryCount = unreadableDirectoryCount
         self.firstUnreadablePath = firstUnreadablePath
+        self.skippedMountCount = skippedMountCount
+        self.firstSkippedMountPath = firstSkippedMountPath
     }
 
     public static let zero = SizeResult(allocatedBytes: 0, newestMtime: nil)
@@ -31,6 +39,8 @@ public struct SizeAccumulator: Sendable {
     private var latestMtime: Date?
     private var unreadableDirectories: Int = 0
     private var firstUnreadable: String?
+    private var skippedMounts: Int = 0
+    private var firstSkippedMount: String?
 
     public init() {}
 
@@ -53,11 +63,23 @@ public struct SizeAccumulator: Sendable {
         }
     }
 
+    /// Records a nested volume the walk intentionally skipped.
+    public mutating func addSkippedMount(path: String) {
+        skippedMounts += 1
+        if firstSkippedMount == nil {
+            firstSkippedMount = path
+        }
+    }
+
     public mutating func add(_ result: SizeResult) {
         allocated += result.allocatedBytes
         unreadableDirectories += result.unreadableDirectoryCount
         if firstUnreadable == nil {
             firstUnreadable = result.firstUnreadablePath
+        }
+        skippedMounts += result.skippedMountCount
+        if firstSkippedMount == nil {
+            firstSkippedMount = result.firstSkippedMountPath
         }
         if let mtime = result.newestMtime {
             if let current = latestMtime {
@@ -73,7 +95,9 @@ public struct SizeAccumulator: Sendable {
             allocatedBytes: allocated,
             newestMtime: latestMtime,
             unreadableDirectoryCount: unreadableDirectories,
-            firstUnreadablePath: firstUnreadable
+            firstUnreadablePath: firstUnreadable,
+            skippedMountCount: skippedMounts,
+            firstSkippedMountPath: firstSkippedMount
         )
     }
 }

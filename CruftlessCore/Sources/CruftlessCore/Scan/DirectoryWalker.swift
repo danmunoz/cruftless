@@ -38,7 +38,15 @@ public enum DirectoryWalker: Sendable {
     ) -> SizeResult {
         var accumulator = SizeAccumulator()
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-        walkInternal(path: path, inodeSet: inodeSet, accumulator: &accumulator, cutoff: cutoff)
+        var rootStat = stat()
+        guard lstat(path, &rootStat) == 0 else { return .zero }
+        walkInternal(
+            path: path,
+            inodeSet: inodeSet,
+            accumulator: &accumulator,
+            cutoff: cutoff,
+            rootDevice: UInt64(rootStat.st_dev)
+        )
         return accumulator.result()
     }
 
@@ -74,6 +82,7 @@ public enum DirectoryWalker: Sendable {
                     path: childPath,
                     depth: recordingDepth,
                     inodeSet: inodeSet,
+                    rootDevice: UInt64(rootStat.st_dev),
                     into: &sizes
                 )
             )
@@ -86,10 +95,20 @@ public enum DirectoryWalker: Sendable {
         path: String,
         depth: Int,
         inodeSet: InodeSet,
+        rootDevice: UInt64,
         into sizes: inout [String: SizeResult]
     ) -> SizeResult {
         var statBuf = stat()
         guard lstat(path, &statBuf) == 0 else { return .zero }
+        guard UInt64(statBuf.st_dev) == rootDevice else {
+            var accumulator = SizeAccumulator()
+            if (statBuf.st_mode & S_IFMT) == S_IFDIR {
+                accumulator.addSkippedMount(path: path)
+            }
+            let result = accumulator.result()
+            sizes[path] = result
+            return result
+        }
 
         let isDirectory = (statBuf.st_mode & S_IFMT) == S_IFDIR
         let isBundle = AtomicBundles.isAtomicBundle(URL(fileURLWithPath: path))
@@ -97,7 +116,7 @@ public enum DirectoryWalker: Sendable {
         // A leaf as far as recording goes: one walk, one number.
         guard depth > 1, isDirectory, !isBundle else {
             var accumulator = SizeAccumulator()
-            walkInternal(path: path, inodeSet: inodeSet, accumulator: &accumulator)
+            walkInternal(path: path, inodeSet: inodeSet, accumulator: &accumulator, rootDevice: rootDevice)
             let result = accumulator.result()
             sizes[path] = result
             return result
@@ -123,6 +142,7 @@ public enum DirectoryWalker: Sendable {
                     path: childPath,
                     depth: depth - 1,
                     inodeSet: inodeSet,
+                    rootDevice: rootDevice,
                     into: &sizes
                 )
             )
@@ -138,10 +158,17 @@ public enum DirectoryWalker: Sendable {
         path: String,
         inodeSet: InodeSet,
         accumulator: inout SizeAccumulator,
-        cutoff: Date? = nil
+        cutoff: Date? = nil,
+        rootDevice: UInt64
     ) {
         var statBuf = stat()
         guard lstat(path, &statBuf) == 0 else {
+            return
+        }
+        guard UInt64(statBuf.st_dev) == rootDevice else {
+            if (statBuf.st_mode & S_IFMT) == S_IFDIR {
+                accumulator.addSkippedMount(path: path)
+            }
             return
         }
 
@@ -180,7 +207,13 @@ public enum DirectoryWalker: Sendable {
         }
 
         if mode == S_IFDIR {
-            walkChildren(ofDirectory: path, inodeSet: inodeSet, accumulator: &accumulator, cutoff: cutoff)
+            walkChildren(
+                ofDirectory: path,
+                inodeSet: inodeSet,
+                accumulator: &accumulator,
+                cutoff: cutoff,
+                rootDevice: rootDevice
+            )
         }
     }
 
@@ -188,7 +221,8 @@ public enum DirectoryWalker: Sendable {
         ofDirectory path: String,
         inodeSet: InodeSet,
         accumulator: inout SizeAccumulator,
-        cutoff: Date?
+        cutoff: Date?,
+        rootDevice: UInt64
     ) {
         // A directory the app cannot open is not an empty directory.
         guard let dir = opendir(path) else {
@@ -205,7 +239,13 @@ public enum DirectoryWalker: Sendable {
             }
 
             let childPath = (path as NSString).appendingPathComponent(name)
-            walkInternal(path: childPath, inodeSet: inodeSet, accumulator: &accumulator, cutoff: cutoff)
+            walkInternal(
+                path: childPath,
+                inodeSet: inodeSet,
+                accumulator: &accumulator,
+                cutoff: cutoff,
+                rootDevice: rootDevice
+            )
         }
     }
 

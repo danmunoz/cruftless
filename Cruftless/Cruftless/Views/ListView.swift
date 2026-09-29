@@ -181,6 +181,9 @@ public struct ListView: View {
         let measuring = measuringIds
         let sized = inventory.sizedRows
         let rest = inventory.zeroOrUnavailableRows
+        let androidStoredBytes = inventory.entries
+            .filter { $0.location.platform == .android }
+            .reduce(Int64(0)) { $0 + $1.reclaimableBytes }
         return ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(model.preferenceIssues, id: \.self) { issue in
@@ -193,6 +196,18 @@ public struct ListView: View {
 
                 if let planFailure = model.planFailure {
                     NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+                }
+
+                if model.settings.platformSelection.platforms == [.android],
+                   inventory.reclaimableBytes == 0,
+                   inventory.sizedRows.contains(where: { $0.location.mutationPolicy.isReadOnly }) {
+                    NoticeStrip(
+                        symbol: "lock.shield",
+                        tint: .orange,
+                        text: "The \(ByteFormatter.format(androidStoredBytes)) "
+                            + "shown below is Android storage Cruftless cannot remove yet. Open a row to inspect it. "
+                            + "Use Android Studio's Device Manager or SDK Manager to remove devices or SDK packages."
+                    )
                 }
 
                 // Places zero-byte and unavailable rows below the separator.
@@ -258,6 +273,7 @@ public struct ListView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([appURL])
             }
         case .info:
+            guard entry.location.id == LocationCatalog.simulatorDyldCache.id else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(DesignTokens.dyldCacheCommand, forType: .string)
         case .irreversible:
@@ -278,10 +294,14 @@ public struct ListView: View {
         }
     }
 
-    private func planWholeLocation(_ entry: InventoryEntry) async {
+}
+
+private extension ListView {
+    func planWholeLocation(_ entry: InventoryEntry) async {
         let location = entry.location
+        let catalog = model.settings.activeCatalog
+        guard catalog.locations.contains(where: { $0.id == location.id }), !model.isRestored(entry) else { return }
         let children: [ChildEntry] = if entry.roots.contains(where: { location.isCustomRoot($0.url) }) {
-            // The scan's own listing when it has one; a walk only when it does not, which is the same cold path `openDetail` takes.
             if let listed = model.drillDowns[location.id]?.children {
                 listed
             } else {
@@ -290,6 +310,10 @@ public struct ListView: View {
         } else {
             []
         }
+        let currentCatalog = model.settings.activeCatalog
+        guard currentCatalog.generation == catalog.generation,
+              currentCatalog.locations.contains(where: { $0.id == location.id })
+        else { return }
         model.plan { context in
             try DeletionPlanner.wholeLocation(entry, context: context.withChildren { _ in children })
         }

@@ -82,6 +82,32 @@ struct FSEventsInvalidatorTests {
         #expect(invalidated.invocations == 0)
     }
 
+    @Test("Replacing a scope discards callbacks captured by the previous watcher")
+    func replacedScopeRejectsStaleWatcherCallback() async throws {
+        let mockWatcher = MockFilesystemWatcher()
+        let invalidated = LockedCounter()
+        let invalidator = FSEventsInvalidator(watcher: mockWatcher, debounce: .milliseconds(30)) { _ in
+            invalidated.increment()
+        }
+        let root = try Self.makeBase()
+        defer { TestFileSystem.removeDirectoryRecursively(at: root) }
+        invalidator.replaceMonitoring(
+            roots: [WatchedRoot(locationId: "derivedData", url: root)],
+            policyGeneration: 1
+        )
+        let oldHandler = try #require(mockWatcher.changeHandler)
+        invalidator.replaceMonitoring(
+            roots: [WatchedRoot(locationId: "archives", url: root)],
+            policyGeneration: 2
+        )
+
+        oldHandler(root.appendingPathComponent("old-scope").path)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(invalidated.invocations == 0)
+        invalidator.stopMonitoring()
+    }
+
     // MARK: - Scoping
 
     private static func makeBase() throws -> URL {

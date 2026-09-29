@@ -14,19 +14,25 @@ public struct Fingerprint: Sendable, Hashable {
     public let inode: UInt64
     public let device: Int32
     public let isDirectory: Bool
+    public let birthTimeSeconds: Int64?
+    public let birthTimeNanoseconds: Int64?
 
     public init(
         path: String,
         modificationDate: Date,
         inode: UInt64,
         device: Int32,
-        isDirectory: Bool
+        isDirectory: Bool,
+        birthTimeSeconds: Int64? = nil,
+        birthTimeNanoseconds: Int64? = nil
     ) {
         self.path = path
         self.modificationDate = modificationDate
         self.inode = inode
         self.device = device
         self.isDirectory = isDirectory
+        self.birthTimeSeconds = birthTimeSeconds
+        self.birthTimeNanoseconds = birthTimeNanoseconds
     }
 
     /// Captures the current fingerprint for a given URL, resolving symlinks.
@@ -48,7 +54,9 @@ public struct Fingerprint: Sendable, Hashable {
             modificationDate: mtime,
             inode: UInt64(statBuf.st_ino),
             device: Int32(statBuf.st_dev),
-            isDirectory: isDir
+            isDirectory: isDir,
+            birthTimeSeconds: Int64(statBuf.st_birthtimespec.tv_sec),
+            birthTimeNanoseconds: Int64(statBuf.st_birthtimespec.tv_nsec)
         )
     }
 
@@ -69,6 +77,12 @@ public struct Fingerprint: Sendable, Hashable {
         let currentDev = Int32(statBuf.st_dev)
         if currentInode != inode || currentDev != device {
             return .changedSinceScan(reason: "File inode or filesystem changed since scan")
+        }
+
+        if let birthTimeSeconds,
+           Int64(statBuf.st_birthtimespec.tv_sec) != birthTimeSeconds
+                || Int64(statBuf.st_birthtimespec.tv_nsec) != birthTimeNanoseconds {
+            return .changedSinceScan(reason: "File generation changed since scan")
         }
 
         let isDir = (statBuf.st_mode & S_IFMT) == S_IFDIR

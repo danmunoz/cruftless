@@ -33,6 +33,18 @@ public struct DetailView: View {
         children.reduce(0) { $0 + $1.reclaimableBytes }
     }
 
+    private var sourcePaths: [String] {
+        guard let entry = model.inventory?.entries.first(where: { $0.id == location.id }) else { return [] }
+        return entry.roots.map { root in
+            let path = root.url.path(percentEncoded: false)
+            guard location.platform == .android else { return path }
+            let provenance = [root.source, root.layout.map { "\($0), volume \(root.volumeIdentifier ?? "unknown")" }]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+            return "\(provenance.isEmpty ? "Android root" : provenance) · \(path)"
+        }
+    }
+
     private var batchableChildren: [ChildEntry] {
         children.filter { !$0.isFlagged }
     }
@@ -59,7 +71,8 @@ public struct DetailView: View {
                 content: { content }
             )
 
-            if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable {
+            if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable,
+               !location.mutationPolicy.isReadOnly {
                 footer
             }
         }
@@ -92,11 +105,29 @@ public struct DetailView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let issue = contents?.inventoryIssue {
+                Label(issue, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Text(
                 "\(tierWordText) \(Text(verbatim: "·").foregroundStyle(.tertiary)) \(consequenceText)"
             )
             .font(.system(size: 11))
             .lineLimit(2)
+
+            if location.platform == .android {
+                ForEach(sourcePaths, id: \.self) { path in
+                    Text(path)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, PopoverMetrics.rowInset)
@@ -109,9 +140,10 @@ public struct DetailView: View {
             title: displayName(for: child),
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
-            action: rowAction(for: child)
+            action: location.mutationPolicy == .readOnly ? nil : rowAction(for: child),
+            isReadOnly: location.mutationPolicy == .readOnly
         )
-        .help(child.name)
+        .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
     private func rowAction(for child: ChildEntry) -> RowAction {

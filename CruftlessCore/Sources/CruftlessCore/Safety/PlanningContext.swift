@@ -7,25 +7,29 @@ public struct PlanningContext: Sendable {
 
     /// The toolchain Xcode is currently set to use, or `nil` when it is on its bundled default.
     public let activeToolchainOverrideIdentifier: String?
+    public let policyGeneration: UInt64
 
     public let childrenProvider: @Sendable (TrackedLocation) -> [ChildEntry]
 
     public init(
         protectedPaths: ProtectedPaths = .default,
         activeToolchainOverrideIdentifier: String? = nil,
+        policyGeneration: UInt64 = 0,
         childrenProvider: @escaping @Sendable (TrackedLocation) -> [ChildEntry] = {
             DrillDownProvider.loadChildren(for: $0)
         }
     ) {
         self.protectedPaths = protectedPaths
         self.activeToolchainOverrideIdentifier = activeToolchainOverrideIdentifier
+        self.policyGeneration = policyGeneration
         self.childrenProvider = childrenProvider
     }
 
-    public static func live(protectedPaths: ProtectedPaths) -> PlanningContext {
+    public static func live(protectedPaths: ProtectedPaths, policyGeneration: UInt64 = 0) -> PlanningContext {
         PlanningContext(
             protectedPaths: protectedPaths,
-            activeToolchainOverrideIdentifier: ActiveToolchain.overrideIdentifier()
+            activeToolchainOverrideIdentifier: ActiveToolchain.overrideIdentifier(),
+            policyGeneration: policyGeneration
         )
     }
 
@@ -35,6 +39,7 @@ public struct PlanningContext: Sendable {
         PlanningContext(
             protectedPaths: protectedPaths,
             activeToolchainOverrideIdentifier: activeToolchainOverrideIdentifier,
+            policyGeneration: policyGeneration,
             childrenProvider: provider
         )
     }

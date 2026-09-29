@@ -12,7 +12,7 @@ public struct Inventory: Sendable, Hashable {
         entries.reduce(0) { total, entry in
             switch entry {
             case let .sized(loc, bytes, _, _):
-                if loc.tier.isDeletable {
+                if loc.mutationPolicy != .readOnly, loc.tier.isDeletable {
                     return total + bytes
                 }
                 return total

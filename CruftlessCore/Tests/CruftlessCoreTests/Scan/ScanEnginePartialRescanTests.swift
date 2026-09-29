@@ -110,6 +110,24 @@ struct ScanEnginePartialRescanTests {
         #expect(Set(inventory.entries.map(\.id)) == ["derivedData", "archives"])
     }
 
+    @Test("An older platform generation is not admitted after invalidation")
+    func olderGenerationIsRejected() async throws {
+        let base = try Self.makeBase()
+        defer { TestFileSystem.removeDirectoryRecursively(at: base) }
+        let root = try Self.makeRoot(under: base, named: "DerivedData", payloadBytes: 4096)
+        let location = Self.location(id: "derivedData", root: root)
+        let engine = ScanEngine()
+        await engine.invalidate(generation: 2)
+
+        var events: [ScanEvent] = []
+        for await event in await engine.scan(catalog: [location], generation: 1) {
+            events.append(event)
+        }
+
+        #expect(events.isEmpty)
+        #expect(await engine.cachedInventory() == nil)
+    }
+
     @Test("A rescan leaves another location's cached child sizes alone")
     func rescanKeepsOtherChildSizes() async throws {
         let base = try Self.makeBase()

@@ -1,5 +1,13 @@
 import Foundation
 
+struct DrillDownScanContext: Sendable {
+    let knownSizes: [String: [String: SizeResult]]
+    let roots: [RootSize]
+    let runtimes: [SimRuntime]?
+    let runtimesFailure: String?
+    let deviceLister: ScanEngine.DeviceLister?
+}
+
 /// The half of a scan that produces what a drill-down will render, and the per-location walk that feeds it.
 extension ScanEngine {
     /// `nonisolated`, so the scan can build the same table off the actor while it still has the breakdowns in hand.
@@ -45,22 +53,27 @@ extension ScanEngine {
             let readable = readableRoots(among: roots)
 
             if readable.roots.isEmpty {
-                if let reason = readable.unreadableReason {
-                    return LocationOutcome(
-                        locationId: location.id,
-                        entry: .unavailable(location: location, reason: reason),
-                        failure: nil
-                    )
-                }
-                return LocationOutcome(locationId: location.id, entry: nil, failure: nil)
+                return emptyFilesystemOutcome(location, unreadableReason: readable.unreadableReason)
             }
 
             let walked = walkRoots(
+                location,
                 readable.roots,
                 inodeSet: inodeSet,
                 recordingDepth: DrillDownProvider.sizeRecordingDepth(for: location)
             )
-
+            let contents = drillDownContents(
+                for: location,
+                context: DrillDownScanContext(
+                    knownSizes: walked.breakdowns,
+                    roots: walked.rootSizes,
+                    runtimes: runtimes,
+                    runtimesFailure: runtimesFailure,
+                    deviceLister: deviceLister
+                )
+            )
+            let issues = [incompleteReason(for: location, walk: walked), contents?.inventoryIssue]
+                .compactMap { $0 }
             return LocationOutcome(
                 locationId: location.id,
                 entry: .sized(
@@ -73,41 +86,72 @@ extension ScanEngine {
                     ),
                     roots: walked.rootSizes
                 ),
-                failure: walked.incomplete.map {
-                    incompleteScanReason(root: $0.root, result: $0.result)
-                },
+                failure: issues.isEmpty ? nil : issues.joined(separator: " "),
                 childBreakdowns: walked.breakdowns,
-                contents: drillDownContents(
-                    for: location,
-                    knownSizes: walked.breakdowns,
-                    runtimes: runtimes,
-                    runtimesFailure: runtimesFailure,
-                    deviceLister: deviceLister
-                )
+                contents: contents
             )
         }
     }
 
+    nonisolated private static func emptyFilesystemOutcome(
+        _ location: TrackedLocation,
+        unreadableReason: String?
+    ) -> LocationOutcome {
+        if let issue = location.discoveryIssue() {
+            return LocationOutcome(
+                locationId: location.id,
+                entry: .unavailable(location: location, reason: issue),
+                failure: nil,
+                contents: .unavailable(issue)
+            )
+        }
+        if let unreadableReason {
+            return LocationOutcome(
+                locationId: location.id,
+                entry: .unavailable(location: location, reason: unreadableReason),
+                failure: nil
+            )
+        }
+        return LocationOutcome(locationId: location.id, entry: nil, failure: nil)
+    }
+
     nonisolated static func drillDownContents(
         for location: TrackedLocation,
-        knownSizes: [String: [String: SizeResult]],
-        runtimes: [SimRuntime]?,
-        runtimesFailure: String?,
-        deviceLister: DeviceLister?
+        context: DrillDownScanContext
     ) -> DrillDownContent? {
         guard location.hasDrillDown else { return nil }
 
-        guard location.id == LocationCatalog.simulatorDevices.id else {
-            return .children(DrillDownProvider.loadChildren(for: location, knownSizes: knownSizes))
+        if location.id == "androidSDK" {
+            let scan = DrillDownProvider.androidSDKPackages(
+                in: context.roots.map(\.url),
+                rootSizes: context.roots,
+                knownSizes: context.knownSizes
+            )
+            if let issue = scan.issue { return .childrenWithIssue(scan.children, issue) }
+            return .children(scan.children)
         }
 
-        guard let runtimes, let deviceLister else {
-            return .unavailable(runtimesFailure ?? "Could not read the installed simulator runtimes.")
+        if location.id == "androidAVDs" {
+            let children = DrillDownProvider.androidAVDs(
+                in: context.roots.map(\.url),
+                rootSizes: context.roots,
+                knownSizes: context.knownSizes
+            )
+            if let issue = location.discoveryIssue() { return .childrenWithIssue(children, issue) }
+            return .children(children)
+        }
+
+        guard location.id == LocationCatalog.simulatorDevices.id else {
+            return .children(DrillDownProvider.loadChildren(for: location, knownSizes: context.knownSizes))
+        }
+
+        guard let runtimes = context.runtimes, let deviceLister = context.deviceLister else {
+            return .unavailable(context.runtimesFailure ?? "Could not read the installed simulator runtimes.")
         }
 
         return .devices(
             deviceLister(runtimes),
-            sizes: immediateChildSizes(in: knownSizes)
+            sizes: immediateChildSizes(in: context.knownSizes)
         )
     }
 }

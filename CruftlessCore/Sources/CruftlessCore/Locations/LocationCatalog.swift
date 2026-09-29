@@ -143,10 +143,67 @@ public enum LocationCatalog: Sendable {
         tier: .info,
         hasDrillDown: false,
         stalenessSource: .topLevelMtime,
+        mutationPolicy: .readOnly,
         resolveRoots: RootResolver.simulatorDyldCacheRoot
     )
 
-    /// All 13 locations in canonical catalog order.
+    public static let androidStudioSystem = TrackedLocation(
+        id: "androidStudioSystem",
+        platform: .android,
+        title: "Android Studio system files",
+        icon: .symbol("wrench.and.screwdriver"),
+        tier: .info,
+        hasDrillDown: true,
+        stalenessSource: .topLevelMtime,
+        mutationPolicy: .readOnly,
+        consequence: "Read-only inventory. Local History and other persistent IDE state are included.",
+        discoveryIssue: RootResolver.androidStudioSystemIssue,
+        resolveRoots: RootResolver.androidStudioSystemRoots
+    )
+
+    public static let gradleCaches = TrackedLocation(
+        id: "gradleCaches",
+        platform: .android,
+        title: "Gradle caches",
+        icon: .symbol("shippingbox"),
+        tier: .info,
+        hasDrillDown: true,
+        stalenessSource: .topLevelMtime,
+        mutationPolicy: .readOnly,
+        consequence: "Shared Gradle data can affect non-Android projects. Offline builds may need cached artifacts.",
+        discoveryIssue: RootResolver.gradleCacheIssue,
+        resolveRoots: RootResolver.gradleCacheRoots
+    )
+
+    public static let androidSDK = TrackedLocation(
+        id: "androidSDK",
+        platform: .android,
+        title: "Android SDK",
+        icon: .symbol("externaldrive"),
+        tier: .info,
+        hasDrillDown: true,
+        stalenessSource: .topLevelMtime,
+        mutationPolicy: .readOnly,
+        consequence: "SDK packages are read-only. Removing one can break projects and emulators.",
+        discoveryIssue: RootResolver.androidSDKIssue,
+        resolveRoots: RootResolver.androidSDKRoots
+    )
+
+    public static let androidAVDs = TrackedLocation(
+        id: "androidAVDs",
+        platform: .android,
+        title: "Android Virtual Devices",
+        icon: .symbol("smartphone"),
+        tier: .info,
+        hasDrillDown: true,
+        stalenessSource: .topLevelMtime,
+        mutationPolicy: .readOnly,
+        consequence: "AVDs contain user data, apps, settings, SD cards, and snapshots. They are read-only.",
+        discoveryIssue: RootResolver.androidAVDIssue,
+        resolveRoots: RootResolver.androidAVDRoots
+    )
+
+    /// All tracked locations in canonical catalog order.
     public static let all: [TrackedLocation] = [
         deviceSupport,
         simulatorDevices,
@@ -160,6 +217,10 @@ public enum LocationCatalog: Sendable {
         codingAssistant,
         productsLogsDocCache,
         xcodeInstalls,
-        simulatorDyldCache
+        simulatorDyldCache,
+        androidStudioSystem,
+        gradleCaches,
+        androidSDK,
+        androidAVDs
     ]
 }

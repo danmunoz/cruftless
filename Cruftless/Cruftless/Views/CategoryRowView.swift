@@ -38,8 +38,12 @@ public struct CategoryRowView: View {
 
     /// A drill-down row carries both: the row opens Detail, the capsule clears the whole location.
     private var action: RowAction? {
+        let isDyldCacheCommand = entry.location.id == LocationCatalog.simulatorDyldCache.id
         // Inert while it is being re-measured, like the skeleton rows of a first scan.
-        guard !entry.isUnavailable, !isMeasuring else { return nil }
+        guard !entry.isUnavailable, !isMeasuring,
+              !entry.location.mutationPolicy.isReadOnly || isDyldCacheCommand,
+              tier != .info || isDyldCacheCommand
+        else { return nil }
         return RowAction(
             DesignTokens.actionLabel(for: tier),
             isDestructive: tier.isFlagged,
@@ -59,8 +63,9 @@ public struct CategoryRowView: View {
             rescan: onRescan,
             // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
             showsChevron: entry.location.hasDrillDown && !entry.isUnavailable && !isMeasuring,
-            isReadOnly: tier == .info,
+            isReadOnly: entry.location.mutationPolicy.isReadOnly,
             isPlaceholder: isMeasuring,
+            isUnavailable: entry.isUnavailable,
             isOpening: isOpening,
             onSelect: entry.isUnavailable || isMeasuring ? nil : onSelect
         ) {
@@ -107,7 +112,7 @@ public struct CategoryRowView: View {
             previewRow(0) // simulator devices, drill-down
             previewRow(3) // derived data, regen
             previewRow(5) // Xcode installs, reveal
-            previewRow(6) // dyld cache, read-only: dimmed, padlock
+            previewRow(6) // dyld cache, read-only: padlock
             previewRow(10) // archives, flagged, sub-GB size
             previewRow(12) // products/logs, sub-GB size
             CategoryRowView(
@@ -123,6 +128,44 @@ public struct CategoryRowView: View {
             )
             CategoryRowView(
                 entry: .unavailable(location: LocationCatalog.toolchains, reason: "permission denied"),
+                onSelect: {},
+                onAction: {},
+                onRescan: {}
+            )
+        }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Rows: Android read-only and unavailable") {
+        let readOnlyRegenLocation = TrackedLocation(
+            id: "androidPreviewReadOnlyRegen",
+            platform: .android,
+            title: "Read-only cache example",
+            icon: .symbol("shippingbox"),
+            tier: .regen,
+            hasDrillDown: true,
+            stalenessSource: .topLevelMtime,
+            mutationPolicy: .readOnly,
+            resolveRoots: { [] }
+        )
+        VStack(spacing: 2) {
+            ForEach(PreviewFixtures.androidReadOnlyEntries) { entry in
+                CategoryRowView(entry: entry, onSelect: {}, onAction: {}, onRescan: {})
+            }
+            CategoryRowView(
+                entry: .sized(
+                    location: readOnlyRegenLocation,
+                    reclaimableBytes: 700_000_000,
+                    staleness: StalenessInfo(lastUsedDate: nil),
+                    roots: []
+                ),
+                onSelect: {},
+                onAction: {},
+                onRescan: {}
+            )
+            CategoryRowView(
+                entry: .unavailable(location: LocationCatalog.androidSDK, reason: "SDK root cannot be read"),
                 onSelect: {},
                 onAction: {},
                 onRescan: {}

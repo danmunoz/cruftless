@@ -6,7 +6,11 @@ public enum DesignTokens {
     public static let dyldCacheCommand = "sudo rm -rf /Library/Developer/CoreSimulator/Caches/dyld"
 
     public static func tierWord(for tier: Tier, locationId: String = "") -> String {
-        switch tier {
+        if [LocationCatalog.androidStudioSystem.id, LocationCatalog.gradleCaches.id,
+            LocationCatalog.androidSDK.id, LocationCatalog.androidAVDs.id].contains(locationId) {
+            return "Read only"
+        }
+        return switch tier {
         case .regen:
             "Regenerates"
         case .judgment:

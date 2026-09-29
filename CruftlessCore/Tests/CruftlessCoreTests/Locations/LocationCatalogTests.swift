@@ -10,7 +10,10 @@ struct LocationCatalogTests {
         let roots = location.resolveRoots()
 
         guard !roots.isEmpty else {
-            #expect(location.mutationPolicy == .simctl, "\(location.id) has no roots and no simctl policy")
+            #expect(
+                location.mutationPolicy == .simctl || location.mutationPolicy == .readOnly,
+                "\(location.id) has no roots and no explicit non-path mutation policy"
+            )
             return
         }
 

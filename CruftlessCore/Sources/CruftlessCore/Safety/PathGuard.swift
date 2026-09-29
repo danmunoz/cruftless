@@ -62,7 +62,11 @@ public struct PathGuard: Sendable {
         }
 
         let resolvedURL = URL(fileURLWithPath: resolvedTargetPath, isDirectory: target.hasDirectoryPath)
-        return ValidatedPath(validatedURL: resolvedURL, path: resolvedTargetPath)
+        return ValidatedPath(
+            validatedURL: resolvedURL,
+            path: resolvedTargetPath,
+            allowlistedRootPaths: resolvedRoots
+        )
     }
 
     public func validateRoot(_ target: URL) throws -> ValidatedPath {
@@ -92,7 +96,12 @@ public struct PathGuard: Sendable {
         }
 
         let resolvedURL = URL(fileURLWithPath: resolvedTargetPath, isDirectory: true)
-        return ValidatedPath(validatedURL: resolvedURL, path: resolvedTargetPath)
+        return ValidatedPath(
+            validatedURL: resolvedURL,
+            path: resolvedTargetPath,
+            isRoot: true,
+            allowlistedRootPaths: roots.map(ProtectedPaths.normalize)
+        )
     }
 
     /// The target must be an absolute file URL with no host.

@@ -60,6 +60,9 @@ public extension AppModel {
                 return .unavailable(error.localizedDescription)
             }
 
+        case LocationCatalog.androidSDK.id, LocationCatalog.androidAVDs.id:
+            return await scanEngine.androidDrillDown(for: location)
+
         default:
             return await .children(scanEngine.children(of: location.id))
         }
