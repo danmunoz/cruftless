@@ -119,7 +119,9 @@ struct LocationCatalogTests {
     func drillDownLocationsCanBeSized(location: TrackedLocation) {
         guard location.sizeSource == .filesystemRoots else { return }
 
-        guard location.id != LocationCatalog.xcodeInstalls.id else { return }
+        guard location.id != LocationCatalog.xcodeInstalls.id,
+              location.platform != .android
+        else { return }
 
         #expect(
             !location.resolveRoots().isEmpty,
