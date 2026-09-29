@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0]
+
+### Changes
+
+- Android development support (#6) (815a140)
+- read Homebrew download URL from gh assets (#5) (4969a22)
+
 ## [1.1.0] - 2026-09-28
 
 ### Improved
