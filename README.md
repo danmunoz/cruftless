@@ -1,9 +1,9 @@
 # Cruftless
 
-Cruftless is a native macOS menu bar app for finding and removing disk space
-used by Xcode and CoreSimulator. It shows what can be reclaimed, explains the
-consequence of each action, and asks for confirmation before permanently
-deleting anything.
+Cruftless is a native macOS menu bar app for finding developer storage used by
+Xcode, CoreSimulator, Android Studio, and Gradle, then carefully removing
+selected items. It shows what can be reclaimed, explains the consequence of
+each action, and asks for confirmation before permanently deleting anything.
 
 ## Install
 
@@ -31,7 +31,13 @@ by Apple.
 - Shows APFS allocated size instead of misleading logical file size.
 - Reports purgeable disk space separately from free space.
 - Lets you protect additional folders in Settings.
-- Runs locally, with no account, cloud service, analytics, or telemetry.
+- Lets you choose whether to scan Apple development, Android development, or
+  both.
+- Inventories Android Studio system data, Gradle caches, Android SDK packages,
+  and Android Virtual Devices. SDK packages, AVDs, and Android Studio data are
+  read-only; selected Gradle cache entries have a separate warning and review.
+- Inventory and cleanup run locally, with no account, app analytics, or
+  telemetry. Manual update checks contact GitHub for public release metadata.
 
 ## What Cruftless scans
 
@@ -50,6 +56,10 @@ by Apple.
 | Build products and logs | Delete build output, logs, and caches; device logs do not regenerate. |
 | Xcode installs | Inspect and reveal in Finder; Cruftless does not delete the app. |
 | Simulator dyld cache | Inspect only; Cruftless provides a command for this root-owned data. |
+| Android Studio system data | Inspect recognized system-cache locations; cleanup is not available. |
+| Gradle caches | Inspect shared cache entries; remove one eligible entry at a time after a one-use risk acknowledgement and review. Active builds may be interrupted, and offline builds may fail. |
+| Android SDK | Inspect installed packages; package removal is not available. |
+| Android Virtual Devices | Inspect each device's allocated storage; device data is not removed. |
 
 Entries are sorted by reclaimable size. Drill-downs let you inspect individual
 items before deciding what to remove.
@@ -76,6 +86,11 @@ most important part of the project:
 You can add your own protected folders in **Settings → General**. Any deletion
 that contains a protected folder is refused rather than silently excluding part
 of the requested item.
+
+Android SDK packages, virtual devices, and Android Studio system data are
+inventory-only. Gradle caches are shared across projects, so removing an
+eligible cache entry requires a per-attempt risk acknowledgement and the normal
+review step. Cruftless cannot verify that Gradle has stopped using those files.
 
 ## About the numbers
 
