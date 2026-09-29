@@ -158,17 +158,12 @@ struct PopoverRow<Caption: View>: View {
         }
     }
 
-    /// A gigabyte or more reads as primary; anything smaller recedes.
-    private var sizeIsSignificant: Bool {
-        (sizeBytes ?? 0) >= 1_000_000_000
-    }
-
     private var sizeOrActionSlot: some View {
         ZStack(alignment: .trailing) {
             Text(sizeBytes.map { ByteFormatter.format($0) } ?? "-")
                 .font(.system(size: 13))
                 .monospacedDigit()
-                .foregroundStyle(sizeIsSignificant ? AnyShapeStyle(.primary.opacity(0.7)) : AnyShapeStyle(.secondary))
+                .foregroundStyle(.primary)
                 .opacity(showsHoverControls ? 0 : 1)
                 .opacity(contentOpacity)
 

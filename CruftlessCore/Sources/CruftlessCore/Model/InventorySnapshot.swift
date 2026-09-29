@@ -2,8 +2,8 @@ import Foundation
 
 /// A scan's rows in a form that survives a relaunch.
 public struct InventorySnapshot: Codable, Sendable, Equatable {
-    /// Bumped whenever `Row` changes shape.
-    public static let schemaVersion = 2
+    /// Bumped whenever the saved snapshot shape changes.
+    public static let schemaVersion = 3
 
     /// What the row measured.
     public enum Kind: Codable, Sendable, Equatable {
@@ -43,12 +43,15 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
     public let version: Int
     public let scannedAt: Date
     public let sizesAreUpperBound: Bool
+    /// Aggregate eligible Gradle bytes only; drill-down listings are never persisted.
+    public let optInReclaimableBytes: Int64?
     public let rows: [Row]
 
     public init(_ inventory: Inventory) {
         version = Self.schemaVersion
         scannedAt = inventory.scannedAt
         sizesAreUpperBound = inventory.sizesAreUpperBound
+        optInReclaimableBytes = inventory.optInReclaimableBytes
         rows = inventory.entries.map { entry in
             Row(
                 locationId: entry.location.id,
@@ -72,7 +75,7 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
         capacity: VolumeCapacity,
         catalog: [TrackedLocation] = LocationCatalog.all
     ) -> Inventory? {
-        guard version == 1 || version == Self.schemaVersion else { return nil }
+        guard (1 ... Self.schemaVersion).contains(version) else { return nil }
 
         let locationsById = Dictionary(catalog.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let entries = rows.compactMap { row -> InventoryEntry? in
@@ -100,11 +103,14 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
 
         guard !entries.isEmpty else { return nil }
 
+        let includesGradleCaches = entries.contains { $0.location.id == LocationCatalog.gradleCaches.id }
+
         return Inventory(
             entries: entries,
             capacity: capacity,
             scannedAt: scannedAt,
-            sizesAreUpperBound: sizesAreUpperBound
+            sizesAreUpperBound: sizesAreUpperBound,
+            optInReclaimableBytes: includesGradleCaches ? optInReclaimableBytes ?? 0 : 0
         )
     }
 }

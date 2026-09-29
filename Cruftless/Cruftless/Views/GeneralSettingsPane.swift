@@ -43,8 +43,22 @@ public struct GeneralSettingsPane: View {
             } footer: {
                 Text(
                     "Android includes shared Gradle caches that can affect non-Android projects. " +
-                        "SDK, AVD, Studio, and Gradle storage is read-only."
+                        "SDK, AVD, and Android Studio storage is read-only; Gradle cache cleanup requires a risk review."
                 )
+            }
+
+            if showsPlatformOrder {
+                Section {
+                    Picker("Show first", selection: $settings.platformSectionOrder) {
+                        Text("Apple development").tag(PlatformSectionOrder.appleFirst)
+                        Text("Android development").tag(PlatformSectionOrder.androidFirst)
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Main page order")
+                } footer: {
+                    Text("Choose which platform section appears first in the main list.")
+                }
             }
 
             ProtectedPathsSection(
@@ -62,8 +76,13 @@ public struct GeneralSettingsPane: View {
         .frame(height: SettingsMetrics.generalPaneHeight(
             protectedPathCount: settings.protectedPaths.count,
             errorRowCount: settings.visibleErrorRowCount,
-            includesPlatformSelection: true
+            includesPlatformSelection: true,
+            includesPlatformOrder: showsPlatformOrder
         ))
+    }
+
+    private var showsPlatformOrder: Bool {
+        settings.platformSelection.platforms == Set(DevelopmentPlatform.allCases)
     }
 
     private func platformBinding(_ platform: DevelopmentPlatform) -> Binding<Bool> {

@@ -139,20 +139,23 @@ public struct DetailView: View {
     }
 
     private func childRow(_ child: ChildEntry) -> some View {
-        PopoverRow(
+        let cacheRoots = location.id == LocationCatalog.gradleCaches.id ? location.resolveRoots() : []
+        let isRiskEligibleGradleEntry = location.id == LocationCatalog.gradleCaches.id
+            && GradleCacheEntryPolicy.isEligible(child, cacheRoots: cacheRoots)
+        return PopoverRow(
             icon: nil,
             title: displayName(for: child),
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
-            action: rowAction(for: child),
-            isReadOnly: location.mutationPolicy == .readOnly
+            action: rowAction(for: child, gradleCacheRoots: cacheRoots),
+            isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry
         )
         .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
-    private func rowAction(for child: ChildEntry) -> RowAction? {
+    private func rowAction(for child: ChildEntry, gradleCacheRoots: [URL]) -> RowAction? {
         if location.id == LocationCatalog.gradleCaches.id {
-            guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: location.resolveRoots()) else {
+            guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: gradleCacheRoots) else {
                 return nil
             }
             return RowAction("Clear") {

@@ -7,6 +7,9 @@ public struct ScanProgress: Sendable, Equatable {
     /// Rows as they arrived, in the order they were measured.
     public private(set) var landed: [InventoryEntry] = []
 
+    /// Eligible Gradle cache bytes measured for this scan, pending explicit risk acceptance.
+    public private(set) var optInReclaimableBytes: Int64 = 0
+
     /// Locations whose measurement has begun, whether or not it has finished.
     public private(set) var started: Set<String> = []
 
@@ -30,10 +33,15 @@ public struct ScanProgress: Sendable, Equatable {
         landed.append(entry)
     }
 
+    public mutating func recordOptInReclaimableBytes(_ bytes: Int64) {
+        optInReclaimableBytes = max(0, bytes)
+    }
+
     public mutating func reset() {
         planned = []
         landed = []
         started = []
+        optInReclaimableBytes = 0
     }
 
     /// Measured rows in final inventory order.
@@ -73,5 +81,9 @@ public struct ScanProgress: Sendable, Equatable {
                 ? total + entry.reclaimableBytes
                 : total
         }
+    }
+
+    public var cleanableBytes: Int64 {
+        reclaimableBytes + optInReclaimableBytes
     }
 }

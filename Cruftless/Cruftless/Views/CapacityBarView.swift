@@ -4,11 +4,11 @@ import SwiftUI
 /// Capacity strip plus its legend.
 public struct CapacityBarView: View {
     public let capacity: VolumeCapacity
-    public let reclaimableBytes: Int64
+    public let cleanableBytes: Int64
 
-    public init(capacity: VolumeCapacity, reclaimableBytes: Int64) {
+    public init(capacity: VolumeCapacity, cleanableBytes: Int64) {
         self.capacity = capacity
-        self.reclaimableBytes = reclaimableBytes
+        self.cleanableBytes = cleanableBytes
     }
 
     private var usedFill: Color {
@@ -28,7 +28,7 @@ public struct CapacityBarView: View {
     }
 
     private var reclaimableRatio: Double {
-        ratio(reclaimableBytes)
+        ratio(cleanableBytes)
     }
 
     private var purgeableRatio: Double {
@@ -50,7 +50,7 @@ public struct CapacityBarView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(ByteFormatter.format(reclaimableBytes)) cleanable of "
+            "\(ByteFormatter.format(cleanableBytes)) cleanable of "
                 + "\(ByteFormatter.format(capacity.totalBytes)) total. "
                 + "Used \(ByteFormatter.format(capacity.usedBytes)), "
                 + "purgeable \(ByteFormatter.format(capacity.purgeableBytes)), "
@@ -131,7 +131,7 @@ public struct CapacityBarView: View {
                 purgeableBytes: 14_200_000_000,
                 usedBytes: 336_000_000_000
             ),
-            reclaimableBytes: 107_300_000_000
+            cleanableBytes: 107_300_000_000
         )
         .padding()
         .frame(width: PopoverMetrics.width)

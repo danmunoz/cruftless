@@ -9,6 +9,7 @@ public actor ScanEngine {
 
     private var cachedCurrentInventory: Inventory?
     private var currentGeneration: UInt64 = 0
+    private var cachedGradleCacheCleanableBytes: Int64 = 0
 
     /// Sizes captured during the scan, keyed by location id, then by resolved root path, then by each measured path under it.
     private var childSizeCache: [String: [String: [String: SizeResult]]] = [:]
@@ -42,6 +43,7 @@ public actor ScanEngine {
         }
         cachedCurrentInventory = nil
         childSizeCache = [:]
+        cachedGradleCacheCleanableBytes = 0
     }
 
     /// Sizes of a location's immediate children, keyed by name, flattened across its roots.
@@ -120,7 +122,10 @@ public actor ScanEngine {
 
                 // A full scan shares one inode set across every location, so a file hardlinked into two of them is counted once overall.
                 let inodes = InodeSet()
-                if !merging { self.childSizeCache = [:] }
+                if !merging {
+                    self.childSizeCache = [:]
+                    self.cachedGradleCacheCleanableBytes = 0
+                }
 
                 // Resolved once, here, and carried into the walk.
                 let resolved = locations.map { (location: $0, roots: $0.resolveRoots()) }
@@ -142,11 +147,12 @@ public actor ScanEngine {
                 // Captures volume capacity after walking.
                 let volumeCapacity = VolumeCapacity.query()
 
-                let inventory = self.assembled(
+                let inventory = Self.assembledInventory(
                     from: collectedEntries,
                     scanned: locations,
                     capacity: volumeCapacity,
-                    merging: merging
+                    cachedInventory: merging ? self.cachedCurrentInventory : nil,
+                    optInReclaimableBytes: self.cachedGradleCacheCleanableBytes
                 )
 
                 self.cachedCurrentInventory = inventory
@@ -164,6 +170,7 @@ public actor ScanEngine {
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> [InventoryEntry] {
         let lister = runtimeLister
+        let gradleRoots = resolved.first { $0.location.id == LocationCatalog.gradleCaches.id }?.roots ?? []
         let runtimesTask: Task<[SimRuntime], any Error>? =
             resolved.contains(where: { Self.needsRuntimes($0.location) })
                 ? Task { try await lister() }
@@ -187,6 +194,12 @@ public actor ScanEngine {
             for await outcome in group {
                 guard generation == currentGeneration else { continue }
                 childSizeCache[outcome.locationId] = outcome.childBreakdowns
+                if outcome.locationId == LocationCatalog.gradleCaches.id {
+                    cachedGradleCacheCleanableBytes = GradleCacheEntryPolicy.cleanableBytes(
+                        in: outcome.contents?.children ?? [],
+                        cacheRoots: gradleRoots
+                    )
+                }
                 if let entry = outcome.entry {
                     collected.append(entry)
                     continuation.yield(.locationScanned(entry))
@@ -202,24 +215,6 @@ public actor ScanEngine {
         }
 
         return collected
-    }
-
-    /// Folds a scan's entries into an inventory.
-    private func assembled(
-        from entries: [InventoryEntry],
-        scanned: [TrackedLocation],
-        capacity: VolumeCapacity,
-        merging: Bool
-    ) -> Inventory {
-        guard merging, let cached = cachedCurrentInventory else {
-            return Inventory(entries: entries, capacity: capacity, scannedAt: Date(), sizesAreUpperBound: true)
-        }
-
-        let rescannedIds = Set(scanned.map(\.id))
-        var merged = cached.entries.filter { !rescannedIds.contains($0.id) }
-        merged.append(contentsOf: entries)
-
-        return Inventory(entries: merged, capacity: capacity, scannedAt: Date(), sizesAreUpperBound: true)
     }
 
     /// Lazily loads drill-down children for a specific location.

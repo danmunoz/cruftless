@@ -4,6 +4,22 @@ import Observation
 import ServiceManagement
 import UserNotifications
 
+public enum PlatformSectionOrder: String, CaseIterable, Hashable, Identifiable, Sendable {
+    case appleFirst
+    case androidFirst
+
+    public var id: Self {
+        self
+    }
+
+    public var orderedPlatforms: [DevelopmentPlatform] {
+        switch self {
+        case .appleFirst: [.apple, .android]
+        case .androidFirst: [.android, .apple]
+        }
+    }
+}
+
 @MainActor
 @Observable
 public final class SettingsModel {
@@ -12,6 +28,7 @@ public final class SettingsModel {
     public private(set) var scanReminderEnabled: Bool
     public private(set) var protectedPaths: [URL]
     public private(set) var platformSelection: PlatformSelection
+    private var storedPlatformSectionOrder: PlatformSectionOrder
     public private(set) var platformGeneration: UInt64 = 0
     public private(set) var platformSelectionError: String?
     public var isDeletionExecuting = false
@@ -35,6 +52,11 @@ public final class SettingsModel {
     public var isScanReminderEnabled: Bool {
         get { scanReminderEnabled }
         set { setScanReminderEnabled(newValue) }
+    }
+
+    public var platformSectionOrder: PlatformSectionOrder {
+        get { storedPlatformSectionOrder }
+        set { setPlatformSectionOrder(newValue) }
     }
 
     public var protectedPathPolicy: ProtectedPaths {
@@ -61,7 +83,13 @@ public final class SettingsModel {
         self.policyGenerationAuthority = policyGenerationAuthority
         launchAtLoginStatus = SMAppService.mainApp.status
         scanReminderEnabled = defaults.bool(forKey: Keys.scanReminderEnabled)
-        let migratedSelection = PlatformSelection.migrate(defaults.stringArray(forKey: Keys.selectedPlatforms))
+        storedPlatformSectionOrder = PlatformSectionOrder(
+            rawValue: defaults.string(forKey: Keys.platformSectionOrder) ?? ""
+        ) ?? .appleFirst
+        let savedPlatforms = defaults.stringArray(forKey: Keys.selectedPlatforms)
+        let migratedSelection = savedPlatforms == nil
+            ? PlatformSelection.all
+            : PlatformSelection.migrate(savedPlatforms)
         let initialGeneration: UInt64 = 0
         platformSelection = migratedSelection
         platformGeneration = initialGeneration
@@ -107,6 +135,12 @@ public final class SettingsModel {
     }
 
     // MARK: - Scanning
+
+    public func setPlatformSectionOrder(_ order: PlatformSectionOrder) {
+        guard order != storedPlatformSectionOrder else { return }
+        storedPlatformSectionOrder = order
+        defaults.set(order.rawValue, forKey: Keys.platformSectionOrder)
+    }
 
     public func setPlatformEnabled(_ platform: DevelopmentPlatform, _ enabled: Bool) {
         guard !isDeletionExecuting else {
@@ -264,6 +298,7 @@ public final class SettingsModel {
     private enum Keys {
         static let scanReminderEnabled = "scanReminderEnabled"
         static let selectedPlatforms = "selectedPlatforms"
+        static let platformSectionOrder = "platformSectionOrder"
     }
 }
 
@@ -274,7 +309,8 @@ public final class SettingsModel {
             launchAtLoginError: String? = nil,
             scanReminderError: String? = nil,
             protectedPathError: String? = nil,
-            platforms: Set<DevelopmentPlatform> = [.apple]
+            platforms: Set<DevelopmentPlatform> = Set(DevelopmentPlatform.allCases),
+            platformSectionOrder: PlatformSectionOrder = .appleFirst
         ) -> SettingsModel {
             let suiteName = "Cruftless.SettingsPreview.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -283,7 +319,8 @@ public final class SettingsModel {
                 store.addPath(path)
             }
             let model = SettingsModel(defaults: defaults, protectedPathsStore: store)
-            if platforms != [.apple] {
+            model.setPlatformSectionOrder(platformSectionOrder)
+            if platforms != Set(DevelopmentPlatform.allCases) {
                 for platform in DevelopmentPlatform.allCases {
                     model.setPlatformEnabled(platform, platforms.contains(platform))
                 }

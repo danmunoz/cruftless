@@ -3,6 +3,13 @@ import Foundation
 
 /// Names Gradle documents for caches directly below its user-home `caches` directory.
 public enum GradleCacheEntryPolicy {
+    /// Sums only eligible direct cache directories, using their measured allocated sizes.
+    public static func cleanableBytes(in children: [ChildEntry], cacheRoots: [URL]) -> Int64 {
+        children.reduce(0) { total, child in
+            isEligible(child, cacheRoots: cacheRoots) ? total + child.reclaimableBytes : total
+        }
+    }
+
     public static func isRecognizedCacheEntryName(_ name: String) -> Bool {
         if name == "modules-2" || name == "build-cache-1" {
             return true

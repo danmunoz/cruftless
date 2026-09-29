@@ -58,10 +58,11 @@ enum SettingsMetrics {
     static func generalPaneHeight(
         protectedPathCount: Int,
         errorRowCount: Int = 0,
-        includesPlatformSelection: Bool = false
+        includesPlatformSelection: Bool = false,
+        includesPlatformOrder: Bool = false
     ) -> CGFloat {
         // Height with the empty-state placeholder row showing and no errors.
-        let base: CGFloat = 463 + (includesPlatformSelection ? 90 : 0)
+        let base: CGFloat = 463 + (includesPlatformSelection ? 90 : 0) + (includesPlatformOrder ? 84 : 0)
         let placeholderRow: CGFloat = 37
         let pathRow: CGFloat = 51
         let errorRow: CGFloat = 32
@@ -79,6 +80,13 @@ enum SettingsMetrics {
 
     #Preview("Settings: Android selected") {
         SettingsView(settings: .preview(platforms: [.android]))
+    }
+
+    #Preview("Settings: Android first") {
+        SettingsView(settings: .preview(
+            platforms: Set(DevelopmentPlatform.allCases),
+            platformSectionOrder: .androidFirst
+        ))
     }
 
     #Preview("Settings: Protected paths") {

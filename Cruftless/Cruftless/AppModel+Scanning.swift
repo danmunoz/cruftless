@@ -22,11 +22,16 @@ extension AppModel {
         drillDowns = drillDowns.filter { catalog.ids.contains($0.key) }
 
         if let inventory {
+            let retainsGradleCleanableBytes = catalog.ids.contains(LocationCatalog.gradleCaches.id)
+                && inventory.entries.contains { $0.location.id == LocationCatalog.gradleCaches.id }
             self.inventory = Inventory(
                 entries: inventory.entries.filter { catalog.ids.contains($0.id) },
                 capacity: inventory.capacity,
                 scannedAt: inventory.scannedAt,
-                sizesAreUpperBound: inventory.sizesAreUpperBound
+                sizesAreUpperBound: inventory.sizesAreUpperBound,
+                optInReclaimableBytes: retainsGradleCleanableBytes
+                    ? inventory.optInReclaimableBytes
+                    : 0
             )
         }
 
@@ -84,6 +89,14 @@ extension AppModel {
         case let .locationContents(locationId, contents):
             drillDowns[locationId] = contents
             tally.contentsReceived.insert(locationId)
+            if tracksProgress, locationId == LocationCatalog.gradleCaches.id {
+                scanProgress.recordOptInReclaimableBytes(
+                    GradleCacheEntryPolicy.cleanableBytes(
+                        in: contents.children ?? [],
+                        cacheRoots: LocationCatalog.gradleCaches.resolveRoots()
+                    )
+                )
+            }
         case let .completed(newInventory):
             inventory = newInventory
             scannedLocationIds.formUnion(tally.landedIds)
