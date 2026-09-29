@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0] - 2026-09-29
+
+### Added
+
+- Inventory Android SDK packages, virtual devices, and Gradle caches alongside
+  Xcode data. Eligible Gradle cache entries can be cleared after review, with
+  additional safeguards for higher-risk entries.
+- Check for app updates from Settings.
+
+### Improved
+
+- Filter the inventory by development environment and see clearer explanations
+  when cleanup actions are unavailable.
+
 ## [1.1.0] - 2026-09-28
 
 ### Improved
