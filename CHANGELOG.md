@@ -1,11 +1,18 @@
 # Changelog
 
-## [1.2.0]
+## [1.2.0] - 2026-09-29
 
-### Changes
+### Added
 
-- Android development support (#6) (815a140)
-- read Homebrew download URL from gh assets (#5) (4969a22)
+- Inventory Android SDK packages, virtual devices, and Gradle caches alongside
+  Xcode data. Eligible Gradle cache entries can be cleared after review, with
+  additional safeguards for higher-risk entries.
+- Check for app updates from Settings.
+
+### Improved
+
+- Filter the inventory by development environment and see clearer explanations
+  when cleanup actions are unavailable.
 
 ## [1.1.0] - 2026-09-28
 
