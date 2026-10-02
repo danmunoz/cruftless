@@ -13,6 +13,9 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
     public let lastUsedAt: Date?
     public let deviceDirectory: URL
     public let isUnavailable: Bool
+    public let toolchainID: String?
+    public let toolchainGeneration: UUID?
+    public let mutationIssue: String?
 
     public var dataDirectory: URL {
         deviceDirectory.appendingPathComponent("data", isDirectory: true)
@@ -25,7 +28,10 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
         state: SimDeviceState,
         lastUsedAt: Date?,
         deviceDirectory: URL,
-        isUnavailable: Bool = false
+        isUnavailable: Bool = false,
+        toolchainID: String? = nil,
+        toolchainGeneration: UUID? = nil,
+        mutationIssue: String? = nil
     ) {
         self.udid = udid
         self.name = name
@@ -34,6 +40,9 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
         self.lastUsedAt = lastUsedAt
         self.deviceDirectory = deviceDirectory
         self.isUnavailable = isUnavailable
+        self.toolchainID = toolchainID
+        self.toolchainGeneration = toolchainGeneration
+        self.mutationIssue = mutationIssue
     }
 
     public func markingUnavailable(_ unavailable: Bool) -> SimDevice {
@@ -44,7 +53,10 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
             state: state,
             lastUsedAt: lastUsedAt,
             deviceDirectory: deviceDirectory,
-            isUnavailable: unavailable
+            isUnavailable: unavailable,
+            toolchainID: toolchainID,
+            toolchainGeneration: toolchainGeneration,
+            mutationIssue: mutationIssue
         )
     }
 }

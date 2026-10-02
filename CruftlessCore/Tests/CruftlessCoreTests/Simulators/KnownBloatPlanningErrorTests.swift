@@ -33,6 +33,26 @@ struct KnownBloatPlanningErrorTests {
         return (device, base)
     }
 
+    @Test("Path-only bloat cleanup needs no Xcode and rechecks device state", arguments: [SimDeviceState.shutdown, .booted])
+    func bloatWithoutToolchain(executionState: SimDeviceState) async throws {
+        let fixture = try makeDevice(state: .shutdown)
+        defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
+        let device = SimDevice(
+            udid: UUID().uuidString, name: "Fixture simulator", runtime: "missing", state: .shutdown,
+            lastUsedAt: nil, deviceDirectory: fixture.device.deviceDirectory, mutationIssue: "Simulator tools unavailable"
+        )
+        let plan = try DeletionPlanner.simulatorBloat(for: device, context: PlanningContext())
+        #expect(plan.simulatorToolchainGeneration == nil)
+        let metadata: [String: Any] = ["UDID": device.udid, "name": device.name, "state": executionState.rawValue]
+        try PropertyListSerialization.data(fromPropertyList: metadata, format: .xml, options: 0)
+            .write(to: device.deviceDirectory.appendingPathComponent("device.plist"))
+        let result = await DeletionExecutor().execute(plan)
+        let exists = FileManager.default.fileExists(atPath: device.dataDirectory.appendingPathComponent("tmp").path)
+        #expect(result.allSucceeded == executionState.isShutdown)
+        #expect(exists == !executionState.isShutdown)
+        if !executionState.isShutdown { #expect(result.totalFreedBytes == 0) }
+    }
+
     @Test("A booted device is refused with readable copy")
     func bootedDeviceRefused() throws {
         let fixture = try makeDevice(state: .booted, name: "Booted iPhone")

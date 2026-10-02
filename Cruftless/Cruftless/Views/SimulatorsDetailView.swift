@@ -151,16 +151,11 @@ public struct SimulatorsDetailView: View {
             icon: .symbol("exclamationmark.triangle"),
             title: device.name,
             sizeBytes: sizeBytes(for: device),
-            action: RowAction(DesignTokens.actionLabel(for: .irreversible), isDestructive: true) { plan(.delete, for: device) }
+            action: device.mutationIssue == nil
+                ? RowAction(DesignTokens.actionLabel(for: .irreversible), isDestructive: true) { plan(.delete, for: device) }
+                : nil
         ) {
-            HStack(spacing: 4) {
-                Text(Naming.runtime(identifier: device.runtime))
-                    .foregroundStyle(.secondary)
-                Text(verbatim: "·")
-                    .foregroundStyle(.tertiary)
-                Text("Can't boot")
-                    .foregroundStyle(.secondary)
-            }
+            deviceStatusCaption(device, status: "Can't boot")
         }
     }
 
@@ -178,17 +173,40 @@ public struct SimulatorsDetailView: View {
     /// Booted shows a green dot.
     @ViewBuilder
     private func deviceCaption(_ device: SimDevice) -> some View {
-        if device.state.isBooted {
-            HStack(spacing: 4) {
-                Circle().fill(.green).frame(width: 6, height: 6)
-                Text("Booted").foregroundStyle(.secondary)
-            }
+        deviceStatusCaption(device)
+    }
+
+    private func eraseAction(for device: SimDevice) -> RowAction? {
+        guard device.mutationIssue == nil else { return nil }
+        return RowAction(device.state.isBooted ? "Shut Down and Erase" : "Erase") {
+            plan(.erase, for: device)
         }
     }
 
-    private func eraseAction(for device: SimDevice) -> RowAction {
-        RowAction(device.state.isBooted ? "Shut Down and Erase" : "Erase") {
-            plan(.erase, for: device)
+    @ViewBuilder
+    private func deviceStatusCaption(_ device: SimDevice, status: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text(Naming.runtime(identifier: device.runtime))
+                    .foregroundStyle(.secondary)
+                if let status {
+                    Text(verbatim: "·")
+                        .foregroundStyle(.tertiary)
+                    Text(status)
+                        .foregroundStyle(.secondary)
+                } else if device.state.isBooted {
+                    Text(verbatim: "·")
+                        .foregroundStyle(.tertiary)
+                    Text("Booted")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let mutationIssue = device.mutationIssue {
+                Text(mutationIssue)
+                    .foregroundStyle(.orange)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

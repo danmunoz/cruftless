@@ -3,6 +3,7 @@ import CruftlessCore
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     case general
+    case support
     case about
 
     public var id: Self {
@@ -12,6 +13,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     var title: LocalizedStringResource {
         switch self {
         case .general: "General"
+        case .support: "Support"
         case .about: "About"
         }
     }
@@ -19,6 +21,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
+        case .support: "questionmark.circle"
         case .about: "info.circle"
         }
     }
@@ -26,10 +29,18 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable {
 
 public struct SettingsView: View {
     public let settings: SettingsModel
+    public let simulatorToolchainResolver: SimulatorToolchainResolver
+    public let appModel: AppModel?
     @State private var selection: SettingsSection = .general
 
-    public init(settings: SettingsModel) {
+    public init(
+        settings: SettingsModel,
+        simulatorToolchainResolver: SimulatorToolchainResolver = .shared,
+        appModel: AppModel? = nil
+    ) {
         self.settings = settings
+        self.simulatorToolchainResolver = simulatorToolchainResolver
+        self.appModel = appModel
     }
 
     public var body: some View {
@@ -44,6 +55,12 @@ public struct SettingsView: View {
                 AboutSettingsPane()
             } label: {
                 Label(SettingsSection.about.title, systemImage: SettingsSection.about.symbol)
+            }
+
+            Tab(value: .support) {
+                SupportSettingsPane(resolver: simulatorToolchainResolver, model: appModel)
+            } label: {
+                Label(SettingsSection.support.title, systemImage: SettingsSection.support.symbol)
             }
         }
         .frame(width: SettingsMetrics.paneWidth)

@@ -24,4 +24,12 @@ extension DeletionExecutor {
             }
         )
     }
+
+    static func refusedForToolchainChange(_ plan: DeletionPlan) -> DeletionResult {
+        DeletionResult(
+            items: plan.items.map {
+                ItemOutcome(target: $0, status: .notAttempted(reason: .toolchainChanged), freedBytes: 0)
+            }
+        )
+    }
 }

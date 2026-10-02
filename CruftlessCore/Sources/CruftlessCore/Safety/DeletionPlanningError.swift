@@ -28,6 +28,7 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case runtimeNotDeletable(name: String)
     /// CoreSimulator is already removing this runtime and has not finished.
     case runtimeBeingDeleted(name: String)
+    case runtimeToolingUnavailable(name: String, reason: String)
     case protectedDescendantInSimulator(name: String, path: String)
 
     public var errorDescription: String? {
@@ -60,6 +61,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(name) can't be deleted: it is bundled with Xcode."
         case let .runtimeBeingDeleted(name):
             "\(name) is already being removed. It leaves this list when CoreSimulator finishes."
+        case let .runtimeToolingUnavailable(name, reason):
+            "\(name) can't be changed yet: \(reason)"
         case let .protectedDescendantInSimulator(name, path):
             "\(name) can't be changed: \(path) contains a path you marked as protected."
         }

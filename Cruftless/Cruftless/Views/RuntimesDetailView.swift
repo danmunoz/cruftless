@@ -77,6 +77,11 @@ public struct RuntimesDetailView: View {
         if runtime.state.isBeingDeleted {
             Text("Removing…")
                 .foregroundStyle(.secondary)
+        } else if case let .unavailable(reason) = runtime.mutationCapability {
+            Text("Actions unavailable · \(reason)")
+                .foregroundStyle(.secondary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         } else if runtime.isDeletable {
             Text("Build \(runtime.build)")
                 .foregroundStyle(.secondary)

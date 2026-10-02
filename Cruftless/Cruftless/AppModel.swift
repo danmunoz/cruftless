@@ -43,7 +43,11 @@ public final class AppModel {
     public var scanFailure: String? {
         guard !scanFailures.isEmpty else { return nil }
         return scanFailures.keys.sorted()
-            .compactMap { id in scanFailures[id].map { "\(id): \($0)" } }
+            .compactMap { id in
+                guard let reason = scanFailures[id] else { return nil }
+                let title = LocationCatalog.all.first(where: { $0.id == id })?.title ?? "Development location"
+                return "\(title): \(reason)"
+            }
             .joined(separator: "\n")
     }
 
