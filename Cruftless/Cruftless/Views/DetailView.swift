@@ -63,7 +63,7 @@ public struct DetailView: View {
                 loadingTitle: "Reading \(location.title)…",
                 error: contents?.failureReason,
                 errorTitle: "Couldn't read \(location.title)",
-                isEmpty: children.isEmpty,
+                isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
                 emptySymbol: "folder",
                 emptyTitle: "Nothing here",
                 emptyMessage: "This location has no items Cruftless can list.",
@@ -114,6 +114,25 @@ public struct DetailView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(contents?.androidSDKDiagnostics ?? []) { diagnostic in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(diagnostic.category.rawValue) · \(diagnostic.reason.message)")
+                        .font(.system(size: 10, weight: .medium))
+                    Text(diagnostic.relativePath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .textSelection(.enabled)
+                    Text(
+                        "source.properties: \(diagnostic.sourcePropertiesStatus.rawValue) · " +
+                            "package.xml: \(diagnostic.packageXMLStatus.rawValue)"
+                    )
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(7)
+                .background(.orange.opacity(0.08), in: .rect(cornerRadius: 6))
             }
 
             Text(

@@ -7,6 +7,8 @@ public struct DeletionPlan: Sendable, Hashable {
     /// Tracked locations affected by execution.
     public let affectedLocationIds: Set<String>
     public let policyGeneration: UInt64
+    /// Toolchain snapshot used by simulator listings in this plan.
+    public let simulatorToolchainGeneration: UUID?
     package let isPlannerAuthorized: Bool
     package let gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
 
@@ -36,6 +38,7 @@ public struct DeletionPlan: Sendable, Hashable {
         confirmLabel: String = "Delete Permanently",
         affectedLocationIds: Set<String> = [],
         policyGeneration: UInt64 = 0,
+        simulatorToolchainGeneration: UUID? = nil,
         isPlannerAuthorized: Bool = false,
         gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement? = nil
     ) {
@@ -43,6 +46,7 @@ public struct DeletionPlan: Sendable, Hashable {
         self.confirmLabel = confirmLabel
         self.affectedLocationIds = affectedLocationIds
         self.policyGeneration = policyGeneration
+        self.simulatorToolchainGeneration = simulatorToolchainGeneration
         self.isPlannerAuthorized = isPlannerAuthorized
         self.gradleCacheRiskAcknowledgement = gradleCacheRiskAcknowledgement
     }
@@ -52,7 +56,8 @@ public struct DeletionPlan: Sendable, Hashable {
         _ target: DeletionTarget,
         confirmLabel: String? = nil,
         affectedLocationIds: Set<String> = [],
-        policyGeneration: UInt64 = 0
+        policyGeneration: UInt64 = 0,
+        simulatorToolchainGeneration: UUID? = nil
     ) -> DeletionPlan {
         let label: String = if let explicitLabel = confirmLabel {
             explicitLabel
@@ -68,7 +73,8 @@ public struct DeletionPlan: Sendable, Hashable {
             items: [target],
             confirmLabel: label,
             affectedLocationIds: affectedLocationIds,
-            policyGeneration: policyGeneration
+            policyGeneration: policyGeneration,
+            simulatorToolchainGeneration: simulatorToolchainGeneration
         )
     }
 
@@ -93,19 +99,22 @@ public struct DeletionPlan: Sendable, Hashable {
         confirmLabel: String? = nil,
         affectedLocationIds: Set<String> = [],
         policyGeneration: UInt64 = 0,
+        simulatorToolchainGeneration: UUID? = nil,
         gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement? = nil
     ) -> DeletionPlan {
         let plan = single(
             target,
             confirmLabel: confirmLabel,
             affectedLocationIds: affectedLocationIds,
-            policyGeneration: policyGeneration
+            policyGeneration: policyGeneration,
+            simulatorToolchainGeneration: simulatorToolchainGeneration
         )
         return DeletionPlan(
             items: plan.items,
             confirmLabel: plan.confirmLabel,
             affectedLocationIds: affectedLocationIds,
             policyGeneration: policyGeneration,
+            simulatorToolchainGeneration: simulatorToolchainGeneration,
             isPlannerAuthorized: true,
             gradleCacheRiskAcknowledgement: gradleCacheRiskAcknowledgement
         )

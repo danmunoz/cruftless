@@ -2,10 +2,17 @@ import Darwin
 import Foundation
 
 public protocol SimulatorCommandExecuting: Sendable {
+    func beginToolchainOperation(generation: UUID?) async -> Bool
+    func endToolchainOperation(generation: UUID?) async
     func shutdownSimulator(udid: String) async throws
     func eraseSimulator(udid: String) async throws
     func deleteSimulator(udid: String) async throws
     func deleteRuntime(identifier: String) async throws
+}
+
+public extension SimulatorCommandExecuting {
+    func beginToolchainOperation(generation: UUID?) async -> Bool { true }
+    func endToolchainOperation(generation: UUID?) async {}
 }
 
 public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
@@ -13,6 +20,14 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 
     public init(runner: SimctlRunner = SimctlRunner()) {
         self.runner = runner
+    }
+
+    public func beginToolchainOperation(generation: UUID?) async -> Bool {
+        await runner.beginsToolchainOperation(generation: generation)
+    }
+
+    public func endToolchainOperation(generation: UUID?) async {
+        await runner.endsToolchainOperation(generation: generation)
     }
 
     public func shutdownSimulator(udid: String) async throws {
@@ -36,7 +51,7 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 
 /// The sole executor permitted to permanently delete files or mutate simulators.
 public actor DeletionExecutor {
-    private let simulatorExecutor: SimulatorCommandExecuting
+    let simulatorExecutor: SimulatorCommandExecuting
     let policyGenerationAuthority: PolicyGenerationAuthority
     let protectedPathsStore: ProtectedPathsStore
     let capacitySampler: @Sendable () async -> Int64

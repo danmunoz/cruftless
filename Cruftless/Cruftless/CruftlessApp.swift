@@ -28,7 +28,7 @@ struct CruftlessApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(settings: model.settings)
+            SettingsView(settings: model.settings, simulatorToolchainResolver: .shared, appModel: model)
         }
         .windowResizability(.contentSize)
     }

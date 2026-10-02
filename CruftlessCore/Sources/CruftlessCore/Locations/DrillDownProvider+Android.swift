@@ -1,12 +1,20 @@
 import Darwin
 import Foundation
 
+struct AndroidSDKPackageScan: Sendable {
+    let children: [ChildEntry]
+    let issue: String?
+    let diagnostics: [AndroidSDKDiagnostic]
+    let diagnosticCount: Int
+    let diagnosticsTruncated: Bool
+}
+
 extension DrillDownProvider {
     static func androidSDKPackages(
         in roots: [URL],
         rootSizes: [RootSize] = [],
         knownSizes: [String: [String: SizeResult]] = [:]
-    ) -> (children: [ChildEntry], issue: String?) {
+    ) -> AndroidSDKPackageScan {
         var discovery = SDKPackageDiscovery(knownSizes: knownSizes)
         discovery.scan(roots)
         let packages = discovery.packages.values.sorted { $0.reclaimableBytes > $1.reclaimableBytes }
@@ -21,9 +29,12 @@ extension DrillDownProvider {
             root: roots.first,
             consequence: "Read-only Android SDK data that is not classified as a package."
         ))
-        return (
-            children.filter { $0.reclaimableBytes > 0 }.sorted { $0.reclaimableBytes > $1.reclaimableBytes },
-            discovery.issue
+        return AndroidSDKPackageScan(
+            children: children.filter { $0.reclaimableBytes > 0 }.sorted { $0.reclaimableBytes > $1.reclaimableBytes },
+            issue: discovery.issue,
+            diagnostics: discovery.diagnostics,
+            diagnosticCount: discovery.diagnosticCount,
+            diagnosticsTruncated: discovery.diagnosticsTruncated
         )
     }
 
@@ -58,7 +69,7 @@ extension DrillDownProvider {
         let classifiedTotal = children.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
         let remainder = max(0, measuredTotal - classifiedTotal)
         if remainder > 0 {
-        children.append(ChildEntry(
+            children.append(ChildEntry(
                 id: "androidAVDs-unclassified",
                 name: "Unclassified AVD contents",
                 url: roots.first ?? URL(fileURLWithPath: "/"),
@@ -104,7 +115,6 @@ extension DrillDownProvider {
             consequence: consequence
         )
     }
-
 }
 
 private struct SDKPackageDiscovery {
@@ -113,36 +123,51 @@ private struct SDKPackageDiscovery {
     private var visited = 0
     private var discovered = 0
     private var examinedEntries = 0
+    private(set) var diagnosticCount = 0
     private(set) var packages: [String: ChildEntry] = [:]
     private(set) var issue: String?
+    private(set) var diagnostics: [AndroidSDKDiagnostic] = []
+    private(set) var diagnosticsTruncated = false
 
     init(knownSizes: [String: [String: SizeResult]]) {
         self.knownSizes = knownSizes
     }
 
     mutating func scan(_ roots: [URL]) {
-        for root in roots { scan(root) }
+        for root in roots.sorted(by: { $0.path < $1.path }) {
+            scan(root)
+        }
+        if issue?.contains("limit") == true,
+           !diagnostics.contains(where: { $0.reason == .discoveryLimitReached }),
+           let root = roots.first {
+            addDiagnostic(for: root, in: root, category: .unknown, reason: .discoveryLimitReached)
+        }
+        diagnostics.sort { $0.id < $1.id }
     }
 
     private mutating func scan(_ root: URL) {
         var rootStat = stat()
         guard lstat(ProtectedPaths.normalize(root), &rootStat) == 0 else { return }
         if hasUnsupportedTopLevelEntries(in: root) {
+            addDiagnostic(for: root, in: root, category: .unknown, reason: .unsupportedLayout)
             issue = "Some SDK contents are outside the supported package layouts. Inventory is incomplete."
         }
         let candidates = packageDirectories(in: root, rootDevice: UInt64(rootStat.st_dev))
         for candidate in candidates {
             visited += 1
             guard visited <= 4096 else {
+                addDiagnostic(for: root, in: root, category: .unknown, reason: .discoveryLimitReached)
                 issue = "SDK package discovery reached its bounded directory or entry limit. Inventory is incomplete."
                 return
             }
-            guard let package = RootResolver.androidSDKPackage(at: candidate, sdkRoot: root) else {
-                if hasPackageMetadata(candidate) {
-                    issue = "Some SDK package metadata is malformed or does not match its layout. Inventory is incomplete."
+            let result = AndroidSDKMetadataReader.read(directory: candidate, root: root)
+            if let diagnostic = result.diagnostic {
+                record(diagnostic)
+                if issue == nil {
+                    issue = "Some SDK package metadata could not be verified. Unclassified space remains included in the total."
                 }
-                continue
             }
+            guard let package = result.package else { continue }
             let path = ProtectedPaths.normalize(candidate)
             packages[path] = DrillDownProvider.packageEntry(
                 package,
@@ -153,11 +178,33 @@ private struct SDKPackageDiscovery {
         }
     }
 
-    private func hasPackageMetadata(_ directory: URL) -> Bool {
-        ["package.xml", "source.properties"].contains { name in
-            var metadataStat = stat()
-            return lstat(directory.appendingPathComponent(name).path(percentEncoded: false), &metadataStat) == 0
+    private mutating func addDiagnostic(
+        for directory: URL,
+        in root: URL,
+        category: DiagnosticSDKCategory,
+        reason: AndroidSDKDiagnosticReason
+    ) {
+        let rootPath = ProtectedPaths.normalize(root).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let directoryPath = ProtectedPaths.normalize(directory)
+        let prefix = "/" + rootPath + "/"
+        let relative = directoryPath.hasPrefix(prefix) ? String(directoryPath.dropFirst(prefix.count)) : "."
+        record(AndroidSDKDiagnostic(
+            relativePath: String(relative.prefix(160)),
+            category: category,
+            reason: reason,
+            sourcePropertiesStatus: .missing,
+            packageXMLStatus: .missing,
+            identityMatchesLayout: false
+        ))
+    }
+
+    private mutating func record(_ diagnostic: AndroidSDKDiagnostic) {
+        diagnosticCount += 1
+        guard diagnostics.count < 128 else {
+            diagnosticsTruncated = true
+            return
         }
+        diagnostics.append(diagnostic)
     }
 
     private mutating func hasUnsupportedTopLevelEntries(in root: URL) -> Bool {
@@ -171,7 +218,7 @@ private struct SDKPackageDiscovery {
         var entries = 0
         while let entry = readdir(directory) {
             entries += 1
-            guard entries <= 16_384 else {
+            guard entries <= 16384 else {
                 issue = "SDK package discovery reached its bounded directory or entry limit. Inventory is incomplete."
                 return false
             }
@@ -202,7 +249,7 @@ private struct SDKPackageDiscovery {
                 }
             }
         }
-        return result.filter { RootResolver.sdkPackagePath(for: $0, sdkRoot: root) != nil }
+        return result.filter { RootResolver.sdkPackagePath(for: $0, sdkRoot: root) != nil }.sorted { $0.path < $1.path }
     }
 
     private mutating func childDirectories(of parent: URL, rootDevice: UInt64) -> [URL] {
@@ -210,7 +257,7 @@ private struct SDKPackageDiscovery {
         defer { closedir(directory) }
         var result: [URL] = []
         while let entry = readdir(directory) {
-            guard examinedEntries < 16_384 else {
+            guard examinedEntries < 16384 else {
                 issue = "SDK package discovery reached its bounded directory or entry limit. Inventory is incomplete."
                 return result
             }
@@ -229,6 +276,6 @@ private struct SDKPackageDiscovery {
             }
             result.append(child)
         }
-        return result
+        return result.sorted { $0.path < $1.path }
     }
 }

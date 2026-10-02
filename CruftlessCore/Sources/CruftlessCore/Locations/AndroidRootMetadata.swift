@@ -15,28 +15,7 @@ extension RootResolver {
     }
 
     static func androidSDKPackage(at directory: URL, sdkRoot: URL) -> AndroidSDKPackage? {
-        guard let expectedPath = sdkPackagePath(for: directory, sdkRoot: sdkRoot) else { return nil }
-        let sourceURL = directory.appendingPathComponent("source.properties")
-        let sourceValues = boundedRegularFile(sourceURL).map(propertyValues) ?? [:]
-        let sourcePath = sourceValues["Pkg.Path"]
-        guard sourcePath == nil || sourcePath == expectedPath else { return nil }
-
-        if let metadata = AndroidSDKPackageXML.read(at: directory.appendingPathComponent("package.xml")),
-           metadata.packagePath == expectedPath {
-            return AndroidSDKPackage(
-                displayName: metadata.displayName ?? sourceValues["Pkg.Desc"] ?? expectedPath,
-                packagePath: expectedPath,
-                revision: metadata.revision ?? sourceValues["Pkg.Revision"]
-            )
-        }
-
-        let description = sourceValues["Pkg.Desc"]
-        guard description.map({ !$0.isEmpty }) == true || sourceValues["Pkg.Revision"] != nil else { return nil }
-        return AndroidSDKPackage(
-            displayName: description ?? expectedPath,
-            packagePath: expectedPath,
-            revision: sourceValues["Pkg.Revision"]
-        )
+        AndroidSDKMetadataReader.read(directory: directory, root: sdkRoot).package
     }
 
     static func sdkPackagePath(for directory: URL, sdkRoot: URL) -> String? {
@@ -239,53 +218,5 @@ extension RootResolver {
             displayName: displayName,
             systemImage: values["target"] ?? config["image.sysdir.1"]
         )
-    }
-}
-
-private final class AndroidSDKPackageXML: NSObject, XMLParserDelegate {
-    private(set) var packagePath = ""
-    private(set) var displayName: String?
-    private(set) var revision: String?
-    private var isReadingDisplayName = false
-    private var revisionElement: String?
-    private var revisionParts: [String: String] = [:]
-    private var localPackageCount = 0
-
-    static func read(at url: URL) -> AndroidSDKPackageXML? {
-        guard let data = RootResolver.boundedSDKMetadata(at: url, maximumBytes: 64 * 1024) else { return nil }
-        let result = AndroidSDKPackageXML()
-        let parser = XMLParser(data: data)
-        parser.delegate = result
-        parser.shouldResolveExternalEntities = false
-        guard parser.parse(), !result.packagePath.isEmpty else { return nil }
-        return result
-    }
-
-    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
-                qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
-        switch elementName.split(separator: ":").last.map(String.init) {
-        case "localPackage":
-            localPackageCount += 1
-            guard localPackageCount == 1 else { parser.abortParsing(); return }
-            packagePath = attributeDict["path"] ?? ""
-        case "display-name": isReadingDisplayName = true
-        case "major", "minor", "micro": revisionElement = elementName.split(separator: ":").last.map(String.init)
-        default: break
-        }
-    }
-
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if isReadingDisplayName { displayName = (displayName ?? "") + string }
-        if let revisionElement { revisionParts[revisionElement] = (revisionParts[revisionElement] ?? "") + string }
-    }
-
-    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        let localName = elementName.split(separator: ":").last.map(String.init)
-        if localName == "display-name" { isReadingDisplayName = false }
-        if localName == "major" || localName == "minor" || localName == "micro" { revisionElement = nil }
-        if localName == "revision" {
-            let parts = ["major", "minor", "micro"].compactMap { revisionParts[$0]?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if !parts.isEmpty { revision = parts.joined(separator: ".") }
-        }
     }
 }

@@ -19,6 +19,7 @@ public extension DeletionPlanner {
         size: Int64 = 0,
         context: PlanningContext
     ) throws -> DeletionPlan {
+        try rejectToolchainIssue(of: device)
         try rejectProtectedDescendants(of: device, protectedPaths: context.protectedPaths)
         let udid = try SimctlIdentifier.validatedUDID(device.udid)
         let label = device.state.isBooted ? "Shut Down and Erase" : "Delete Permanently"
@@ -35,7 +36,8 @@ public extension DeletionPlanner {
             target,
             confirmLabel: label,
             affectedLocationIds: [LocationCatalog.simulatorDevices.id],
-            policyGeneration: context.policyGeneration
+            policyGeneration: context.policyGeneration,
+            simulatorToolchainGeneration: device.toolchainGeneration
         )
     }
 
@@ -45,6 +47,7 @@ public extension DeletionPlanner {
         size: Int64 = 0,
         context: PlanningContext
     ) throws -> DeletionPlan {
+        try rejectToolchainIssue(of: device)
         try rejectProtectedDescendants(of: device, protectedPaths: context.protectedPaths)
         let udid = try SimctlIdentifier.validatedUDID(device.udid)
         let target = DeletionTarget.simulatorDelete(
@@ -58,7 +61,8 @@ public extension DeletionPlanner {
             target,
             confirmLabel: "Delete Permanently",
             affectedLocationIds: [LocationCatalog.simulatorDevices.id],
-            policyGeneration: context.policyGeneration
+            policyGeneration: context.policyGeneration,
+            simulatorToolchainGeneration: device.toolchainGeneration
         )
     }
 
@@ -67,6 +71,9 @@ public extension DeletionPlanner {
         _ runtime: SimRuntime,
         context: PlanningContext
     ) throws -> DeletionPlan {
+        if case let .unavailable(reason) = runtime.mutationCapability {
+            throw DeletionPlanningError.runtimeToolingUnavailable(name: runtime.name, reason: reason)
+        }
         guard runtime.isDeletable else {
             throw DeletionPlanningError.runtimeNotDeletable(name: runtime.name)
         }
@@ -93,7 +100,8 @@ public extension DeletionPlanner {
             target,
             confirmLabel: "Delete Permanently",
             affectedLocationIds: [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id],
-            policyGeneration: context.policyGeneration
+            policyGeneration: context.policyGeneration,
+            simulatorToolchainGeneration: runtime.toolchainGeneration
         )
     }
 
@@ -112,6 +120,12 @@ public extension DeletionPlanner {
                 name: device.name,
                 path: device.deviceDirectory.path
             )
+        }
+    }
+
+    private static func rejectToolchainIssue(of device: SimDevice) throws {
+        if let reason = device.mutationIssue {
+            throw DeletionPlanningError.runtimeToolingUnavailable(name: device.name, reason: reason)
         }
     }
 }

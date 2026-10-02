@@ -5,6 +5,7 @@ public enum NotAttemptedReason: Sendable, Hashable {
     case cancelled
     case executorBusy
     case policyChanged
+    case toolchainChanged
     case unverifiedPlan
 
     /// User-facing copy for this reason.
@@ -16,6 +17,9 @@ public enum NotAttemptedReason: Sendable, Hashable {
             "Not attempted: another deletion is already running."
         case .policyChanged:
             "Not attempted: platform selection changed after this review was created. Review the current inventory again."
+        case .toolchainChanged:
+            "Not attempted: the Xcode simulator tools changed or are no longer available. " +
+                "Refresh simulator listings and review the action again."
         case .unverifiedPlan:
             "Not attempted: path deletion plans must come from the deletion planner. Review the current inventory again."
         }

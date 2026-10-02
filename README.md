@@ -38,6 +38,11 @@ by Apple.
   read-only; selected Gradle cache entries have a separate warning and review.
 - Inventory and cleanup run locally, with no account, app analytics, or
   telemetry. Manual update checks contact GitHub for public release metadata.
+- **Settings → Support** can prepare a local diagnostic report for review. It
+  contains allowlisted version, toolchain, and Android SDK status fields;
+  paths, usernames, host details, logs, and inventories are excluded. Cruftless
+  only copies or saves the preview when you choose those actions. Reports are
+  never sent automatically; the issue tracker link does not include report data.
 
 ## What Cruftless scans
 

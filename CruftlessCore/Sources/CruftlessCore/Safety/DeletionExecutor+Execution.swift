@@ -22,12 +22,26 @@ extension DeletionExecutor {
         }
         guard let admitted else { return Self.refusedForPolicyChange(plan) }
         guard admitted else { return Self.refusedAsConcurrent(plan) }
+        let hasSimulatorMutation = plan.items.contains(where: Self.isSimulatorMutation)
+        if hasSimulatorMutation,
+           !(await simulatorExecutor.beginToolchainOperation(generation: plan.simulatorToolchainGeneration)) {
+            isExecuting = false
+            return Self.refusedForToolchainChange(plan)
+        }
         self.onProgress = onProgress
         defer {
             isExecuting = false
             self.onProgress = nil
         }
 
+        return await executeItems(plan, admission: admission, hasSimulatorMutation: hasSimulatorMutation)
+    }
+
+    private func executeItems(
+        _ plan: DeletionPlan,
+        admission: (locationIDs: Set<String>, gradleAcknowledgement: GradleCacheRiskAcknowledgement?),
+        hasSimulatorMutation: Bool
+    ) async -> DeletionResult {
         var outcomes: [ItemOutcome] = []
         outcomes.reserveCapacity(plan.items.count)
         for (index, item) in plan.items.enumerated() {
@@ -48,7 +62,17 @@ extension DeletionExecutor {
                 gradleCacheRiskAcknowledgement: admission.gradleAcknowledgement
             ))
         }
+        if hasSimulatorMutation {
+            await simulatorExecutor.endToolchainOperation(generation: plan.simulatorToolchainGeneration)
+        }
         return DeletionResult(items: outcomes)
+    }
+
+    private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {
+        switch target {
+        case .simulatorErase, .simulatorDelete, .runtimeDelete: true
+        case .path: false
+        }
     }
 
     private func admissionScope(

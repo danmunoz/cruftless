@@ -211,7 +211,7 @@ struct AndroidDiscoveryEdgeTests {
         let result = DrillDownProvider.androidSDKPackages(in: [root])
 
         #expect(result.children.isEmpty)
-        #expect(result.issue?.contains("malformed or does not match") == true)
+        #expect(result.diagnostics.first?.reason == .malformedXML)
     }
 
     @Test("Malformed SDK package metadata is visible as incomplete inventory")
@@ -247,7 +247,7 @@ struct AndroidDiscoveryEdgeTests {
         let result = DrillDownProvider.androidSDKPackages(in: [root])
 
         #expect(result.children.isEmpty)
-        #expect(result.issue?.contains("malformed or does not match") == true)
+        #expect(result.diagnostics.contains { $0.reason == .symlinkMetadata })
     }
 
     @Test("Two AVD registry entries for one data directory are reported as ambiguous")

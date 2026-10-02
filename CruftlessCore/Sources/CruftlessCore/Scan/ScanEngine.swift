@@ -4,52 +4,50 @@ public actor ScanEngine {
     /// Lists the installed simulator runtimes.
     public typealias RuntimeLister = @Sendable () async throws -> [SimRuntime]
 
+    /// Lists runtimes together with the toolchain authority captured by that lookup.
+    public typealias RuntimeCatalogLister = @Sendable () async throws -> SimulatorRuntimeListing
+
     /// Lists the simulator devices, reconciled against a runtime list the scan has already fetched.
     public typealias DeviceLister = @Sendable ([SimRuntime]) -> [SimDevice]
-
-    private var cachedCurrentInventory: Inventory?
-    private var currentGeneration: UInt64 = 0
-    private var cachedGradleCacheCleanableBytes: Int64 = 0
+    var cachedCurrentInventory: Inventory?
+    var currentGeneration: UInt64 = 0
+    var cachedGradleCacheCleanableBytes: Int64 = 0
 
     /// Sizes captured during the scan, keyed by location id, then by resolved root path, then by each measured path under it.
-    private var childSizeCache: [String: [String: [String: SizeResult]]] = [:]
+    var childSizeCache: [String: [String: [String: SizeResult]]] = [:]
 
     private let signposts = ScanSignposts.shared
-    private let runtimeLister: RuntimeLister
-    private let deviceLister: DeviceLister
+    private let runtimeLister: RuntimeCatalogLister
+    private let deviceLister: RuntimeCatalogDeviceLister
 
     /// Ceiling on the `simctl` call that sizes the runtimes row.
     package static let simctlScanTimeout: Duration = .seconds(10)
 
     /// Creates a scan engine with optional simulator data providers.
-    public init(runtimeLister: RuntimeLister? = nil, deviceLister: DeviceLister? = nil) {
+    public init(
+        runtimeLister: RuntimeLister? = nil,
+        deviceLister: DeviceLister? = nil,
+        runtimeCatalogLister: RuntimeCatalogLister? = nil
+    ) {
         let service = SimulatorService(
             simctlRunner: SimctlRunner(
                 executor: DefaultSimctlExecutor(timeout: Self.simctlScanTimeout)
             )
         )
-        self.runtimeLister = runtimeLister ?? { try await service.runtimes() }
-        self.deviceLister = deviceLister ?? { service.devices(reconciledAgainst: $0) }
-    }
-
-    public func cachedInventory() -> Inventory? {
-        cachedCurrentInventory
-    }
-
-    public func invalidate(generation: UInt64? = nil) {
-        if let generation {
-            guard generation >= currentGeneration else { return }
-            currentGeneration = generation
+        if let runtimeCatalogLister {
+            self.runtimeLister = runtimeCatalogLister
+        } else if let runtimeLister {
+            self.runtimeLister = {
+                SimulatorRuntimeListing(runtimes: try await runtimeLister())
+            }
+        } else {
+            self.runtimeLister = { try await service.runtimeListing() }
         }
-        cachedCurrentInventory = nil
-        childSizeCache = [:]
-        cachedGradleCacheCleanableBytes = 0
-    }
-
-    /// Sizes of a location's immediate children, keyed by name, flattened across its roots.
-    public func childSizes(for locationId: String) -> [String: Int64] {
-        guard let byRoot = childSizeCache[locationId] else { return [:] }
-        return Self.immediateChildSizes(in: byRoot)
+        if let deviceLister {
+            self.deviceLister = { deviceLister($0.runtimes) }
+        } else {
+            self.deviceLister = { service.devices(reconciledAgainst: $0) }
+        }
     }
 
     /// What scanning one location produced: the row (if any) and, separately, a reason the row's number is incomplete.
@@ -171,7 +169,7 @@ public actor ScanEngine {
     ) async -> [InventoryEntry] {
         let lister = runtimeLister
         let gradleRoots = resolved.first { $0.location.id == LocationCatalog.gradleCaches.id }?.roots ?? []
-        let runtimesTask: Task<[SimRuntime], any Error>? =
+        let runtimesTask: Task<SimulatorRuntimeListing, any Error>? =
             resolved.contains(where: { Self.needsRuntimes($0.location) })
                 ? Task { try await lister() }
                 : nil
@@ -249,7 +247,7 @@ public actor ScanEngine {
         _ location: TrackedLocation,
         roots: [URL],
         inodeSet: InodeSet,
-        runtimesTask: Task<[SimRuntime], any Error>?,
+        runtimesTask: Task<SimulatorRuntimeListing, any Error>?,
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> LocationOutcome {
         switch location.sizeSource {
@@ -257,7 +255,7 @@ public actor ScanEngine {
             // No walk to wait for: this row is the `simctl` lookup, so it is under way as soon as it is awaited.
             continuation.yield(.locationStarted(locationId: location.id))
             let runtimes = await Self.resolveRuntimes(runtimesTask)
-            return scanRuntimesLocation(location, runtimes: runtimes.list, failure: runtimes.failure)
+            return scanRuntimesLocation(location, runtimes: runtimes.list?.runtimes, failure: runtimes.failure)
 
         case .filesystemRoots:
             // Awaited only where it is needed.
@@ -272,7 +270,7 @@ public actor ScanEngine {
                     location,
                     roots: roots,
                     inodeSet: inodeSet,
-                    runtimes: runtimes.list,
+                    runtimeListing: runtimes.list,
                     runtimesFailure: runtimes.failure,
                     deviceLister: deviceLister
                 )

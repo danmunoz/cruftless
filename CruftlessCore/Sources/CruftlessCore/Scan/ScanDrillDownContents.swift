@@ -1,11 +1,13 @@
 import Foundation
 
+typealias RuntimeCatalogDeviceLister = @Sendable (SimulatorRuntimeListing) -> [SimDevice]
+
 struct DrillDownScanContext: Sendable {
     let knownSizes: [String: [String: SizeResult]]
     let roots: [RootSize]
-    let runtimes: [SimRuntime]?
+    let runtimeListing: SimulatorRuntimeListing?
     let runtimesFailure: String?
-    let deviceLister: ScanEngine.DeviceLister?
+    let deviceLister: RuntimeCatalogDeviceLister?
 }
 
 /// The half of a scan that produces what a drill-down will render, and the per-location walk that feeds it.
@@ -31,8 +33,8 @@ extension ScanEngine {
 
     /// The shared lookup's outcome, as two `Sendable` halves.
     static func resolveRuntimes(
-        _ task: Task<[SimRuntime], any Error>?
-    ) async -> (list: [SimRuntime]?, failure: String?) {
+        _ task: Task<SimulatorRuntimeListing, any Error>?
+    ) async -> (list: SimulatorRuntimeListing?, failure: String?) {
         guard let task else { return (nil, nil) }
         do {
             return (try await task.value, nil)
@@ -45,9 +47,9 @@ extension ScanEngine {
         _ location: TrackedLocation,
         roots: [URL],
         inodeSet: InodeSet,
-        runtimes: [SimRuntime]? = nil,
+        runtimeListing: SimulatorRuntimeListing? = nil,
         runtimesFailure: String? = nil,
-        deviceLister: DeviceLister? = nil
+        deviceLister: RuntimeCatalogDeviceLister? = nil
     ) -> LocationOutcome {
         ScanSignposts.shared.measure("ScanLocation") {
             let readable = readableRoots(among: roots)
@@ -67,7 +69,7 @@ extension ScanEngine {
                 context: DrillDownScanContext(
                     knownSizes: walked.breakdowns,
                     roots: walked.rootSizes,
-                    runtimes: runtimes,
+                    runtimeListing: runtimeListing,
                     runtimesFailure: runtimesFailure,
                     deviceLister: deviceLister
                 )
@@ -127,6 +129,16 @@ extension ScanEngine {
                 rootSizes: context.roots,
                 knownSizes: context.knownSizes
             )
+            if !scan.diagnostics.isEmpty {
+                let issue = scan.issue ?? "Some SDK contents could not be classified."
+                return .childrenWithDiagnostics(
+                    scan.children,
+                    summary: issue,
+                    scan.diagnostics,
+                    totalCount: scan.diagnosticCount,
+                    truncated: scan.diagnosticsTruncated
+                )
+            }
             if let issue = scan.issue { return .childrenWithIssue(scan.children, issue) }
             return .children(scan.children)
         }
@@ -145,12 +157,12 @@ extension ScanEngine {
             return .children(DrillDownProvider.loadChildren(for: location, knownSizes: context.knownSizes))
         }
 
-        guard let runtimes = context.runtimes, let deviceLister = context.deviceLister else {
+        guard let runtimeListing = context.runtimeListing, let deviceLister = context.deviceLister else {
             return .unavailable(context.runtimesFailure ?? "Could not read the installed simulator runtimes.")
         }
 
         return .devices(
-            deviceLister(runtimes),
+            deviceLister(runtimeListing),
             sizes: immediateChildSizes(in: context.knownSizes)
         )
     }
