@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.1]
+
+### Changes
+
+- Added Support tab in settings with diagnostics (#8) (646ab89)
+
 ## [1.2.0] - 2026-09-29
 
 ### Added
