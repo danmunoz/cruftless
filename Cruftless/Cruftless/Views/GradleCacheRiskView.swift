@@ -10,22 +10,34 @@ public struct GradleCacheRiskView: View {
     public let child: ChildEntry
     public let backTitle: String
     @Bindable public var model: AppModel
+    private let onCancel: (() -> Void)?
+    private let onAccept: (() -> Void)?
+    private let notice: String?
+    private let canAccept: Bool
 
     public init(
         location: TrackedLocation,
         child: ChildEntry,
         model: AppModel,
-        backTitle: String
+        backTitle: String,
+        onCancel: (() -> Void)? = nil,
+        onAccept: (() -> Void)? = nil,
+        notice: String? = nil,
+        canAccept: Bool = true
     ) {
         self.location = location
         self.child = child
         self.model = model
         self.backTitle = backTitle
+        self.onCancel = onCancel
+        self.onAccept = onAccept
+        self.notice = notice
+        self.canAccept = canAccept
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: "Gradle cache warning", backTitle: backTitle, onBack: model.pop)
+            PopoverHeader(title: "Gradle cache warning", backTitle: backTitle, onBack: onCancel ?? model.pop)
             Hairline()
 
             ScrollView {
@@ -55,7 +67,7 @@ public struct GradleCacheRiskView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let planFailure = model.planFailure {
+                    if let planFailure = notice ?? model.planFailure {
                         NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
                     }
                 }
@@ -67,7 +79,7 @@ public struct GradleCacheRiskView: View {
 
             PopoverFooter {
                 HStack(spacing: 10) {
-                    Button("Cancel", action: model.pop)
+                    Button("Cancel", action: onCancel ?? model.pop)
                         .buttonStyle(.glass)
                         .controlSize(.large)
                         .keyboardShortcut(.cancelAction)
@@ -75,6 +87,10 @@ public struct GradleCacheRiskView: View {
                     Spacer(minLength: 8)
 
                     Button("Accept Risk and Review") {
+                        if let onAccept {
+                            onAccept()
+                            return
+                        }
                         model.plan { context in
                             try DeletionPlanner.gradleCacheChildAfterRiskAcknowledgement(
                                 child,
@@ -86,6 +102,7 @@ public struct GradleCacheRiskView: View {
                     .buttonStyle(.glassProminent)
                     .controlSize(.large)
                     .tint(.red)
+                    .disabled(!canAccept || model.isDeleting)
                 }
             }
         }

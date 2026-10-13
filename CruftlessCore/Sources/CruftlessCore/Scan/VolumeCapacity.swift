@@ -18,32 +18,35 @@ public struct VolumeCapacity: Sendable, Hashable {
         self.usedBytes = usedBytes
     }
 
+    init(totalBytes: Int64, physicalFreeBytes: Int64, importantAvailableBytes: Int64?) {
+        let total = max(0, totalBytes)
+        let free = min(total, max(0, physicalFreeBytes))
+        let available = min(total, max(free, importantAvailableBytes ?? free))
+
+        self.init(
+            totalBytes: total,
+            freeBytes: free,
+            purgeableBytes: available - free,
+            usedBytes: total - available
+        )
+    }
+
     /// Queries the volume containing `url` (defaults to root system volume).
     public static func query(for url: URL = URL(fileURLWithPath: "/")) -> VolumeCapacity {
         let keys: Set<URLResourceKey> = [
             .volumeTotalCapacityKey,
             .volumeAvailableCapacityKey,
-            .volumeAvailableCapacityForImportantUsageKey,
-            .volumeAvailableCapacityForOpportunisticUsageKey
+            .volumeAvailableCapacityForImportantUsageKey
         ]
 
         guard let values = try? url.resourceValues(forKeys: keys) else {
             return VolumeCapacity(totalBytes: 0, freeBytes: 0, purgeableBytes: 0, usedBytes: 0)
         }
 
-        let total = Int64(values.volumeTotalCapacity ?? 0)
-        let important = Int64(values.volumeAvailableCapacityForImportantUsage ?? 0)
-        let opportunistic = Int64(values.volumeAvailableCapacityForOpportunisticUsage ?? 0)
-
-        let purgeable = max(0, important - opportunistic)
-        let free = max(0, opportunistic)
-        let nonFree = max(0, total - free - purgeable)
-
         return VolumeCapacity(
-            totalBytes: total,
-            freeBytes: free,
-            purgeableBytes: purgeable,
-            usedBytes: nonFree
+            totalBytes: Int64(values.volumeTotalCapacity ?? 0),
+            physicalFreeBytes: Int64(values.volumeAvailableCapacity ?? 0),
+            importantAvailableBytes: values.volumeAvailableCapacityForImportantUsage
         )
     }
 }

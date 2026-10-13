@@ -124,7 +124,8 @@ public struct DeletionPlan: Sendable, Hashable {
         _ targets: [DeletionTarget],
         confirmLabel: String = "Delete Permanently",
         affectedLocationIds: Set<String> = [],
-        policyGeneration: UInt64 = 0
+        policyGeneration: UInt64 = 0,
+        simulatorToolchainGeneration: UUID? = nil
     ) -> DeletionPlan {
         let plan = batch(
             targets,
@@ -137,6 +138,7 @@ public struct DeletionPlan: Sendable, Hashable {
             confirmLabel: plan.confirmLabel,
             affectedLocationIds: affectedLocationIds,
             policyGeneration: policyGeneration,
+            simulatorToolchainGeneration: simulatorToolchainGeneration,
             isPlannerAuthorized: true
         )
     }

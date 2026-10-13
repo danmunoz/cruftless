@@ -1,6 +1,84 @@
 import Foundation
 
 public extension DeletionPlanner {
+    /// Plans an explicitly selected set of simulator devices in one authorized batch.
+    static func simulatorDevices(
+        _ devices: [(device: SimDevice, size: Int64)],
+        context: PlanningContext
+    ) throws -> DeletionPlan {
+        guard !devices.isEmpty else {
+            throw DeletionPlanningError.nothingToPlan(title: LocationCatalog.simulatorDevices.title)
+        }
+
+        let identifiers = try devices.map { try SimctlIdentifier.validatedUDID($0.device.udid) }
+        guard Set(identifiers).count == identifiers.count else {
+            throw DeletionPlanningError.duplicateTarget(name: LocationCatalog.simulatorDevices.title)
+        }
+
+        var plans: [DeletionPlan] = []
+        for (device, size) in devices {
+            plans.append(try device.isUnavailable
+                ? simulatorDelete(for: device, size: size, context: context)
+                : simulatorErase(for: device, size: size, context: context))
+        }
+
+        let generations = Set(plans.compactMap(\.simulatorToolchainGeneration))
+        guard generations.count <= 1,
+              plans.allSatisfy({ $0.simulatorToolchainGeneration != nil })
+        else {
+            throw DeletionPlanningError.simulatorToolchainMismatch
+        }
+
+        let hasDelete = devices.contains { $0.device.isUnavailable }
+        let hasErase = devices.contains { !$0.device.isUnavailable }
+        let hasBooted = devices.contains { $0.device.state.isBooted }
+        let label: String
+        switch (hasDelete, hasErase) {
+        case (true, true): label = hasBooted ? "Shut Down, Delete and Erase" : "Delete and Erase"
+        case (true, false): label = "Delete Permanently"
+        case (false, true) where devices.contains(where: { $0.device.state.isBooted }):
+            label = "Shut Down and Erase"
+        case (false, true): label = "Erase Permanently"
+        case (false, false):
+            throw DeletionPlanningError.nothingToPlan(title: LocationCatalog.simulatorDevices.title)
+        }
+
+        return .plannedBatch(
+            plans.flatMap(\.items),
+            confirmLabel: label,
+            affectedLocationIds: [LocationCatalog.simulatorDevices.id],
+            policyGeneration: context.policyGeneration,
+            simulatorToolchainGeneration: generations.first
+        )
+    }
+
+    /// Plans an explicitly selected set of installed runtimes in one authorized batch.
+    static func simulatorRuntimes(_ runtimes: [SimRuntime], context: PlanningContext) throws -> DeletionPlan {
+        guard !runtimes.isEmpty else {
+            throw DeletionPlanningError.nothingToPlan(title: LocationCatalog.simulatorRuntimes.title)
+        }
+        let identifiers = try runtimes.map { try SimctlIdentifier.validatedRuntime($0.identifier) }
+        guard Set(identifiers).count == identifiers.count else {
+            throw DeletionPlanningError.duplicateTarget(name: LocationCatalog.simulatorRuntimes.title)
+        }
+
+        let plans = try runtimes.map { try runtimeDelete($0, context: context) }
+        let generations = Set(plans.compactMap(\.simulatorToolchainGeneration))
+        guard generations.count <= 1,
+              plans.allSatisfy({ $0.simulatorToolchainGeneration != nil })
+        else {
+            throw DeletionPlanningError.simulatorToolchainMismatch
+        }
+
+        return .plannedBatch(
+            plans.flatMap(\.items),
+            confirmLabel: "Delete Permanently",
+            affectedLocationIds: [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id],
+            policyGeneration: context.policyGeneration,
+            simulatorToolchainGeneration: generations.first
+        )
+    }
+
     /// Plans a clear of the known-bloat sub-paths inside a shut-down simulator.
     static func simulatorBloat(
         for device: SimDevice,
@@ -54,7 +132,9 @@ public extension DeletionPlanner {
             udid: udid,
             name: device.name,
             isBooted: device.state.isBooted,
-            consequence: "Deletes this simulator completely. Installed apps and configuration will be permanently lost.",
+            consequence: device.state.isBooted
+                ? "Shuts this simulator down, then deletes it completely. Installed apps and configuration will be permanently lost."
+                : "Deletes this simulator completely. Installed apps and configuration will be permanently lost.",
             reclaimableBytes: size
         )
         return DeletionPlan.plannedSingle(
@@ -80,7 +160,9 @@ public extension DeletionPlanner {
         guard !runtime.state.isBeingDeleted else {
             throw DeletionPlanningError.runtimeBeingDeleted(name: runtime.name)
         }
-        guard !context.protectedPaths.containsCustomProtectedPath(in: systemRuntimeStore) else {
+        guard !context.protectedPaths.intersectsCustomProtection(systemRuntimeStore),
+              !context.protectedPaths.containsCustomProtectedPath(in: systemRuntimeStore)
+        else {
             throw DeletionPlanningError.protectedDescendantInSimulator(
                 name: runtime.name,
                 path: systemRuntimeStore.path
@@ -115,7 +197,9 @@ public extension DeletionPlanner {
         of device: SimDevice,
         protectedPaths: ProtectedPaths
     ) throws {
-        guard !protectedPaths.containsCustomProtectedPath(in: device.deviceDirectory) else {
+        guard !protectedPaths.intersectsCustomProtection(device.deviceDirectory),
+              !protectedPaths.containsCustomProtectedPath(in: device.deviceDirectory)
+        else {
             throw DeletionPlanningError.protectedDescendantInSimulator(
                 name: device.name,
                 path: device.deviceDirectory.path

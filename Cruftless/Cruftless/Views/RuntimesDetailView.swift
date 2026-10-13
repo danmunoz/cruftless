@@ -26,7 +26,9 @@ public struct RuntimesDetailView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop)
+            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop) {
+                SelectItemsButton(location: location, model: model)
+            }
             Hairline()
 
             LoadStateView(

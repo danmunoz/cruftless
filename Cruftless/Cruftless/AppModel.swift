@@ -27,6 +27,7 @@ public final class AppModel {
     }
 
     var activeScan: ScanTrigger?
+    var activeScanScope: InvalidationScope?
 
     /// True only while a scan someone asked for is running.
     public var isScanning: Bool {
@@ -71,6 +72,8 @@ public final class AppModel {
 
     /// What each drill-down screen renders, produced by the scan that measured the location, keyed by location id.
     public internal(set) var drillDowns: [String: DrillDownContent] = [:]
+    /// In-memory selections keyed by tracked location.
+    var cleanupSessions: [String: CleanupSelectionSession] = [:]
 
     public internal(set) var preparingLocationId: String?
 
@@ -92,7 +95,7 @@ public final class AppModel {
     public var planFailure: String?
 
     /// True while a plan is being executed.
-    public private(set) var isDeleting = false
+    public internal(set) var isDeleting = false
 
     /// Current deletion progress shown in Review.
     public internal(set) var deletionProgress: DeletionProgress?
@@ -134,7 +137,9 @@ public final class AppModel {
     /// Wakes when the throttle's earliest held location comes due.
     var throttleWake: Task<Void, Never>?
 
-    var activeCatalog: ActiveCatalog { settings.activeCatalog }
+    var activeCatalog: ActiveCatalog {
+        settings.activeCatalog
+    }
 
     /// True once there are rows to show: from a scan this session, or restored from the last one.
     public var hasScanned: Bool {
@@ -203,25 +208,59 @@ public final class AppModel {
     }
 
     public func plan(_ build: (PlanningContext) throws -> DeletionPlan) {
+        plan(build, onSuccess: openReview(for:), onFailure: reportPlanFailure)
+    }
+
+    func plan(
+        _ build: (PlanningContext) throws -> DeletionPlan,
+        onSuccess: (DeletionPlan) -> Void,
+        onFailure: (String) -> Void
+    ) {
         do {
             let plan = try build(PlanningContext.live(
                 protectedPaths: settings.protectedPathPolicy,
                 policyGeneration: settings.platformGeneration
             ))
-            openReview(for: plan)
+            guard !plan.isEmpty else {
+                throw DeletionPlanningError.nothingToPlan(title: "this selection")
+            }
+            onSuccess(plan)
         } catch {
             reportPlanFailure(error.localizedDescription)
+            onFailure(error.localizedDescription)
         }
     }
 
-    public func executeDeletion(plan: DeletionPlan) async {
+    public func executeDeletion(
+        plan: DeletionPlan,
+        cleanupSessionID: String? = nil,
+        alreadyAdmitted: Bool = false
+    ) async {
         guard plan.policyGeneration == settings.platformGeneration else {
-            reportPlanFailure("Platform selection changed after this review was created. Review the current inventory again.")
+            let message = "Platform selection changed after this review was created. Review the current inventory again."
+            if alreadyAdmitted {
+                isDeleting = false
+                settings.isDeletionExecuting = false
+            }
+            if let cleanupSessionID, let session = cleanupSessions[cleanupSessionID] {
+                session.notice = message
+                session.reviewPlan = nil
+                session.stage = .selection
+                returnToSelection(session)
+            } else { reportPlanFailure(message) }
             return
         }
-        guard !isDeleting else { return }
-        isDeleting = true
-        settings.isDeletionExecuting = true
+        guard alreadyAdmitted || !isDeleting else {
+            if let cleanupSessionID {
+                cleanupSessions[cleanupSessionID]?.notice =
+                    "Another cleanup is already running. Wait for it to finish before starting this one."
+            }
+            return
+        }
+        if !alreadyAdmitted {
+            isDeleting = true
+            settings.isDeletionExecuting = true
+        }
         defer {
             isDeleting = false
             settings.isDeletionExecuting = false
@@ -235,13 +274,26 @@ public final class AppModel {
         freeSpaceDelta = FreeSpaceDelta(before: before, after: VolumeCapacity.query().freeBytes)
         // Rescans only locations affected by the plan.
         startScan(plan.rescanScope, trigger: .user)
+        presentDeletionResult(result, cleanupSessionID: cleanupSessionID)
+    }
 
-        // Result replaces Review in place, so Back from Result never lands on a plan that has already been executed.
-        pushing {
-            if case .review = navigationPath.last {
-                navigationPath.removeLast()
+    private func presentDeletionResult(_ result: DeletionResult, cleanupSessionID: String?) {
+        if let cleanupSessionID, let session = cleanupSessions[cleanupSessionID] {
+            session.result = result
+            session.freeSpaceDelta = freeSpaceDelta
+            session.reviewPlan = nil
+            session.stage = .result
+            pushing {
+                if case .selectionReview = navigationPath.last { navigationPath.removeLast() }
+                navigationPath.append(.selectionResult(session.location))
             }
-            navigationPath.append(.result(result))
+        } else {
+            pushing {
+                if case .review = navigationPath.last {
+                    navigationPath.removeLast()
+                }
+                navigationPath.append(.result(result))
+            }
         }
     }
 }

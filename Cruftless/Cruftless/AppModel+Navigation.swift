@@ -7,9 +7,34 @@ public enum AppRoute: Hashable {
     case gradleCacheRisk(location: TrackedLocation, child: ChildEntry)
     case review(DeletionPlan)
     case result(DeletionResult)
+    case selection(TrackedLocation)
+    case selectionRisk(location: TrackedLocation, child: ChildEntry)
+    case selectionReview(TrackedLocation)
+    case selectionResult(TrackedLocation)
+
+    var isSelectionFlow: Bool {
+        switch self {
+        case .selection, .selectionRisk, .selectionReview, .selectionResult: true
+        default: false
+        }
+    }
 }
 
 public extension AppModel {
+    func openSelection(for location: TrackedLocation) {
+        guard !isDeleting else { return }
+        _ = selectionSession(for: location)
+        pushing { navigationPath.append(.selection(location)) }
+    }
+
+    func popoverDidDisappear() {
+        cancelPreparation()
+        guard navigationPath.contains(where: \.isSelectionFlow) else {
+            popToRoot()
+            return
+        }
+    }
+
     /// Pushes a drill-down, but never into an empty screen.
     func openDetail(for location: TrackedLocation) {
         cancelPreparation()
@@ -130,7 +155,7 @@ public extension AppModel {
     }
 
     func pop() {
-        guard !navigationPath.isEmpty else { return }
+        guard !isDeleting, !navigationPath.isEmpty else { return }
         planFailure = nil
         pushing { navigationPath.removeLast() }
     }

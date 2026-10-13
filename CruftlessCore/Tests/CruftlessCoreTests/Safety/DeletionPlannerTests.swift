@@ -164,8 +164,8 @@ struct DeletionPlannerTests {
         }
     }
 
-    @Test("A batch of children drops flagged entries and keeps the rest")
-    func childBatchDropsFlagged() throws {
+    @Test("A child batch refuses flagged entries instead of silently shrinking")
+    func childBatchRefusesFlagged() throws {
         let root = try makeTempRoot(named: "Archives")
         defer { TestFileSystem.removeDirectoryRecursively(at: root.deletingLastPathComponent()) }
 
@@ -186,11 +186,9 @@ struct DeletionPlannerTests {
             )
         ]
 
-        let plan = try DeletionPlanner.children(children, in: loc, context: PlanningContext())
-        #expect(plan.count == 1)
-        #expect(!plan.hasFlaggedItem)
-        #expect(plan.totalReclaimableBytes == 10)
-        #expect(plan.affectedLocationIds == Set(["archives"]))
+        #expect(throws: DeletionPlanningError.flaggedItem(name: "MyApp.xcarchive")) {
+            try DeletionPlanner.children(children, in: loc, context: PlanningContext())
+        }
     }
 
     @Test("A single flagged child chosen explicitly is still plannable")
