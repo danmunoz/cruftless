@@ -130,13 +130,17 @@ private struct DetailScreen: View {
     let backTitle: String
 
     var body: some View {
-        switch location.id {
-        case LocationCatalog.simulatorDevices.id:
-            SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
-        case LocationCatalog.simulatorRuntimes.id:
-            RuntimesDetailView(location: location, model: model, backTitle: backTitle)
-        default:
-            DetailView(location: location, model: model, backTitle: backTitle)
+        if !location.hasDrillDown {
+            LocationSummaryDetailView(location: location, model: model, backTitle: backTitle)
+        } else {
+            switch location.id {
+            case LocationCatalog.simulatorDevices.id:
+                SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
+            case LocationCatalog.simulatorRuntimes.id:
+                RuntimesDetailView(location: location, model: model, backTitle: backTitle)
+            default:
+                DetailView(location: location, model: model, backTitle: backTitle)
+            }
         }
     }
 }

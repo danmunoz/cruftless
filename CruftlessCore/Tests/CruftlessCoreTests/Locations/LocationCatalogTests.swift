@@ -88,7 +88,7 @@ struct LocationCatalogTests {
         #expect(scannedEntries.isEmpty)
     }
 
-    @Test("Code completion models is tiered as judgment, not regen")
+    @Test("Xcode coding assistant is tiered as judgment, not regen")
     func codingAssistantIsJudgmentTier() {
         #expect(LocationCatalog.codingAssistant.tier == .judgment)
     }

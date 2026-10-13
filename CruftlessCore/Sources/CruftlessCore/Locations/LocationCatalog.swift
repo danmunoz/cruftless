@@ -106,7 +106,7 @@ public enum LocationCatalog: Sendable {
 
     public static let codingAssistant = TrackedLocation(
         id: "codingAssistant",
-        title: "Code completion models",
+        title: "Xcode coding assistant",
         icon: .symbol("sparkles"),
         tier: .judgment,
         hasDrillDown: false,

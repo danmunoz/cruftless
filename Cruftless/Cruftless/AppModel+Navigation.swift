@@ -39,6 +39,11 @@ public extension AppModel {
     func openDetail(for location: TrackedLocation) {
         cancelPreparation()
 
+        if !location.hasDrillDown {
+            pushing { navigationPath.append(.detail(location)) }
+            return
+        }
+
         guard drillDowns[location.id] != nil else {
             prepare(location)
             return

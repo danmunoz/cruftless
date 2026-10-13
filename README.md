@@ -28,6 +28,8 @@ by Apple.
 - Breaks usage down by project, simulator, runtime, toolchain, and cache.
 - Distinguishes regenerable data from downloads, app data, and irreversible
   files.
+- Opens every available location in a detail screen with an info button for
+  a collapsible explanation of its contents and deletion risks.
 - Shows APFS allocated size instead of misleading logical file size.
 - Reports purgeable disk space separately from free space.
 - Lets you protect additional folders in Settings.
@@ -57,7 +59,7 @@ by Apple.
 | SwiftPM cache | Delete; packages are downloaded again when they resolve. |
 | Interface Builder support | Delete; Interface Builder rebuilds it on demand. |
 | Archives | Delete individually with a warning; archives and dSYMs cannot be recovered. |
-| Code completion models | Delete with a warning about assistant data and settings. |
+| Xcode coding assistant | Delete with a warning about assistant data and settings. |
 | Build products and logs | Delete build output, logs, and caches; device logs do not regenerate. |
 | Xcode installs | Inspect and reveal in Finder; Cruftless does not delete the app. |
 | Simulator dyld cache | Inspect only; Cruftless provides a command for this root-owned data. |
