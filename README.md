@@ -89,7 +89,7 @@ most important part of the project:
 - Irreversible items such as Archives are flagged, explained, and excluded from
   whole-location actions.
 - Batch work records each result instead of stopping after the first failure.
-- Every detail screen offers Select Items for location-scoped checkbox
+- Detail screens with child listings offer Select Items for location-scoped checkbox
   selection in the same popover. Review and confirmation are required before any batch;
   flagged and protected rows stay out, and Gradle remains one entry per attempt.
 
