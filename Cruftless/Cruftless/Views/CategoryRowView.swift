@@ -66,7 +66,7 @@ public struct CategoryRowView: View {
             action: action,
             rescan: onRescan,
             // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
-            showsChevron: entry.location.hasDrillDown && !entry.isUnavailable && !isMeasuring,
+            showsChevron: !entry.isUnavailable && !isMeasuring,
             isReadOnly: showsReadOnlyLock,
             isPlaceholder: isMeasuring,
             isUnavailable: entry.isUnavailable,

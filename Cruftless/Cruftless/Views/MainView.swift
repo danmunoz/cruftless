@@ -8,13 +8,15 @@ import SwiftUI
 /// The popover root and the owner of the push stack.
 public struct MainView: View {
     @Bindable public var model: AppModel
+    private let isPreviewFixture: Bool
     @Environment(\.openSettings) private var openSettings
 
     /// The natural height `ReviewView`/`ResultView` last reported through `ContentHeightPreference`.
     @State private var reportedContentHeight: CGFloat = PopoverMetrics.height
 
-    public init(model: AppModel) {
+    public init(model: AppModel, isPreviewFixture: Bool = false) {
         self.model = model
+        self.isPreviewFixture = isPreviewFixture
     }
 
     public var body: some View {
@@ -27,8 +29,7 @@ public struct MainView: View {
         .onPreferenceChange(ContentHeightPreference.self) { reportedContentHeight = $0 }
         .animation(PopoverMetrics.pushAnimation, value: resolvedHeight)
         .onDisappear {
-            model.cancelPreparation()
-            model.popToRoot()
+            model.popoverDidDisappear()
         }
     }
 
@@ -69,16 +70,32 @@ public struct MainView: View {
                 freeSpaceDelta: model.freeSpaceDelta,
                 onDone: model.popToRoot
             )
+
+        case let .selection(location):
+            selectionScreen(location, screen: .items)
+
+        case let .selectionRisk(location, child):
+            selectionScreen(location, screen: .risk(child))
+
+        case let .selectionReview(location):
+            selectionScreen(location, screen: .review)
+
+        case let .selectionResult(location):
+            selectionScreen(location, screen: .result)
         }
+    }
+
+    private func selectionScreen(_ location: TrackedLocation, screen: SelectionScreen) -> some View {
+        SelectionFlowScreen(location: location, screen: screen, model: model, isPreviewFixture: isPreviewFixture)
     }
 
     private var resolvedHeight: CGFloat {
         switch model.navigationPath.last {
-        case .review, .result:
+        case .review, .result, .selectionReview, .selectionResult:
             min(max(reportedContentHeight, PopoverMetrics.contentMinHeight), PopoverMetrics.height)
-        case nil, .detail:
+        case nil, .detail, .selection:
             PopoverMetrics.height
-        case .gradleCacheRisk:
+        case .gradleCacheRisk, .selectionRisk:
             PopoverMetrics.height
         }
     }
@@ -93,6 +110,10 @@ public struct MainView: View {
         case .gradleCacheRisk: "Gradle warning"
         case .review: "Review"
         case .result: "Result"
+        case .selection: "Selection"
+        case .selectionRisk: "Gradle warning"
+        case .selectionReview: "Review"
+        case .selectionResult: "Result"
         }
     }
 
@@ -109,13 +130,17 @@ private struct DetailScreen: View {
     let backTitle: String
 
     var body: some View {
-        switch location.id {
-        case LocationCatalog.simulatorDevices.id:
-            SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
-        case LocationCatalog.simulatorRuntimes.id:
-            RuntimesDetailView(location: location, model: model, backTitle: backTitle)
-        default:
-            DetailView(location: location, model: model, backTitle: backTitle)
+        if !location.hasDrillDown {
+            LocationSummaryDetailView(location: location, model: model, backTitle: backTitle)
+        } else {
+            switch location.id {
+            case LocationCatalog.simulatorDevices.id:
+                SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
+            case LocationCatalog.simulatorRuntimes.id:
+                RuntimesDetailView(location: location, model: model, backTitle: backTitle)
+            default:
+                DetailView(location: location, model: model, backTitle: backTitle)
+            }
         }
     }
 }

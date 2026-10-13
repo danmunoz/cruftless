@@ -55,21 +55,20 @@ public struct DetailView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop)
-            Hairline()
-
-            LoadStateView(
-                isLoading: contents == nil,
-                loadingTitle: "Reading \(location.title)…",
-                error: contents?.failureReason,
-                errorTitle: "Couldn't read \(location.title)",
-                isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
-                emptySymbol: "folder",
-                emptyTitle: "Nothing here",
-                emptyMessage: "This location has no items Cruftless can list.",
-                retry: { model.reloadDrillDown(for: location) },
-                content: { content }
-            )
+            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
+                LoadStateView(
+                    isLoading: contents == nil,
+                    loadingTitle: "Reading \(location.title)…",
+                    error: contents?.failureReason,
+                    errorTitle: "Couldn't read \(location.title)",
+                    isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
+                    emptySymbol: "folder",
+                    emptyTitle: "Nothing here",
+                    emptyMessage: "This location has no items Cruftless can list.",
+                    retry: { model.reloadDrillDown(for: location) },
+                    content: { content }
+                )
+            }
 
             if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable,
                !location.mutationPolicy.isReadOnly {
@@ -79,22 +78,19 @@ public struct DetailView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                summary
+        LazyVStack(spacing: 2) {
+            summary
 
-                if let planFailure = model.planFailure {
-                    NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
-                }
-
-                ForEach(children) { child in
-                    childRow(child)
-                }
+            if let planFailure = model.planFailure {
+                NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
+
+            ForEach(children) { child in
+                childRow(child)
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
     }
 
     private var summary: some View {

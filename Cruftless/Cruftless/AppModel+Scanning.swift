@@ -20,6 +20,14 @@ extension AppModel {
             preferenceIssues = []
         }
         drillDowns = drillDowns.filter { catalog.ids.contains($0.key) }
+        for session in cleanupSessions.values {
+            session.invalidate(
+                message: "Platform or protection settings changed. Scan this location again before reviewing.",
+                policyChanged: true,
+                isRefreshing: catalog.ids.contains(session.location.id)
+            )
+            session.policyGeneration = catalog.generation
+        }
 
         if let inventory {
             let retainsGradleCleanableBytes = catalog.ids.contains(LocationCatalog.gradleCaches.id)
@@ -50,7 +58,16 @@ extension AppModel {
         guard let scope = admit(requested, trigger: trigger, catalog: catalog) else { return }
         guard !enqueueIfBusy(scope, trigger: trigger) else { return }
 
+        let invalidatedIDs: Set<String> = switch scope {
+        case .everything: catalog.ids
+        case let .locations(ids): ids
+        }
+        for (id, session) in cleanupSessions where invalidatedIDs.contains(id) {
+            session.invalidate(message: "Refreshing this location…")
+        }
+
         activeScan = trigger
+        activeScanScope = scope
         checkRunningApps()
         Task { await self.run(scope, catalog: catalog) }
     }
@@ -67,6 +84,7 @@ extension AppModel {
 
     private func shouldRemoveRouteAfterPlatformChange(_ route: AppRoute) -> Bool {
         if case .result = route { return false }
+        if case .selectionResult = route { return false }
         return true
     }
 
@@ -126,6 +144,15 @@ extension AppModel {
         guard activeScan != nil else { return false }
 
         pendingInvalidation = pendingInvalidation?.merged(with: scope) ?? scope
+        let affectedIDs: Set<String> = switch scope {
+        case .everything:
+            activeCatalog.ids
+        case let .locations(ids):
+            ids
+        }
+        for (id, session) in cleanupSessions where affectedIDs.contains(id) {
+            session.invalidate(message: "Refreshing this location…")
+        }
         if trigger == .user {
             pendingTrigger = .user
             activeScan = .user
@@ -155,6 +182,7 @@ extension AppModel {
 
         guard settings.platformGeneration == catalog.generation else {
             activeScan = nil
+            activeScanScope = nil
             scanProgress.reset()
             if let queued = pendingInvalidation {
                 let queuedTrigger = pendingTrigger
@@ -175,8 +203,14 @@ extension AppModel {
         }
 
         activeScan = nil
+        activeScanScope = nil
         scanProgress.reset()
         record(failures: failures, from: scope, touching: scannedIds)
+        let affectedIDs: Set<String> = switch scope {
+        case .everything: catalog.ids
+        case let .locations(ids): ids.union(scannedIds)
+        }
+        refreshCleanupSessions(affectedLocationIDs: affectedIDs, failures: failures)
 
         throttle.recordCompletion(of: walked(from: scope, touching: scannedIds, catalog: catalog), at: .now)
 

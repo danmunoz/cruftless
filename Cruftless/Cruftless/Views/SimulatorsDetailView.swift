@@ -68,21 +68,20 @@ public struct SimulatorsDetailView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop)
-            Hairline()
-
-            LoadStateView(
-                isLoading: contents == nil,
-                loadingTitle: "Reading simulators…",
-                error: contents?.failureReason,
-                errorTitle: "Couldn't read simulators",
-                isEmpty: devices.isEmpty,
-                emptySymbol: "iphone.slash",
-                emptyTitle: "No simulators",
-                emptyMessage: "CoreSimulator has no devices on this Mac.",
-                retry: { model.reloadDrillDown(for: location) },
-                content: { content }
-            )
+            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
+                LoadStateView(
+                    isLoading: contents == nil,
+                    loadingTitle: "Reading simulators…",
+                    error: contents?.failureReason,
+                    errorTitle: "Couldn't read simulators",
+                    isEmpty: devices.isEmpty,
+                    emptySymbol: "iphone.slash",
+                    emptyTitle: "No simulators",
+                    emptyMessage: "CoreSimulator has no devices on this Mac.",
+                    retry: { model.reloadDrillDown(for: location) },
+                    content: { content }
+                )
+            }
 
             if let planFailure = model.planFailure {
                 NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
@@ -92,32 +91,29 @@ public struct SimulatorsDetailView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                if !unavailable.isEmpty {
-                    runtimeRemovedHeader
-                    ForEach(unavailable) { unavailableRow($0) }
-                }
+        LazyVStack(spacing: 2) {
+            if !unavailable.isEmpty {
+                runtimeRemovedHeader
+                ForEach(unavailable) { unavailableRow($0) }
+            }
 
-                ForEach(runtimeSections, id: \.runtimeId) { section in
-                    PopoverSectionHeader(
-                        title: Naming.runtime(identifier: section.runtimeId),
-                        subtitle: Text(
-                            "^[\(section.devices.count) device](inflect: true) · \(ByteFormatter.format(section.total))"
-                        )
+            ForEach(runtimeSections, id: \.runtimeId) { section in
+                PopoverSectionHeader(
+                    title: Naming.runtime(identifier: section.runtimeId),
+                    subtitle: Text(
+                        "^[\(section.devices.count) device](inflect: true) · \(ByteFormatter.format(section.total))"
                     )
-                    ForEach(section.devices) { device in
-                        deviceRow(device)
-                        if expanded.contains(device.udid) {
-                            bloatGroup(for: device)
-                        }
+                )
+                ForEach(section.devices) { device in
+                    deviceRow(device)
+                    if expanded.contains(device.udid) {
+                        bloatGroup(for: device)
                     }
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
     }
 
     private var runtimeRemovedHeader: some View {

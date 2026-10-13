@@ -145,6 +145,9 @@ public enum DeletionPlanner {
         try requireMutationSupport(location)
         try requireDeletableLocation(location)
         try requirePathDeletion(location)
+        if let flagged = children.first(where: { $0.isFlagged }) {
+            throw DeletionPlanningError.flaggedItem(name: flagged.name)
+        }
         let pathGuard = PathGuard(roots: location.resolveRoots(), protectedPaths: context.protectedPaths)
         let targets = try children.map {
             try target(

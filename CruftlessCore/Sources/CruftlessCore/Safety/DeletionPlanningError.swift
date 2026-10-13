@@ -7,6 +7,7 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case unavailable(title: String, reason: String)
     /// A flagged (⚠) location is never cleared as a batch.
     case flaggedLocation(title: String)
+    case flaggedItem(name: String)
     /// The location is mutated through `simctl` only; it has no path plan.
     case simulatorLocation(title: String)
     /// The location is visible for measurement but has no supported mutation route.
@@ -30,6 +31,7 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case runtimeBeingDeleted(name: String)
     case runtimeToolingUnavailable(name: String, reason: String)
     case protectedDescendantInSimulator(name: String, path: String)
+    case simulatorToolchainMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -39,6 +41,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(title) couldn't be read by the last scan: \(reason)"
         case let .flaggedLocation(title):
             "\(title) holds irreversible items and can only be cleared one at a time."
+        case let .flaggedItem(name):
+            "\(name) is marked ⚠ and can't be included in a batch clear."
         case let .simulatorLocation(title):
             "\(title) is managed by CoreSimulator. Open it and erase or delete entries individually."
         case let .readOnlyLocation(title):
@@ -65,6 +69,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(name) can't be changed yet: \(reason)"
         case let .protectedDescendantInSimulator(name, path):
             "\(name) can't be changed: \(path) contains a path you marked as protected."
+        case .simulatorToolchainMismatch:
+            "The simulator toolchain changed while these items were selected. Refresh and review them again."
         }
     }
 

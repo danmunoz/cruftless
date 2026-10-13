@@ -26,21 +26,20 @@ public struct RuntimesDetailView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop)
-            Hairline()
-
-            LoadStateView(
-                isLoading: contents == nil,
-                loadingTitle: "Reading runtimes…",
-                error: contents?.failureReason,
-                errorTitle: "Couldn't read runtimes",
-                isEmpty: runtimes.isEmpty,
-                emptySymbol: "square.stack.3d.up.slash",
-                emptyTitle: "No runtimes",
-                emptyMessage: "No downloadable simulator runtimes are installed.",
-                retry: { model.reloadDrillDown(for: location) },
-                content: { content }
-            )
+            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
+                LoadStateView(
+                    isLoading: contents == nil,
+                    loadingTitle: "Reading runtimes…",
+                    error: contents?.failureReason,
+                    errorTitle: "Couldn't read runtimes",
+                    isEmpty: runtimes.isEmpty,
+                    emptySymbol: "square.stack.3d.up.slash",
+                    emptyTitle: "No runtimes",
+                    emptyMessage: "No downloadable simulator runtimes are installed.",
+                    retry: { model.reloadDrillDown(for: location) },
+                    content: { content }
+                )
+            }
         }
     }
 
@@ -51,25 +50,22 @@ public struct RuntimesDetailView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(runtimes) { runtime in
-                    PopoverRow(
-                        icon: .symbol("square.stack.3d.up"),
-                        title: runtime.name,
-                        sizeBytes: runtime.sizeBytes,
-                        action: runtime.canPlanDelete
-                            ? RowAction("Delete") { planDelete(runtime) }
-                            : nil
-                    ) {
-                        caption(for: runtime)
-                    }
+        LazyVStack(spacing: 2) {
+            ForEach(runtimes) { runtime in
+                PopoverRow(
+                    icon: .symbol("square.stack.3d.up"),
+                    title: runtime.name,
+                    sizeBytes: runtime.sizeBytes,
+                    action: runtime.canPlanDelete
+                        ? RowAction("Delete") { planDelete(runtime) }
+                        : nil
+                ) {
+                    caption(for: runtime)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder

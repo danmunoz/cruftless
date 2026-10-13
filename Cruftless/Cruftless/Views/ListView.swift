@@ -234,11 +234,7 @@ public struct ListView: View {
 
     private func select(_ entry: InventoryEntry) {
         guard !entry.isUnavailable else { return }
-        if entry.location.hasDrillDown {
-            model.openDetail(for: entry.location)
-        } else {
-            performAction(for: entry)
-        }
+        model.openDetail(for: entry.location)
     }
 
     private func performAction(for entry: InventoryEntry) {
@@ -265,10 +261,9 @@ public struct ListView: View {
                 model.refuseActionOnRestoredInventory()
                 return
             }
-            Task { await planWholeLocation(entry) }
+            Task { await model.planWholeLocation(entry) }
         }
     }
-
 }
 
 private struct PlatformInventorySection: View {
@@ -377,30 +372,6 @@ private extension DevelopmentPlatform {
         .frame(width: PopoverMetrics.width)
     }
 #endif
-
-private extension ListView {
-    func planWholeLocation(_ entry: InventoryEntry) async {
-        let location = entry.location
-        let catalog = model.settings.activeCatalog
-        guard catalog.locations.contains(where: { $0.id == location.id }), !model.isRestored(entry) else { return }
-        let children: [ChildEntry] = if entry.roots.contains(where: { location.isCustomRoot($0.url) }) {
-            if let listed = model.drillDowns[location.id]?.children {
-                listed
-            } else {
-                await model.scanEngine.children(of: location.id)
-            }
-        } else {
-            []
-        }
-        let currentCatalog = model.settings.activeCatalog
-        guard currentCatalog.generation == catalog.generation,
-              currentCatalog.locations.contains(where: { $0.id == location.id })
-        else { return }
-        model.plan { context in
-            try DeletionPlanner.wholeLocation(entry, context: context.withChildren { _ in children })
-        }
-    }
-}
 
 /// The header's rescan control at rest: the glyph alone, tinting to full contrast under the pointer.
 struct RefreshGlyphButton: View {
