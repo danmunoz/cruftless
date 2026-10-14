@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.2]
+
+### Changes
+
+- add cleanup selection, detail notes, and correct free space (2a9da19)
+
 ## [1.2.1]
 
 ### Changes
