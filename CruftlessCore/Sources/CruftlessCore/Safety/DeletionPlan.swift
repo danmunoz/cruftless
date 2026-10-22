@@ -65,7 +65,7 @@ public struct DeletionPlan: Sendable, Hashable {
             switch target {
             case .simulatorErase:
                 "Shut Down and Erase"
-            case .path, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete:
+            case .path, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete, .androidAVDDelete:
                 "Delete Permanently"
             }
         }

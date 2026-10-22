@@ -163,12 +163,19 @@ public struct DetailView: View {
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
             action: rowAction(for: child, gradleCacheRoots: cacheRoots),
-            isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry
+            isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry && !isAndroidDevice(child)
         )
         .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
+    private func isAndroidDevice(_ child: ChildEntry) -> Bool {
+        location.id == LocationCatalog.androidAVDs.id && child.id != "androidAVDs-unclassified"
+    }
+
     private func rowAction(for child: ChildEntry, gradleCacheRoots: [URL]) -> RowAction? {
+        if isAndroidDevice(child) {
+            return RowAction("Delete Device", isDestructive: true) { model.requestAndroidAVDDeletion(child) }
+        }
         if location.id == LocationCatalog.gradleCaches.id {
             guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: gradleCacheRoots) else {
                 return nil
@@ -226,7 +233,9 @@ public struct DetailView: View {
     }
 
     private var tierWordText: Text {
-        Text(DesignTokens.tierWord(for: location.tier, locationId: location.id))
+        Text(location.id == LocationCatalog.androidAVDs.id
+            ? "Device data"
+            : DesignTokens.tierWord(for: location.tier, locationId: location.id))
             .foregroundStyle(DesignTokens.tierColor(for: location.tier))
     }
 

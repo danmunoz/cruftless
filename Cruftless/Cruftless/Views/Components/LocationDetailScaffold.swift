@@ -41,7 +41,7 @@ struct LocationDetailScaffold<Content: View>: View {
         VStack(spacing: 0) {
             PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop) {
                 HStack(spacing: 6) {
-                    if location.hasDrillDown {
+                    if location.hasDrillDown, location.id != LocationCatalog.androidAVDs.id {
                         SelectItemsButton(location: location, model: model)
                     }
                     infoButton

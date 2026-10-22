@@ -71,6 +71,7 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 
 /// The sole executor permitted to permanently delete files or mutate simulators.
 public actor DeletionExecutor {
+    let androidAVDRemoval: AndroidAVDRemoval
     let simulatorExecutor: SimulatorCommandExecuting
     let policyGenerationAuthority: PolicyGenerationAuthority
     let protectedPathsStore: ProtectedPathsStore
@@ -90,6 +91,7 @@ public actor DeletionExecutor {
 
     public init(
         simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor(),
+        androidAVDRemoval: AndroidAVDRemoval = AndroidAVDRemoval(),
         policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority(),
         protectedPathsStore: ProtectedPathsStore = .shared,
         capacitySampler: @escaping @Sendable () async -> Int64 = { VolumeCapacity.query().freeBytes },
@@ -99,6 +101,7 @@ public actor DeletionExecutor {
         settleSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) },
         xctestConfirmationTimeout: Duration = .seconds(20)
     ) {
+        self.androidAVDRemoval = androidAVDRemoval
         self.simulatorExecutor = simulatorExecutor
         self.policyGenerationAuthority = policyGenerationAuthority
         self.protectedPathsStore = protectedPathsStore
@@ -115,6 +118,11 @@ public actor DeletionExecutor {
         gradleCacheRiskAcknowledgement: GradleCacheRiskAcknowledgement?
     ) async -> ItemOutcome {
         switch target {
+        case let .androidAVDDelete(request):
+            await androidAVDRemoval.remove(request) { [policyGenerationAuthority, protectedPathsStore] in
+                guard policyGenerationAuthority.currentGeneration == policyGeneration else { return nil }
+                return protectedPathsStore.protectedPaths()
+            }
         case let .path(_, _, validatedPath, fingerprint, _, _, bytes, precondition):
             await executePath(PathDeletionRequest(
                 target: target,

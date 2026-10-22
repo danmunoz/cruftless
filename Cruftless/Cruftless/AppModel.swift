@@ -93,6 +93,10 @@ public final class AppModel {
     public var preferenceIssues: [RootPreferenceIssue] = []
 
     public var planFailure: String?
+    public var androidToolsStage: AndroidToolsStage = .checking
+    var androidPreparationTask: Task<Void, Never>?
+    var androidPreparationID: UUID?
+    public let androidAVDRemoval: AndroidAVDRemoval
 
     /// True while a plan is being executed.
     public internal(set) var isDeleting = false
@@ -150,13 +154,16 @@ public final class AppModel {
         scanEngine: ScanEngine = ScanEngine(),
         simulatorService: SimulatorService = SimulatorService(),
         deletionExecutor: DeletionExecutor? = nil,
+        androidAVDRemoval: AndroidAVDRemoval = AndroidAVDRemoval(),
         settings: SettingsModel = SettingsModel(),
         inventoryStore: InventoryStore = InventoryStore()
     ) {
+        self.androidAVDRemoval = androidAVDRemoval
         self.scanEngine = scanEngine
         self.simulatorService = simulatorService
         self.settings = settings
         self.deletionExecutor = deletionExecutor ?? DeletionExecutor(
+            androidAVDRemoval: androidAVDRemoval,
             policyGenerationAuthority: settings.policyGenerationAuthority,
             protectedPathsStore: settings.protectedPathsStore
         )

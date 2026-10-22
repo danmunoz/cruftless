@@ -5,6 +5,7 @@ import SwiftUI
 public enum AppRoute: Hashable {
     case detail(TrackedLocation)
     case gradleCacheRisk(location: TrackedLocation, child: ChildEntry)
+    case androidTools(ChildEntry)
     case review(DeletionPlan)
     case result(DeletionResult)
     case selection(TrackedLocation)
@@ -28,6 +29,7 @@ public extension AppModel {
     }
 
     func popoverDidDisappear() {
+        cancelAndroidPreparation()
         cancelPreparation()
         guard navigationPath.contains(where: \.isSelectionFlow) else {
             popToRoot()

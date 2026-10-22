@@ -209,7 +209,7 @@ public enum LocationCatalog: Sendable {
         hasDrillDown: true,
         stalenessSource: .topLevelMtime,
         mutationPolicy: .readOnly,
-        consequence: "AVDs contain user data, apps, settings, SD cards, and snapshots. They are read-only.",
+        consequence: "AVDs contain user data, apps, settings, SD cards, and snapshots. Delete stopped devices individually after review.",
         discoveryIssue: RootResolver.androidAVDIssue,
         resolveRoots: RootResolver.androidAVDRoots
     )
