@@ -46,6 +46,10 @@ struct MockSimulatorExecutor: SimulatorCommandExecuting {
         }
     }
 
+    func deleteRuntime(identifier: String, installation: SimRuntimeInstallation) async throws {
+        try await deleteRuntime(identifier: identifier)
+    }
+
     func deleteRuntime(identifier: String) async throws {
         log.record("runtime:\(identifier)")
         if shouldFailRuntime {

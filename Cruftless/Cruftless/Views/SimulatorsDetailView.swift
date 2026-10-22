@@ -51,11 +51,11 @@ public struct SimulatorsDetailView: View {
     #endif
 
     private var unavailable: [SimDevice] {
-        devices.filter(\.isUnavailable)
+        devices.filter(\.runtimeAvailability.isConfirmedMissing)
     }
 
     private var available: [SimDevice] {
-        devices.filter { !$0.isUnavailable }
+        devices.filter { !$0.runtimeAvailability.isConfirmedMissing }
     }
 
     private var runtimeSections: [RuntimeSection] {
@@ -106,7 +106,7 @@ public struct SimulatorsDetailView: View {
                 )
                 ForEach(section.devices) { device in
                     deviceRow(device)
-                    if expanded.contains(device.udid) {
+                    if expanded.contains(device.id), device.deviceSet.kind == .ordinary {
                         bloatGroup(for: device)
                     }
                 }
@@ -145,10 +145,13 @@ public struct SimulatorsDetailView: View {
     private func unavailableRow(_ device: SimDevice) -> some View {
         PopoverRow(
             icon: .symbol("exclamationmark.triangle"),
-            title: device.name,
+            title: device.deviceSet.kind == .xctest ? "\(device.name) · \(device.udid.suffix(6))" : device.name,
             sizeBytes: sizeBytes(for: device),
-            action: device.mutationIssue == nil
-                ? RowAction(DesignTokens.actionLabel(for: .irreversible), isDestructive: true) { plan(.delete, for: device) }
+            action: device.mutationIssue == nil && (device.deviceSet.kind == .ordinary || device.state.isShutdown)
+                ? RowAction(
+                    device.deviceSet.kind == .xctest ? "Delete Test Simulator" : DesignTokens.actionLabel(for: .irreversible),
+                    isDestructive: true
+                ) { plan(.delete, for: device) }
                 : nil
         ) {
             deviceStatusCaption(device, status: "Can't boot")
@@ -157,17 +160,21 @@ public struct SimulatorsDetailView: View {
 
     private func deviceRow(_ device: SimDevice) -> some View {
         PopoverRow(
-            icon: .symbol(expanded.contains(device.udid) ? "chevron.down" : "chevron.right"),
-            title: device.name,
+            icon: .symbol(expanded.contains(device.id) ? "chevron.down" : "chevron.right"),
+            title: device.deviceSet.kind == .xctest ? "\(device.name) · \(device.udid.suffix(6))" : device.name,
             sizeBytes: sizeBytes(for: device),
-            action: eraseAction(for: device),
+            action: device.deviceSet.kind == .xctest
+                ? (device.state.isShutdown && device.mutationIssue == nil ? RowAction("Delete Test Simulator", isDestructive: true) { plan(
+                    .delete,
+                    for: device
+                ) } : nil)
+                : eraseAction(for: device),
             onSelect: { toggle(device) },
             caption: { deviceCaption(device) }
         )
     }
 
     /// Booted shows a green dot.
-    @ViewBuilder
     private func deviceCaption(_ device: SimDevice) -> some View {
         deviceStatusCaption(device)
     }
@@ -179,7 +186,6 @@ public struct SimulatorsDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func deviceStatusCaption(_ device: SimDevice, status: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
@@ -199,6 +205,17 @@ public struct SimulatorsDetailView: View {
             }
             if let mutationIssue = device.mutationIssue {
                 Text(mutationIssue)
+                    .foregroundStyle(.orange)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if case let .installedUnavailable(reason) = device.runtimeAvailability {
+                Text("Runtime installed but unavailable · \(reason)")
+                    .foregroundStyle(.orange)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if case let .unknown(reason) = device.runtimeAvailability {
+                Text("Runtime status unknown · \(reason)")
                     .foregroundStyle(.orange)
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
@@ -266,10 +283,11 @@ private enum SimulatorDeviceAction { case erase, delete, bloat }
 
 private extension SimulatorsDetailView {
     func toggle(_ device: SimDevice) {
-        if expanded.contains(device.udid) {
-            expanded.remove(device.udid)
+        guard device.deviceSet.kind == .ordinary else { return }
+        if expanded.contains(device.id) {
+            expanded.remove(device.id)
         } else {
-            expanded.insert(device.udid)
+            expanded.insert(device.id)
         }
     }
 
@@ -292,7 +310,7 @@ private extension SimulatorsDetailView {
         model.plan { context in
             let plan: DeletionPlan = switch action {
             case .erase: try DeletionPlanner.simulatorErase(for: device, size: size, context: context)
-            case .delete: try DeletionPlanner.simulatorDelete(for: device, size: size, context: context)
+            case .delete: try DeletionPlanner.simulatorDevices([(device: device, size: size)], context: context)
             case .bloat: try DeletionPlanner.simulatorBloat(for: device, context: context)
             }
             guard !plan.isEmpty else {

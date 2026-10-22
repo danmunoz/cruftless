@@ -13,7 +13,11 @@ struct SimulatorCatalogAuthorityTests {
         let runner = SimctlRunner(executor: CatalogOutputExecutor(output: SimctlOutput(
             status: 0, stdout: "{}", stderr: "", toolchainID: "fixture", toolchainGeneration: generation
         )))
-        let listing = try await runner.listRuntimeCatalog()
+        let managed = try await runner.listRuntimeCatalog()
+        let listing = SimulatorRuntimeListing(
+            runtimes: managed.runtimes, toolchainID: managed.toolchainID,
+            toolchainGeneration: managed.toolchainGeneration, installedCatalog: installedCatalog([])
+        )
         let reconciled = try #require(SimulatorService.reconcile([device()], against: listing).first)
         #expect(listing.runtimes.isEmpty)
         #expect(reconciled.isUnavailable)
@@ -28,7 +32,8 @@ struct SimulatorCatalogAuthorityTests {
         let confirmed = runtime(runtimeID)
         let fallback = runtime("com.apple.CoreSimulator.SimRuntime.iOS-26-0", capability: .unavailable("unconfirmed"))
         let listing = SimulatorRuntimeListing(
-            runtimes: [confirmed, fallback], toolchainID: "fixture", toolchainGeneration: generation
+            runtimes: [confirmed, fallback], toolchainID: "fixture", toolchainGeneration: generation,
+            installedCatalog: installedCatalog([confirmed, fallback])
         )
         let reconciled = try #require(SimulatorService.reconcile([device()], against: listing).first)
         #expect(reconciled.mutationIssue == nil)
@@ -75,6 +80,12 @@ struct SimulatorCatalogAuthorityTests {
         #expect(result.items.first?.status == .notAttempted(reason: .toolchainChanged))
     }
 
+    private func installedCatalog(_ runtimes: [SimRuntime]) -> SimulatorRuntimeCatalog {
+        SimulatorRuntimeCatalog(runtimes: runtimes.map {
+            SimulatorRuntimeCatalog.Runtime(identifier: $0.runtimeIdentifier, version: "27.0", build: $0.build, isAvailable: true)
+        }, toolchainID: "fixture", toolchainGeneration: generation)
+    }
+
     private func device(runtime: String? = nil) -> SimDevice {
         SimDevice(
             udid: "01234567-89AB-CDEF-0123-456789ABCDEF", name: "Fixture device", runtime: runtime ?? runtimeID,
@@ -94,5 +105,7 @@ struct SimulatorCatalogAuthorityTests {
 
 private struct CatalogOutputExecutor: SimctlExecuting {
     let output: SimctlOutput
-    func run(arguments _: [String]) async throws -> SimctlOutput { output }
+    func run(arguments _: [String]) async throws -> SimctlOutput {
+        output
+    }
 }

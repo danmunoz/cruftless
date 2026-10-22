@@ -34,6 +34,7 @@ public enum RootResolver: Sendable {
     public static func fixedTrackedRoots(home: URL) -> [URL] {
         deviceSupportRoots(home: home)
             + simulatorDevicesRoot(home: home)
+            + xctestDevicesRoot(home: home)
             + previewsCacheRoot(home: home)
             + toolchainsRoot(home: home)
             + swiftPMCacheRoot(home: home)
@@ -89,6 +90,8 @@ public enum RootResolver: Sendable {
         simulatorDevicesRoot(home: homeURL)
     }
 
+    public static func xctestDevicesRoot() -> [URL] { xctestDevicesRoot(home: homeURL) }
+
     public static func previewsCacheRoot() -> [URL] {
         previewsCacheRoot(home: homeURL)
     }
@@ -130,6 +133,10 @@ public enum RootResolver: Sendable {
 
     static func simulatorDevicesRoot(home: URL) -> [URL] {
         [home.appendingPathComponent("Library/Developer/CoreSimulator/Devices", isDirectory: true)]
+    }
+
+    static func xctestDevicesRoot(home: URL) -> [URL] {
+        [home.appendingPathComponent("Library/Developer/XCTestDevices", isDirectory: true)]
     }
 
     static func previewsCacheRoot(home: URL) -> [URL] {

@@ -33,6 +33,14 @@ struct SimctlHardeningTests {
         #expect(executor.arguments == [["erase", validUDID]])
     }
 
+    @Test("XCTest deletion is scoped to the validated test device set")
+    func xctestDeleteUsesSetArgument() async throws {
+        let executor = SimctlDouble()
+        let set = SimulatorDeviceSet.xctest()
+        try await SimctlRunner(executor: executor).delete(udid: validUDID, in: set)
+        #expect(executor.arguments == [["--set", set.root.path(percentEncoded: false), "delete", validUDID]])
+    }
+
     @Test("Runtime sentinels and flags are refused; real identifiers pass")
     func runtimeIdentifierValidation() async throws {
         let executor = SimctlDouble()
@@ -65,6 +73,70 @@ struct SimctlHardeningTests {
         try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0).write(to: plist)
 
         #expect(DeviceStore.parseDevicePlist(at: plist, deviceDirectory: base) == nil)
+    }
+
+    @Test("Device-store identity includes its set and rejects folder-plist mismatches")
+    func deviceStoreScopesIdentityAndChecksFolderName() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { TestFileSystem.removeDirectoryRecursively(at: base) }
+
+        let udidDirectory = base.appendingPathComponent(validUDID, isDirectory: true)
+        try FileManager.default.createDirectory(at: udidDirectory, withIntermediateDirectories: false)
+        try writeDevicePlist(udid: validUDID, to: udidDirectory.appendingPathComponent("device.plist"))
+        let set = SimulatorDeviceSet(kind: .xctest, root: base)
+
+        let loaded = DeviceStore.loadDevices(in: set)
+        #expect(loaded.count == 1)
+        #expect(loaded[0].deviceSet.id == "xctest")
+        #expect(loaded[0].id != SimDevice(
+            udid: validUDID,
+            name: "Clone",
+            runtime: "",
+            state: .shutdown,
+            lastUsedAt: nil,
+            deviceDirectory: udidDirectory
+        ).id)
+
+        let mismatchedDirectory = base.appendingPathComponent("A1B2C3D4-1111-2222-3333-ABCDEF012345", isDirectory: true)
+        try FileManager.default.createDirectory(at: mismatchedDirectory, withIntermediateDirectories: false)
+        try writeDevicePlist(udid: validUDID, to: mismatchedDirectory.appendingPathComponent("device.plist"))
+        #expect(DeviceStore.loadDevices(in: set).count == 1)
+    }
+
+    @Test("Device store refuses linked roots, device folders, and metadata")
+    func deviceStoreRejectsSymlinks() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let realRoot = base.appendingPathComponent("real", isDirectory: true)
+        let linkedRoot = base.appendingPathComponent("linked", isDirectory: true)
+        try FileManager.default.createDirectory(at: realRoot, withIntermediateDirectories: true)
+        defer { TestFileSystem.removeDirectoryRecursively(at: base) }
+
+        try FileManager.default.createSymbolicLink(at: linkedRoot, withDestinationURL: realRoot)
+        let linkedSet = SimulatorDeviceSet(kind: .xctest, root: linkedRoot)
+        #expect(DeviceStore.loadDevices(in: linkedSet).isEmpty)
+
+        let linkedDevice = realRoot.appendingPathComponent("A1B2C3D4-1111-2222-3333-ABCDEF012345", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: linkedDevice, withDestinationURL: base)
+        #expect(DeviceStore.loadDevices(in: SimulatorDeviceSet(kind: .xctest, root: realRoot)).isEmpty)
+
+        let regularDevice = realRoot.appendingPathComponent(validUDID, isDirectory: true)
+        try FileManager.default.createDirectory(at: regularDevice, withIntermediateDirectories: false)
+        let backingPlist = base.appendingPathComponent("backing.plist")
+        try writeDevicePlist(udid: validUDID, to: backingPlist)
+        try FileManager.default.createSymbolicLink(
+            at: regularDevice.appendingPathComponent("device.plist"),
+            withDestinationURL: backingPlist
+        )
+        #expect(DeviceStore.loadDevices(in: SimulatorDeviceSet(kind: .xctest, root: realRoot)).isEmpty)
+    }
+
+    private func writeDevicePlist(udid: String, to url: URL) throws {
+        let dict: [String: Any] = ["UDID": udid, "name": "Clone", "state": 1]
+        let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
+        try data.write(to: url)
     }
 
     @Test("Planning a simulator action validates the UDID before review")

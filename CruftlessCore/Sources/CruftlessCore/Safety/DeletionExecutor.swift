@@ -7,12 +7,24 @@ public protocol SimulatorCommandExecuting: Sendable {
     func shutdownSimulator(udid: String) async throws
     func eraseSimulator(udid: String) async throws
     func deleteSimulator(udid: String) async throws
+    func deleteTestSimulator(udid: String, deviceSet: SimulatorDeviceSet) async throws
     func deleteRuntime(identifier: String) async throws
+    func deleteRuntime(identifier: String, installation: SimRuntimeInstallation) async throws
 }
 
 public extension SimulatorCommandExecuting {
-    func beginToolchainOperation(generation: UUID?) async -> Bool { true }
-    func endToolchainOperation(generation: UUID?) async {}
+    func beginToolchainOperation(generation _: UUID?) async -> Bool {
+        true
+    }
+
+    func endToolchainOperation(generation _: UUID?) async {}
+    func deleteTestSimulator(udid _: String, deviceSet _: SimulatorDeviceSet) async throws {
+        throw SimctlError.executionError("This simulator command adapter does not support scoped XCTest device sets.")
+    }
+
+    func deleteRuntime(identifier _: String, installation _: SimRuntimeInstallation) async throws {
+        throw SimctlError.executionError("This simulator command adapter cannot confirm exact runtime installation removal.")
+    }
 }
 
 public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
@@ -42,10 +54,18 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
         try await runner.delete(udid: udid)
     }
 
+    public func deleteTestSimulator(udid: String, deviceSet: SimulatorDeviceSet) async throws {
+        try await runner.delete(udid: udid, in: deviceSet)
+    }
+
     /// Sends the delete and then waits for the runtime to actually leave the installed list.
-    public func deleteRuntime(identifier: String) async throws {
+    public func deleteRuntime(identifier _: String) async throws {
+        throw SimctlError.executionError("An exact installed runtime build is required before deletion.")
+    }
+
+    public func deleteRuntime(identifier: String, installation: SimRuntimeInstallation) async throws {
         try await runner.runtimeDelete(identifier: identifier)
-        try await runner.awaitRuntimeRemoval(identifier: identifier)
+        try await runner.awaitRuntimeRemoval(identifier: identifier, installation: installation)
     }
 }
 
@@ -57,6 +77,7 @@ public actor DeletionExecutor {
     let capacitySampler: @Sendable () async -> Int64
     let deviceDirectoryProvider: @Sendable (String) -> URL?
     let settleSleep: @Sendable () async throws -> Void
+    let xctestConfirmationTimeout: Duration
     var onProgress: (@Sendable (DeletionProgress) -> Void)?
 
     /// Serialises every overlapping `execute` call.
@@ -75,7 +96,8 @@ public actor DeletionExecutor {
         deviceDirectory: @escaping @Sendable (String) -> URL? = { udid in
             RootResolver.simulatorDevicesRoot().first?.appendingPathComponent(udid, isDirectory: true)
         },
-        settleSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }
+        settleSleep: @escaping @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) },
+        xctestConfirmationTimeout: Duration = .seconds(20)
     ) {
         self.simulatorExecutor = simulatorExecutor
         self.policyGenerationAuthority = policyGenerationAuthority
@@ -83,6 +105,7 @@ public actor DeletionExecutor {
         self.capacitySampler = capacitySampler
         deviceDirectoryProvider = deviceDirectory
         self.settleSleep = settleSleep
+        self.xctestConfirmationTimeout = xctestConfirmationTimeout
     }
 
     func executeSingle(
@@ -107,8 +130,10 @@ public actor DeletionExecutor {
             await executeSimulatorErase(target, udid: udid, isBooted: isBooted, bytes: bytes)
         case let .simulatorDelete(udid, _, isBooted, _, bytes):
             await executeSimulatorDelete(target, udid: udid, isBooted: isBooted, bytes: bytes)
-        case let .runtimeDelete(identifier, _, _, bytes):
-            await executeRuntimeDelete(target, identifier: identifier, bytes: bytes)
+        case .xctestSimulatorDelete:
+            await executeXCTestSimulatorDelete(target, policyGeneration: policyGeneration, affectedLocationIds: affectedLocationIds)
+        case let .runtimeDelete(identifier, _, _, bytes, installation):
+            await executeRuntimeDelete(target, identifier: identifier, installation: installation, bytes: bytes)
         }
     }
 
@@ -274,12 +299,20 @@ public actor DeletionExecutor {
         return ItemOutcome(target: target, status: .succeeded, freedBytes: bytes, spaceSettle: settle)
     }
 
-    private func executeRuntimeDelete(_ target: DeletionTarget, identifier: String, bytes: Int64) async -> ItemOutcome {
+    private func executeRuntimeDelete(_ target: DeletionTarget, identifier: String, installation: SimRuntimeInstallation?,
+                                      bytes: Int64) async -> ItemOutcome {
+        guard let installation else {
+            return ItemOutcome(
+                target: target,
+                status: .failed(reason: "Refused: the exact installed runtime build was not recorded for Review."),
+                freedBytes: 0
+            )
+        }
         report(DeletionProgress(verb: .remove, targetName: target.name, phase: .mutating))
         let baselineFree = await capacitySampler()
         do {
             // Runtime deletion includes removal confirmation.
-            try await simulatorExecutor.deleteRuntime(identifier: identifier)
+            try await simulatorExecutor.deleteRuntime(identifier: identifier, installation: installation)
         } catch {
             return ItemOutcome(target: target, status: .failed(reason: error.localizedDescription), freedBytes: 0)
         }

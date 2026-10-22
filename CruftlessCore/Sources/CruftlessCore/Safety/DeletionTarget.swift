@@ -32,11 +32,22 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         consequence: String,
         reclaimableBytes: Int64
     )
+    case xctestSimulatorDelete(
+        deviceSet: SimulatorDeviceSet,
+        udid: String,
+        deviceDirectory: URL,
+        deviceFingerprint: Fingerprint,
+        plistFingerprint: Fingerprint,
+        name: String,
+        consequence: String,
+        reclaimableBytes: Int64
+    )
     case runtimeDelete(
         identifier: String,
         name: String,
         consequence: String,
-        reclaimableBytes: Int64
+        reclaimableBytes: Int64,
+        installation: SimRuntimeInstallation? = nil
     )
 
     public var id: String {
@@ -47,7 +58,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
             "sim-erase-\(udid)"
         case let .simulatorDelete(udid, _, _, _, _):
             "sim-delete-\(udid)"
-        case let .runtimeDelete(identifier, _, _, _):
+        case let .xctestSimulatorDelete(set, udid, _, _, _, _, _, _): "sim-delete-\(set.id)-\(udid)"
+        case let .runtimeDelete(identifier, _, _, _, _):
             "runtime-\(identifier)"
         }
     }
@@ -58,7 +70,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
             name
         case let .simulatorErase(_, name, _, _, _),
              let .simulatorDelete(_, name, _, _, _),
-             let .runtimeDelete(_, name, _, _):
+             let .xctestSimulatorDelete(_, _, _, _, _, name, _, _),
+             let .runtimeDelete(_, name, _, _, _):
             name
         }
     }
@@ -67,7 +80,7 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         switch self {
         case let .path(_, _, _, _, tier, _, _, _):
             tier
-        case .simulatorErase, .simulatorDelete, .runtimeDelete:
+        case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete:
             .judgment
         }
     }
@@ -78,7 +91,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
             consequence
         case let .simulatorErase(_, _, _, consequence, _),
              let .simulatorDelete(_, _, _, consequence, _),
-             let .runtimeDelete(_, _, consequence, _):
+             let .xctestSimulatorDelete(_, _, _, _, _, _, consequence, _),
+             let .runtimeDelete(_, _, consequence, _, _):
             consequence
         }
     }
@@ -88,7 +102,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         case let .path(_, _, _, _, _, _, bytes, _),
              let .simulatorErase(_, _, _, _, bytes),
              let .simulatorDelete(_, _, _, _, bytes),
-             let .runtimeDelete(_, _, _, bytes):
+             let .xctestSimulatorDelete(_, _, _, _, _, _, _, bytes),
+             let .runtimeDelete(_, _, _, bytes, _):
             bytes
         }
     }

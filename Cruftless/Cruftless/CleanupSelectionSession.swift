@@ -146,7 +146,9 @@ final class CleanupSelectionSession {
             }
         }
     }
+}
 
+extension CleanupSelectionSession {
     private static func rows(
         for location: TrackedLocation,
         contents: DrillDownContent,
@@ -221,19 +223,29 @@ final class CleanupSelectionSession {
         protectedPaths: ProtectedPaths
     ) -> [CleanupSelectionRow] {
         listing.devices.map { device in
-            let unavailable = device.isUnavailable
-            let groupID = unavailable ? "runtime-removed" : device.runtime
+            let unavailable = device.runtimeAvailability.isConfirmedMissing
+            let groupID = "\(device.deviceSet.id):\(unavailable ? "runtime-removed" : device.runtime)"
             let protected = protectedPaths.intersectsCustomProtection(device.deviceDirectory)
                 || protectedPaths.containsCustomProtectedPath(in: device.deviceDirectory)
             let protectionReason: String? = protected ? "This simulator contains a protected path." : nil
-            let reason = device.mutationIssue ?? protectionReason
-            let action = deviceAction(for: device)
+            let availabilityReason: String? = if case let .unknown(reason) = device.runtimeAvailability { reason } else { nil }
+            let reason = device.mutationIssue ?? protectionReason ?? availabilityReason
+            let action = device.deviceSet.kind == .xctest
+                ? (device.state.isShutdown ? "Delete Test Simulator" : nil)
+                : deviceAction(for: device)
             let stateLabel = unavailable ? "Can't boot" : (device.state.isBooted ? "Booted" : nil)
-            let captionParts: [String?] = [Naming.runtime(identifier: device.runtime), stateLabel]
+            let availabilityLabel: String? = switch device.runtimeAvailability {
+            case .available: nil
+            case let .installedUnavailable(reason): "Runtime installed but unavailable · \(reason)"
+            case .missing: "Runtime removed"
+            case let .unknown(reason): "Runtime status unknown · \(reason)"
+            }
+            let captionParts: [String?] = [Naming.runtime(identifier: device.runtime), stateLabel, availabilityLabel,
+                                           device.deviceSet.kind == .xctest ? "…\(device.udid.suffix(6))" : nil]
             let caption = captionParts.compactMap(\.self).joined(separator: " · ")
             return CleanupSelectionRow(
                 selectionItem: CleanupSelectionItem(
-                    id: device.udid,
+                    id: device.id,
                     reclaimableBytes: listing.sizes[device.udid] ?? 0,
                     groupID: groupID,
                     isSelectable: reason == nil,
@@ -242,7 +254,8 @@ final class CleanupSelectionSession {
                 title: device.name,
                 subtitle: reason ?? caption,
                 actionLabel: action,
-                groupTitle: unavailable ? "Runtime removed" : Naming.runtime(identifier: device.runtime),
+                groupTitle: unavailable ? "Runtime removed" :
+                    (device.deviceSet.kind == .xctest ? "Xcode test simulators" : Naming.runtime(identifier: device.runtime)),
                 action: .device(device)
             )
         }
@@ -255,7 +268,7 @@ final class CleanupSelectionSession {
             let subtitle = [runtime.build, state].compactMap(\.self).joined(separator: " · ")
             return CleanupSelectionRow(
                 selectionItem: CleanupSelectionItem(
-                    id: runtime.identifier,
+                    id: runtime.id,
                     reclaimableBytes: runtime.sizeBytes,
                     isSelectable: reason == nil,
                     disabledReason: reason
@@ -276,6 +289,7 @@ final class CleanupSelectionSession {
             return "A protected path intersects the simulator runtime store."
         }
         if runtime.state.isBeingDeleted { return "CoreSimulator is already removing this runtime." }
+        if !runtime.sizeIsKnown { return "The runtime footprint could not be measured." }
         if !runtime.isDeletable { return "This runtime is bundled with Xcode." }
         return nil
     }

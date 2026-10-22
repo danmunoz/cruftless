@@ -16,6 +16,9 @@ struct RuntimeRemovalConfirmationTests {
         return SimctlOutput(status: 0, stdout: json, stderr: "")
     }
 
+    private static let installation = SimRuntimeInstallation(identifier: bundleId, build: "23F77")
+    private static let emptyInstalled = SimctlOutput(status: 0, stdout: #"{"runtimes":[]}"#, stderr: "")
+
     private static let deleteAccepted = SimctlOutput(status: 0, stdout: "", stderr: "")
 
     // MARK: - Waiting for the list to agree
@@ -28,6 +31,7 @@ struct RuntimeRemovalConfirmationTests {
         await #expect(throws: SimctlError.removalNotConfirmed(Self.uuid)) {
             try await runner.awaitRuntimeRemoval(
                 identifier: Self.uuid,
+                installation: Self.installation,
                 timeout: .milliseconds(30),
                 pollInterval: .milliseconds(5)
             )
@@ -41,16 +45,18 @@ struct RuntimeRemovalConfirmationTests {
         let executor = SimctlDouble(results: [
             .success(Self.listOutput()),
             .success(Self.listOutput(state: "Deleting")),
-            .success(Self.listOutput(present: false))
+            .success(Self.listOutput(present: false)),
+            .success(Self.emptyInstalled)
         ])
         let runner = SimctlRunner(executor: executor)
 
         try await runner.awaitRuntimeRemoval(
             identifier: Self.uuid,
+            installation: Self.installation,
             timeout: .seconds(5),
             pollInterval: .milliseconds(1)
         )
-        #expect(executor.arguments.count == 3)
+        #expect(executor.arguments.count == 4)
     }
 
     @Test("A Deleting entry does not count as removed")
@@ -61,6 +67,7 @@ struct RuntimeRemovalConfirmationTests {
         await #expect(throws: SimctlError.removalNotConfirmed(Self.uuid)) {
             try await runner.awaitRuntimeRemoval(
                 identifier: Self.uuid,
+                installation: Self.installation,
                 timeout: .milliseconds(20),
                 pollInterval: .milliseconds(5)
             )
@@ -75,6 +82,7 @@ struct RuntimeRemovalConfirmationTests {
         await #expect(throws: SimctlError.removalNotConfirmed(Self.bundleId)) {
             try await runner.awaitRuntimeRemoval(
                 identifier: Self.bundleId,
+                installation: Self.installation,
                 timeout: .milliseconds(20),
                 pollInterval: .milliseconds(5)
             )
@@ -89,6 +97,7 @@ struct RuntimeRemovalConfirmationTests {
         await #expect(throws: SimctlError.removalNotConfirmed(Self.uuid)) {
             try await runner.awaitRuntimeRemoval(
                 identifier: Self.uuid,
+                installation: Self.installation,
                 timeout: .milliseconds(20),
                 pollInterval: .milliseconds(5)
             )
@@ -101,15 +110,17 @@ struct RuntimeRemovalConfirmationTests {
     func adapterConfirmsAfterDeleting() async throws {
         let executor = SimctlDouble(results: [
             .success(Self.deleteAccepted),
-            .success(Self.listOutput(present: false))
+            .success(Self.listOutput(present: false)),
+            .success(Self.emptyInstalled)
         ])
         let commands = DefaultSimulatorCommandExecutor(runner: SimctlRunner(executor: executor))
 
-        try await commands.deleteRuntime(identifier: Self.uuid)
+        try await commands.deleteRuntime(identifier: Self.uuid, installation: Self.installation)
 
         #expect(executor.arguments == [
             ["runtime", "delete", Self.uuid],
-            ["runtime", "list", "-j"]
+            ["runtime", "list", "-j"],
+            ["list", "runtimes", "-j"]
         ])
     }
 
@@ -151,5 +162,46 @@ struct RuntimeRemovalConfirmationTests {
         #expect(SimRuntimeState(simctlValue: nil) == .unreported)
         #expect(!SimRuntimeState(simctlValue: "Preparing").isBeingDeleted)
         #expect(!SimRuntimeState(simctlValue: "Unusable").isBeingDeleted)
+    }
+
+    @Test("A management UUID disappearing does not confirm a build still installed")
+    func installedMembershipPreventsFalseSuccess() async {
+        let installed = SimctlOutput(
+            status: 0,
+            stdout: #"""
+            {"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","version":"26.5",
+            "buildversion":"23F77","isAvailable":true}]}
+            """#,
+            stderr: ""
+        )
+        let executor = SimctlDouble(results: [.success(Self.listOutput(present: false)), .success(installed)])
+        await #expect(throws: SimctlError.removalNotConfirmed(Self.uuid)) {
+            try await SimctlRunner(executor: executor).awaitRuntimeRemoval(identifier: Self.uuid, installation: Self.installation,
+                                                                           timeout: .milliseconds(10), pollInterval: .milliseconds(1))
+        }
+        #expect(executor.arguments.contains(["list", "runtimes", "-j"]))
+    }
+
+    @Test("An unrelated installed build does not prevent exact-build confirmation")
+    func unrelatedBuildMayRemain() async throws {
+        let installed = SimctlOutput(
+            status: 0,
+            stdout: #"""
+            {"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","version":"26.5",
+            "buildversion":"23F99","isAvailable":true}]}
+            """#,
+            stderr: ""
+        )
+        let executor = SimctlDouble(results: [.success(Self.listOutput(present: false)), .success(installed)])
+        try await SimctlRunner(executor: executor).awaitRuntimeRemoval(identifier: Self.uuid, installation: Self.installation,
+                                                                       timeout: .milliseconds(10), pollInterval: .milliseconds(1))
+    }
+
+    @Test("The production adapter refuses receiptless runtime removal")
+    func receiptlessAdapterRefuses() async {
+        let executor = SimctlDouble(result: .success(Self.deleteAccepted))
+        let commands = DefaultSimulatorCommandExecutor(runner: SimctlRunner(executor: executor))
+        await #expect(throws: SimctlError.self) { try await commands.deleteRuntime(identifier: Self.uuid) }
+        #expect(executor.arguments.isEmpty)
     }
 }

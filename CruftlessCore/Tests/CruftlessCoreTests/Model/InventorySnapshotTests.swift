@@ -48,6 +48,19 @@ struct InventorySnapshotTests {
         #expect(restored.sizesAreUpperBound)
     }
 
+    @Test("Explicit cleanup subtotal cannot exceed the displayed measured footprint")
+    func cleanupSubtotalIsCapped() throws {
+        let entry = InventoryEntry.sized(
+            location: LocationCatalog.derivedData,
+            reclaimableBytes: 100,
+            staleness: StalenessInfo(lastUsedDate: nil),
+            roots: [],
+            eligibleCleanupBytes: 500
+        )
+        #expect(entry.eligibleCleanupBytes == 100)
+        #expect(inventory(entries: [entry]).cleanableBytes == 100)
+    }
+
     @Test("Android root provenance survives snapshot restoration")
     func roundTripsAndroidProvenance() throws {
         let root = RootSize(

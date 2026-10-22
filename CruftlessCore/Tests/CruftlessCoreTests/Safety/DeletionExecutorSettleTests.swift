@@ -120,7 +120,8 @@ struct DeletionExecutorSettleTests {
             identifier: "com.apple.CoreSimulator.SimRuntime.iOS-17-4",
             name: "iOS 17.4",
             consequence: "",
-            reclaimableBytes: sevenPointEightGigabytes
+            reclaimableBytes: sevenPointEightGigabytes,
+            installation: SimRuntimeInstallation(identifier: "com.apple.CoreSimulator.SimRuntime.iOS-17-4", build: "A")
         )
         let result = await executor.execute(DeletionPlan.single(target)) { recorder.record($0) }
 

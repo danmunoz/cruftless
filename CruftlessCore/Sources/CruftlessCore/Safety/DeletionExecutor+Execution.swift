@@ -70,7 +70,7 @@ extension DeletionExecutor {
 
     private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {
         switch target {
-        case .simulatorErase, .simulatorDelete, .runtimeDelete: true
+        case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete: true
         case .path: false
         }
     }

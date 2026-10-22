@@ -134,7 +134,7 @@ private struct DetailScreen: View {
             LocationSummaryDetailView(location: location, model: model, backTitle: backTitle)
         } else {
             switch location.id {
-            case LocationCatalog.simulatorDevices.id:
+            case LocationCatalog.simulatorDevices.id, LocationCatalog.xctestDevices.id:
                 SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
             case LocationCatalog.simulatorRuntimes.id:
                 RuntimesDetailView(location: location, model: model, backTitle: backTitle)

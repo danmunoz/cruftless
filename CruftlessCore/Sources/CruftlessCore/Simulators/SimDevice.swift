@@ -1,9 +1,18 @@
 import Foundation
 
+public enum SimRuntimeAvailability: Sendable, Hashable {
+    case available
+    case installedUnavailable(String)
+    case missing
+    case unknown(String)
+
+    public var isConfirmedMissing: Bool { if case .missing = self { return true }; return false }
+}
+
 /// Model representing a CoreSimulator device parsed from `device.plist`.
 public struct SimDevice: Sendable, Hashable, Identifiable {
     public var id: String {
-        udid
+        "\(deviceSet.id):\(udid)"
     }
 
     public let udid: String
@@ -13,6 +22,8 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
     public let lastUsedAt: Date?
     public let deviceDirectory: URL
     public let isUnavailable: Bool
+    public let runtimeAvailability: SimRuntimeAvailability
+    public let deviceSet: SimulatorDeviceSet
     public let toolchainID: String?
     public let toolchainGeneration: UUID?
     public let mutationIssue: String?
@@ -31,7 +42,9 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
         isUnavailable: Bool = false,
         toolchainID: String? = nil,
         toolchainGeneration: UUID? = nil,
-        mutationIssue: String? = nil
+        mutationIssue: String? = nil,
+        runtimeAvailability: SimRuntimeAvailability? = nil,
+        deviceSet: SimulatorDeviceSet = .ordinary()
     ) {
         self.udid = udid
         self.name = name
@@ -40,6 +53,8 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
         self.lastUsedAt = lastUsedAt
         self.deviceDirectory = deviceDirectory
         self.isUnavailable = isUnavailable
+        self.runtimeAvailability = runtimeAvailability ?? (isUnavailable ? .missing : .available)
+        self.deviceSet = deviceSet
         self.toolchainID = toolchainID
         self.toolchainGeneration = toolchainGeneration
         self.mutationIssue = mutationIssue
@@ -56,7 +71,16 @@ public struct SimDevice: Sendable, Hashable, Identifiable {
             isUnavailable: unavailable,
             toolchainID: toolchainID,
             toolchainGeneration: toolchainGeneration,
-            mutationIssue: mutationIssue
+            mutationIssue: mutationIssue,
+            runtimeAvailability: unavailable ? .missing : .available,
+            deviceSet: deviceSet
         )
+    }
+
+    public func markingRuntimeAvailability(_ availability: SimRuntimeAvailability) -> SimDevice {
+        SimDevice(udid: udid, name: name, runtime: runtime, state: state, lastUsedAt: lastUsedAt,
+                  deviceDirectory: deviceDirectory, isUnavailable: availability.isConfirmedMissing,
+                  toolchainID: toolchainID, toolchainGeneration: toolchainGeneration,
+                  mutationIssue: mutationIssue, runtimeAvailability: availability, deviceSet: deviceSet)
     }
 }

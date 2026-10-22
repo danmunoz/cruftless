@@ -197,6 +197,7 @@ public struct ProtectedPaths: Sendable {
 
     private static let anchoredHomeSubdirectories = [
         "Library/Developer/CoreSimulator",
+        "Library/Developer/XCTestDevices",
         "Library/Developer/Xcode/Archives",
         "Library/Developer/Xcode/UserData",
         "Library/MobileDevice",
@@ -271,6 +272,11 @@ public struct ProtectedPaths: Sendable {
             if components.count - (index + 2) <= 2 {
                 return true
             }
+        }
+        for index in 0 ..< (components.count - 1)
+            where components[index].caseInsensitiveCompare("Developer") == .orderedSame
+            && components[index + 1].caseInsensitiveCompare("XCTestDevices") == .orderedSame {
+            if components.count - (index + 2) <= 2 { return true }
         }
         return false
     }

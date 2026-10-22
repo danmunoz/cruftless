@@ -55,7 +55,7 @@ public struct RuntimesDetailView: View {
                 PopoverRow(
                     icon: .symbol("square.stack.3d.up"),
                     title: runtime.name,
-                    sizeBytes: runtime.sizeBytes,
+                    sizeBytes: runtime.sizeIsKnown ? runtime.sizeBytes : nil,
                     action: runtime.canPlanDelete
                         ? RowAction("Delete") { planDelete(runtime) }
                         : nil
@@ -80,6 +80,9 @@ public struct RuntimesDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } else if runtime.isDeletable {
             Text("Build \(runtime.build)")
+                .foregroundStyle(.secondary)
+        } else if !runtime.canPlanDelete {
+            Text("Manage in Xcode")
                 .foregroundStyle(.secondary)
         } else {
             Text("Built into Xcode")

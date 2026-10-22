@@ -5,10 +5,20 @@ public enum SimRuntimeMutationCapability: Sendable, Hashable {
     case unavailable(String)
 }
 
+public struct SimRuntimeInstallation: Sendable, Hashable {
+    public let identifier: String
+    public let build: String
+
+    public init(identifier: String, build: String) {
+        self.identifier = identifier
+        self.build = build
+    }
+}
+
 /// Represents an installed CoreSimulator runtime disk image or cryptex.
 public struct SimRuntime: Sendable, Hashable, Identifiable {
     public var id: String {
-        identifier
+        "\(runtimeIdentifier)#\(build)"
     }
 
     public let identifier: String
@@ -16,6 +26,7 @@ public struct SimRuntime: Sendable, Hashable, Identifiable {
     public let name: String
     public let build: String
     public let sizeBytes: Int64
+    public let sizeIsKnown: Bool
     public let isDeletable: Bool
     /// What CoreSimulator says this runtime is currently doing.
     public let state: SimRuntimeState
@@ -33,13 +44,15 @@ public struct SimRuntime: Sendable, Hashable, Identifiable {
         state: SimRuntimeState = .unreported,
         mutationCapability: SimRuntimeMutationCapability = .available,
         toolchainID: String? = nil,
-        toolchainGeneration: UUID? = nil
+        toolchainGeneration: UUID? = nil,
+        sizeIsKnown: Bool? = nil
     ) {
         self.identifier = identifier
         self.runtimeIdentifier = runtimeIdentifier
         self.name = name
         self.build = build
         self.sizeBytes = sizeBytes
+        self.sizeIsKnown = sizeIsKnown ?? (sizeBytes > 0)
         self.isDeletable = isDeletable
         self.state = state
         self.mutationCapability = mutationCapability
@@ -48,6 +61,6 @@ public struct SimRuntime: Sendable, Hashable, Identifiable {
     }
 
     public var canPlanDelete: Bool {
-        isDeletable && !state.isBeingDeleted && mutationCapability == .available
+        sizeIsKnown && sizeBytes > 0 && isDeletable && !state.isBeingDeleted && mutationCapability == .available
     }
 }

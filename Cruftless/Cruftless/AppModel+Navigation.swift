@@ -102,6 +102,14 @@ public extension AppModel {
                 return .unavailable(error.localizedDescription)
             }
 
+        case LocationCatalog.xctestDevices.id:
+            do {
+                let devices = try await simulatorService.devices(in: .xctest())
+                return await .devices(devices, sizes: scanEngine.childSizes(for: location.id))
+            } catch {
+                return .unavailable(error.localizedDescription)
+            }
+
         case LocationCatalog.androidSDK.id, LocationCatalog.androidAVDs.id:
             return await scanEngine.androidDrillDown(for: location)
 

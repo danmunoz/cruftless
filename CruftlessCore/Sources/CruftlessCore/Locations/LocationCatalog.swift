@@ -23,6 +23,17 @@ public enum LocationCatalog: Sendable {
         resolveRoots: RootResolver.simulatorDevicesRoot
     )
 
+    public static let xctestDevices = TrackedLocation(
+        id: "xctestDevices",
+        title: "Xcode test simulators",
+        icon: .symbol("testtube.2"),
+        tier: .judgment,
+        hasDrillDown: true,
+        stalenessSource: .simulatorPlist,
+        mutationPolicy: .simctl,
+        resolveRoots: RootResolver.xctestDevicesRoot
+    )
+
     public static let simulatorRuntimes = TrackedLocation(
         id: "simulatorRuntimes",
         title: "Simulator runtimes",
@@ -207,6 +218,7 @@ public enum LocationCatalog: Sendable {
     public static let all: [TrackedLocation] = [
         deviceSupport,
         simulatorDevices,
+        xctestDevices,
         simulatorRuntimes,
         derivedData,
         previewsCache,

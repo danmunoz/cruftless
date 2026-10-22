@@ -60,17 +60,23 @@ public struct SimulatorRuntimeListing: Sendable {
     public let toolchainID: String?
     public let toolchainGeneration: UUID?
     public let mutationIssue: String?
+    public let installedCatalog: SimulatorRuntimeCatalog?
+    public let catalogIssue: String?
 
     public init(
         runtimes: [SimRuntime],
         toolchainID: String? = nil,
         toolchainGeneration: UUID? = nil,
-        mutationIssue: String? = nil
+        mutationIssue: String? = nil,
+        installedCatalog: SimulatorRuntimeCatalog? = nil,
+        catalogIssue: String? = nil
     ) {
         self.runtimes = runtimes
         self.toolchainID = toolchainID
         self.toolchainGeneration = toolchainGeneration
         self.mutationIssue = mutationIssue
+        self.installedCatalog = installedCatalog
+        self.catalogIssue = catalogIssue
     }
 }
 
@@ -201,7 +207,7 @@ public struct SimctlRunner: Sendable {
     }
 
     public func listRuntimes() async throws -> [SimRuntime] {
-        (try await listRuntimeCatalog()).runtimes
+        try await (listRuntimeCatalog()).runtimes
     }
 
     public func listRuntimeCatalog() async throws -> SimulatorRuntimeListing {
@@ -254,6 +260,16 @@ public struct SimctlRunner: Sendable {
         )
     }
 
+    public func listInstalledRuntimeCatalog() async throws -> SimulatorRuntimeCatalog {
+        let output = try await executor.run(arguments: ["list", "runtimes", "-j"])
+        guard output.status == 0 else {
+            throw SimctlError.nonZeroExit(exitCode: output.status, message: output.stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        guard let data = output.stdout.data(using: .utf8) else { throw SimctlError.invalidJSON("Empty or non-UTF8 output") }
+        return try SimulatorRuntimeCatalog(jsonData: data, toolchainID: output.toolchainID,
+                                           toolchainGeneration: output.toolchainGeneration)
+    }
+
     public func beginsToolchainOperation(generation: UUID?) async -> Bool {
         guard let generation else { return false }
         guard let executor = executor as? DefaultSimctlExecutor else { return true }
@@ -297,6 +313,17 @@ public struct SimctlRunner: Sendable {
         }
     }
 
+    public func delete(udid: String, in deviceSet: SimulatorDeviceSet) async throws {
+        guard deviceSet.kind == .xctest, deviceSet.isProductionRoot else {
+            throw SimctlError.executionError("Refused: unsupported or unverified simulator device set.")
+        }
+        let udid = try SimctlIdentifier.validatedUDID(udid)
+        let output = try await executor.run(arguments: ["--set", deviceSet.root.path(percentEncoded: false), "delete", udid])
+        if output.status != 0 {
+            throw SimctlError.nonZeroExit(exitCode: output.status, message: output.stderr)
+        }
+    }
+
     public func runtimeDelete(identifier: String) async throws {
         let identifier = try SimctlIdentifier.validatedRuntime(identifier)
         let output = try await executor.run(arguments: ["runtime", "delete", identifier])
@@ -307,6 +334,7 @@ public struct SimctlRunner: Sendable {
 
     public func awaitRuntimeRemoval(
         identifier: String,
+        installation: SimRuntimeInstallation,
         timeout: Duration = Self.removalConfirmationTimeout,
         pollInterval: Duration = Self.removalPollInterval
     ) async throws {
@@ -314,7 +342,7 @@ public struct SimctlRunner: Sendable {
         let deadline = ContinuousClock.now.advanced(by: timeout)
 
         while true {
-            if await isRuntimeGone(identifier) { return }
+            if await isRuntimeGone(identifier, installation: installation) { return }
             guard ContinuousClock.now < deadline else {
                 throw SimctlError.removalNotConfirmed(identifier)
             }
@@ -326,9 +354,11 @@ public struct SimctlRunner: Sendable {
         }
     }
 
-    private func isRuntimeGone(_ identifier: String) async -> Bool {
+    private func isRuntimeGone(_ identifier: String, installation: SimRuntimeInstallation) async -> Bool {
         guard let runtimes = try? await listRuntimes() else { return false }
-        return !runtimes.contains { $0.matches(identifier) }
+        guard !runtimes.contains(where: { $0.matches(identifier) }),
+              let installed = try? await listInstalledRuntimeCatalog() else { return false }
+        return !installed.runtimes.contains { $0.identifier == installation.identifier && $0.build == installation.build }
     }
 
     /// How long `awaitRuntimeRemoval` waits before giving up.

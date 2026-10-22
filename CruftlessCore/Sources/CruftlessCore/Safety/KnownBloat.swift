@@ -57,6 +57,12 @@ public enum KnownBloat: Sendable {
         protectedPaths: ProtectedPaths = .default,
         policyGeneration: UInt64 = 0
     ) throws -> DeletionPlan {
+        guard device.deviceSet.kind == .ordinary else {
+            throw DeletionPlanningError.runtimeToolingUnavailable(
+                name: device.name,
+                reason: "Direct bloat clearing is disabled for Xcode test simulators."
+            )
+        }
         guard device.state.isShutdown else {
             throw DeletionPlanningError.simulatorNotShutdown(name: device.name)
         }
