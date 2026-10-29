@@ -5,11 +5,13 @@ import SwiftUI
 /// A row's hover-revealed action.
 struct RowAction {
     let label: String
+    let accessibilityLabel: String
     let isDestructive: Bool
     let handler: () -> Void
 
-    init(_ label: String, isDestructive: Bool = false, handler: @escaping () -> Void) {
+    init(_ label: String, isDestructive: Bool = false, accessibilityLabel: String? = nil, handler: @escaping () -> Void) {
         self.label = label
+        self.accessibilityLabel = accessibilityLabel ?? label
         self.isDestructive = isDestructive
         self.handler = handler
     }
@@ -62,6 +64,7 @@ struct PopoverRow<Caption: View>: View {
                         .foregroundStyle(isPlaceholder ? AnyShapeStyle(.secondary) : AnyShapeStyle(titleColor))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(title)
 
                     if let flagTint {
                         RowFlagMarker(tint: flagTint)
@@ -78,6 +81,8 @@ struct PopoverRow<Caption: View>: View {
             Spacer(minLength: 0)
 
             trailingSlot
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
 
             HStack(spacing: 5) {
                 if isOpening {
@@ -118,7 +123,7 @@ struct PopoverRow<Caption: View>: View {
                 Button("Rescan", action: rescan)
             }
             if let action {
-                Button(action.label, action: action.handler)
+                Button(action.accessibilityLabel, action: action.handler)
             }
         }
         .contextMenu {
@@ -129,7 +134,7 @@ struct PopoverRow<Caption: View>: View {
                 Button("Rescan", action: rescan)
             }
             if let action {
-                Button(action.label, role: action.isDestructive ? .destructive : nil, action: action.handler)
+                Button(action.accessibilityLabel, role: action.isDestructive ? .destructive : nil, action: action.handler)
             }
         }
     }
@@ -185,6 +190,8 @@ struct PopoverRow<Caption: View>: View {
 
                 if let action {
                     Button(action.label, action: action.handler)
+                        .accessibilityLabel(action.accessibilityLabel)
+                        .help(action.accessibilityLabel)
                         .buttonStyle(.glass)
                         .controlSize(.small)
                         .font(.system(size: 11, weight: .medium))
@@ -198,6 +205,14 @@ struct PopoverRow<Caption: View>: View {
         }
         .frame(minWidth: PopoverMetrics.sizeColumn, alignment: .trailing)
     }
+
+    #if DEBUG
+        func previewHover(_ hovered: Bool) -> Self {
+            var row = self
+            row._isHovered = State(initialValue: hovered)
+            return row
+        }
+    #endif
 }
 
 extension PopoverRow where Caption == EmptyView {

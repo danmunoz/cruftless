@@ -145,12 +145,13 @@ public struct SimulatorsDetailView: View {
     private func unavailableRow(_ device: SimDevice) -> some View {
         PopoverRow(
             icon: .symbol("exclamationmark.triangle"),
-            title: device.deviceSet.kind == .xctest ? "\(device.name) · \(device.udid.suffix(6))" : device.name,
+            title: device.name,
             sizeBytes: sizeBytes(for: device),
             action: device.mutationIssue == nil && (device.deviceSet.kind == .ordinary || device.state.isShutdown)
                 ? RowAction(
-                    device.deviceSet.kind == .xctest ? "Delete Test Simulator" : DesignTokens.actionLabel(for: .irreversible),
-                    isDestructive: true
+                    device.deviceSet.kind == .xctest ? "Delete" : DesignTokens.actionLabel(for: .irreversible),
+                    isDestructive: true,
+                    accessibilityLabel: device.deviceSet.kind == .xctest ? "Delete Test Simulator" : nil
                 ) { plan(.delete, for: device) }
                 : nil
         ) {
@@ -161,10 +162,12 @@ public struct SimulatorsDetailView: View {
     private func deviceRow(_ device: SimDevice) -> some View {
         PopoverRow(
             icon: .symbol(expanded.contains(device.id) ? "chevron.down" : "chevron.right"),
-            title: device.deviceSet.kind == .xctest ? "\(device.name) · \(device.udid.suffix(6))" : device.name,
+            title: device.name,
             sizeBytes: sizeBytes(for: device),
             action: device.deviceSet.kind == .xctest
-                ? (device.state.isShutdown && device.mutationIssue == nil ? RowAction("Delete Test Simulator", isDestructive: true) { plan(
+                ? (device.state.isShutdown && device.mutationIssue == nil ? RowAction(
+                    "Delete", isDestructive: true, accessibilityLabel: "Delete Test Simulator"
+                ) { plan(
                     .delete,
                     for: device
                 ) } : nil)
@@ -191,6 +194,11 @@ public struct SimulatorsDetailView: View {
             HStack(spacing: 4) {
                 Text(Naming.runtime(identifier: device.runtime))
                     .foregroundStyle(.secondary)
+                if device.deviceSet.kind == .xctest {
+                    Text(verbatim: "· \(device.udid.suffix(6))")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                 if let status {
                     Text(verbatim: "·")
                         .foregroundStyle(.tertiary)
