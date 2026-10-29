@@ -152,6 +152,17 @@ public struct ProtectedPaths: Sendable {
         return true
     }
 
+    /// Allows a registered AVD child only for manager-backed removal.
+    package func allowsAndroidAVD(_ target: URL, under registryRoot: URL) -> Bool {
+        let forms = ProtectedPathForms(url: target)
+        return !intersectsCustomProtection(target)
+            && !isSystemProtected(forms, allowingAndroidAVDRoot: registryRoot)
+            && !isInsideProtectedHomeArea(forms)
+            && !Self.isCoreSimulatorStructure(forms.lexical)
+            && !Self.isCoreSimulatorStructure(forms.resolved)
+            && !containsStructuralAnchor(forms)
+    }
+
     /// Whether `url` may serve as a `PathGuard` root at all.
     public func isUsableRoot(_ url: URL) -> Bool {
         guard url.isFileURL else { return false }
@@ -197,6 +208,7 @@ public struct ProtectedPaths: Sendable {
 
     private static let anchoredHomeSubdirectories = [
         "Library/Developer/CoreSimulator",
+        "Library/Developer/XCTestDevices",
         "Library/Developer/Xcode/Archives",
         "Library/Developer/Xcode/UserData",
         "Library/MobileDevice",
@@ -272,6 +284,11 @@ public struct ProtectedPaths: Sendable {
                 return true
             }
         }
+        for index in 0 ..< (components.count - 1)
+            where components[index].caseInsensitiveCompare("Developer") == .orderedSame
+            && components[index + 1].caseInsensitiveCompare("XCTestDevices") == .orderedSame {
+            if components.count - (index + 2) <= 2 { return true }
+        }
         return false
     }
 }
@@ -294,14 +311,25 @@ private extension ProtectedPaths {
     }
 
     /// Checks protected roots while allowing a Gradle cache child only.
-    func isSystemProtected(_ forms: ProtectedPathForms, allowingGradleCacheRoot: URL? = nil) -> Bool {
+    func isSystemProtected(
+        _ forms: ProtectedPathForms,
+        allowingGradleCacheRoot: URL? = nil,
+        allowingAndroidAVDRoot: URL? = nil
+    ) -> Bool {
         for spelling in forms.variants {
             if hasUnresolvedAndroidRedirects,
                spelling == homePath || spelling.hasPrefix(homePath + "/") {
                 return true
             }
-            if systemProtectedPaths.contains(spelling)
-                || androidProtectedPrefixes.contains(where: { spelling == $0 || spelling.hasPrefix($0 + "/") })
+            let androidException = allowingAndroidAVDRoot.map {
+                spelling.hasPrefix(Self.normalize($0).lowercased() + "/")
+            } ?? false
+            let exactAndroidEntry = androidProtectedPrefixes.contains {
+                ProtectedPathForms(path: $0).variants.contains(spelling)
+            }
+            if (systemProtectedPaths.contains(spelling) && !(androidException && exactAndroidEntry))
+                || (androidProtectedPrefixes.contains(where: { spelling == $0 || spelling.hasPrefix($0 + "/") })
+                    && !androidException)
                 || isGradleSystemProtected(spelling, allowingCacheRoot: allowingGradleCacheRoot)
                 || Self.isAndroidStudioPath(spelling)
                 || Self.rootRestrictedPrefixes.contains(where: { spelling.hasPrefix($0) })

@@ -173,6 +173,13 @@ public struct ReviewView: View {
                             .foregroundStyle(.secondary)
                     }
 
+                    if case let .androidAVDDelete(request) = item {
+                        Text(request.identity.directory.path(percentEncoded: false))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(item.consequence)
                         .font(.system(size: 11))
                         .foregroundStyle(item.isFlagged ? DesignTokens.tierColor(for: .irreversible) : .secondary)
@@ -226,7 +233,9 @@ public struct ReviewView: View {
         case let .path(_, _, _, _, tier, _, _, _): tier == .regen ? "Clear" : "Delete"
         case let .simulatorErase(_, _, booted, _, _): booted ? "Shut Down and Erase" : "Erase"
         case let .simulatorDelete(_, _, booted, _, _): booted ? "Shut Down and Delete" : "Delete"
+        case .xctestSimulatorDelete: "Delete Test Simulator"
         case .runtimeDelete: "Delete Runtime"
+        case .androidAVDDelete: "Delete Device"
         }
     }
 }

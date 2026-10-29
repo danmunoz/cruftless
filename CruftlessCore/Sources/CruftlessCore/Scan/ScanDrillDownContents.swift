@@ -1,6 +1,13 @@
 import Foundation
 
-typealias RuntimeCatalogDeviceLister = @Sendable (SimulatorRuntimeListing) -> [SimDevice]
+typealias RuntimeCatalogDeviceLister = @Sendable (SimulatorRuntimeListing, SimulatorDeviceSet) -> [SimDevice]
+
+struct SimulatorScanContext: Sendable {
+    var listing: SimulatorRuntimeListing?
+    var failure: String?
+    var deviceLister: RuntimeCatalogDeviceLister?
+    var protectedPaths: ProtectedPaths = ProtectedPathsStore.shared.protectedPaths()
+}
 
 struct DrillDownScanContext: Sendable {
     let knownSizes: [String: [String: SizeResult]]
@@ -28,7 +35,8 @@ extension ScanEngine {
 
     /// Whether this location's scan depends on the shared runtime lookup.
     nonisolated static func needsRuntimes(_ location: TrackedLocation) -> Bool {
-        location.sizeSource == .simulatorRuntimes || location.id == LocationCatalog.simulatorDevices.id
+        location.sizeSource == .simulatorRuntimes || location.id == LocationCatalog.simulatorDevices.id || location.id == LocationCatalog
+            .xctestDevices.id
     }
 
     /// The shared lookup's outcome, as two `Sendable` halves.
@@ -37,7 +45,7 @@ extension ScanEngine {
     ) async -> (list: SimulatorRuntimeListing?, failure: String?) {
         guard let task else { return (nil, nil) }
         do {
-            return (try await task.value, nil)
+            return try await (task.value, nil)
         } catch {
             return (nil, error.localizedDescription)
         }
@@ -47,9 +55,7 @@ extension ScanEngine {
         _ location: TrackedLocation,
         roots: [URL],
         inodeSet: InodeSet,
-        runtimeListing: SimulatorRuntimeListing? = nil,
-        runtimesFailure: String? = nil,
-        deviceLister: RuntimeCatalogDeviceLister? = nil
+        simulatorContext: SimulatorScanContext = SimulatorScanContext()
     ) -> LocationOutcome {
         ScanSignposts.shared.measure("ScanLocation") {
             let readable = readableRoots(among: roots)
@@ -69,13 +75,13 @@ extension ScanEngine {
                 context: DrillDownScanContext(
                     knownSizes: walked.breakdowns,
                     roots: walked.rootSizes,
-                    runtimeListing: runtimeListing,
-                    runtimesFailure: runtimesFailure,
-                    deviceLister: deviceLister
+                    runtimeListing: simulatorContext.listing,
+                    runtimesFailure: simulatorContext.failure,
+                    deviceLister: simulatorContext.deviceLister
                 )
             )
             let issues = [incompleteReason(for: location, walk: walked), contents?.inventoryIssue]
-                .compactMap { $0 }
+                .compactMap(\.self)
             return LocationOutcome(
                 locationId: location.id,
                 entry: .sized(
@@ -86,12 +92,27 @@ extension ScanEngine {
                         roots: readable.roots,
                         newestMtime: walked.newestMtime
                     ),
-                    roots: walked.rootSizes
+                    roots: walked.rootSizes,
+                    eligibleCleanupBytes: location.id == LocationCatalog.xctestDevices.id
+                        ? eligibleTestDeviceBytes(contents, protectedPaths: simulatorContext.protectedPaths)
+                        : nil
                 ),
                 failure: issues.isEmpty ? nil : issues.joined(separator: " "),
                 childBreakdowns: walked.breakdowns,
                 contents: contents
             )
+        }
+    }
+
+    nonisolated static func eligibleTestDeviceBytes(_ contents: DrillDownContent?, protectedPaths: ProtectedPaths) -> Int64 {
+        guard case let .devices(devices, sizes) = contents else { return 0 }
+        let context = PlanningContext(protectedPaths: protectedPaths)
+        return devices.reduce(0) { total, device in
+            guard let size = sizes[device.udid], size > 0 else { return total }
+            do {
+                _ = try DeletionPlanner.xctestSimulatorDelete(for: device, size: size, context: context)
+                return total + size
+            } catch { return total }
         }
     }
 
@@ -153,7 +174,7 @@ extension ScanEngine {
             return .children(children)
         }
 
-        guard location.id == LocationCatalog.simulatorDevices.id else {
+        guard location.id == LocationCatalog.simulatorDevices.id || location.id == LocationCatalog.xctestDevices.id else {
             return .children(DrillDownProvider.loadChildren(for: location, knownSizes: context.knownSizes))
         }
 
@@ -162,7 +183,7 @@ extension ScanEngine {
         }
 
         return .devices(
-            deviceLister(runtimeListing),
+            deviceLister(runtimeListing, location.id == LocationCatalog.xctestDevices.id ? .xctest() : .ordinary()),
             sizes: immediateChildSizes(in: context.knownSizes)
         )
     }

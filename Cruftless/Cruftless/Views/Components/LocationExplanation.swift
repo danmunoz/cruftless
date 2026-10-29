@@ -112,7 +112,8 @@ struct LocationExplanation {
             description: "Virtual Android devices, including installed apps, settings, saved states, and device storage.",
             risk: """
             Wiping or deleting a device permanently removes its stored apps and data. \
-            Cruftless keeps this section read-only; manage devices in Android Studio’s Device Manager.
+            Cruftless removes one stopped, inactive device through Google’s Android CLI after review. \
+            Missing tools require installation permission. Do not start the device during removal.
             """
         )
     ]

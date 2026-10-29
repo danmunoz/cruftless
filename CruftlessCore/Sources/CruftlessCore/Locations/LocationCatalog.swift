@@ -23,6 +23,17 @@ public enum LocationCatalog: Sendable {
         resolveRoots: RootResolver.simulatorDevicesRoot
     )
 
+    public static let xctestDevices = TrackedLocation(
+        id: "xctestDevices",
+        title: "Xcode test simulators",
+        icon: .symbol("testtube.2"),
+        tier: .judgment,
+        hasDrillDown: true,
+        stalenessSource: .simulatorPlist,
+        mutationPolicy: .simctl,
+        resolveRoots: RootResolver.xctestDevicesRoot
+    )
+
     public static let simulatorRuntimes = TrackedLocation(
         id: "simulatorRuntimes",
         title: "Simulator runtimes",
@@ -198,7 +209,7 @@ public enum LocationCatalog: Sendable {
         hasDrillDown: true,
         stalenessSource: .topLevelMtime,
         mutationPolicy: .readOnly,
-        consequence: "AVDs contain user data, apps, settings, SD cards, and snapshots. They are read-only.",
+        consequence: "AVDs contain user data, apps, settings, SD cards, and snapshots. Delete stopped devices individually after review.",
         discoveryIssue: RootResolver.androidAVDIssue,
         resolveRoots: RootResolver.androidAVDRoots
     )
@@ -207,6 +218,7 @@ public enum LocationCatalog: Sendable {
     public static let all: [TrackedLocation] = [
         deviceSupport,
         simulatorDevices,
+        xctestDevices,
         simulatorRuntimes,
         derivedData,
         previewsCache,

@@ -13,7 +13,8 @@ struct KnownBloatPlanningErrorTests {
     ) throws -> (device: SimDevice, base: URL) {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let deviceDir = base.appendingPathComponent("Dev1", isDirectory: true)
+        let udid = UUID().uuidString
+        let deviceDir = base.appendingPathComponent(udid, isDirectory: true)
         let dataDir = deviceDir.appendingPathComponent("data", isDirectory: true)
         try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
 
@@ -26,7 +27,7 @@ struct KnownBloatPlanningErrorTests {
         }
 
         let device = SimDevice(
-            udid: "Dev1", name: name,
+            udid: udid, name: name,
             runtime: "", state: state, lastUsedAt: nil,
             deviceDirectory: deviceDir
         )
@@ -38,7 +39,7 @@ struct KnownBloatPlanningErrorTests {
         let fixture = try makeDevice(state: .shutdown)
         defer { TestFileSystem.removeDirectoryRecursively(at: fixture.base) }
         let device = SimDevice(
-            udid: UUID().uuidString, name: "Fixture simulator", runtime: "missing", state: .shutdown,
+            udid: fixture.device.udid, name: "Fixture simulator", runtime: "missing", state: .shutdown,
             lastUsedAt: nil, deviceDirectory: fixture.device.deviceDirectory, mutationIssue: "Simulator tools unavailable"
         )
         let plan = try DeletionPlanner.simulatorBloat(for: device, context: PlanningContext())

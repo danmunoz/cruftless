@@ -3,11 +3,11 @@ import Foundation
 /// A scan's rows in a form that survives a relaunch.
 public struct InventorySnapshot: Codable, Sendable, Equatable {
     /// Bumped whenever the saved snapshot shape changes.
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
 
     /// What the row measured.
     public enum Kind: Codable, Sendable, Equatable {
-        case sized(bytes: Int64)
+        case sized(bytes: Int64, eligibleCleanupBytes: Int64? = nil)
         case unavailable(reason: String)
     }
 
@@ -55,7 +55,10 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
         rows = inventory.entries.map { entry in
             Row(
                 locationId: entry.location.id,
-                kind: entry.unavailableReason.map(Kind.unavailable) ?? .sized(bytes: entry.reclaimableBytes),
+                kind: entry.unavailableReason.map(Kind.unavailable) ?? .sized(
+                    bytes: entry.reclaimableBytes,
+                    eligibleCleanupBytes: entry.eligibleCleanupBytes
+                ),
                 lastUsedDate: entry.staleness.lastUsedDate,
                 roots: entry.roots.map {
                     RootRow(
@@ -81,7 +84,7 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
         let entries = rows.compactMap { row -> InventoryEntry? in
             guard let location = locationsById[row.locationId] else { return nil }
             switch row.kind {
-            case let .sized(bytes):
+            case let .sized(bytes, eligibleBytes):
                 return .sized(
                     location: location,
                     reclaimableBytes: bytes,
@@ -94,7 +97,8 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
                             volumeIdentifier: $0.volumeIdentifier,
                             layout: $0.layout
                         )
-                    }
+                    },
+                    eligibleCleanupBytes: version >= 4 ? eligibleBytes : nil
                 )
             case let .unavailable(reason):
                 return .unavailable(location: location, reason: reason)

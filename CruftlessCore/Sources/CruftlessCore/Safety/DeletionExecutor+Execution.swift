@@ -6,6 +6,12 @@ extension DeletionExecutor {
         _ plan: DeletionPlan,
         onProgress: (@Sendable (DeletionProgress) -> Void)? = nil
     ) async -> DeletionResult {
+        let androidTarget = plan.items.contains { if case .androidAVDDelete = $0 { true } else { false } }
+        let invalidAndroidPlan = !plan.isPlannerAuthorized || plan.count != 1
+            || plan.affectedLocationIds != [LocationCatalog.androidAVDs.id]
+        if androidTarget, invalidAndroidPlan {
+            return Self.refusedAsUnverified(plan)
+        }
         if plan.items.contains(where: { $0.validatedPath != nil }), !plan.isPlannerAuthorized {
             return Self.refusedAsUnverified(plan)
         }
@@ -70,8 +76,8 @@ extension DeletionExecutor {
 
     private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {
         switch target {
-        case .simulatorErase, .simulatorDelete, .runtimeDelete: true
-        case .path: false
+        case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete: true
+        case .path, .androidAVDDelete: false
         }
     }
 
@@ -87,9 +93,12 @@ extension DeletionExecutor {
            ) {
             return nil
         }
-        let authorizedIDs: Set<String> = acknowledgement == nil
+        var authorizedIDs: Set<String> = acknowledgement == nil
             ? []
             : [LocationCatalog.gradleCaches.id]
+        if plan.isPlannerAuthorized, plan.count == 1, case .androidAVDDelete = plan.items[0] {
+            authorizedIDs.insert(LocationCatalog.androidAVDs.id)
+        }
         let locationIDs = plan.affectedLocationIds.subtracting(authorizedIDs).union(
             policyGenerationAuthority.readOnlyLocationIDs(matching: plan.items)
                 .subtracting(authorizedIDs)

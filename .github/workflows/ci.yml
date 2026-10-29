@@ -32,7 +32,7 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
-          test "$(xcodebuild -version | awk 'NR == 1 { print $2 }')" = "27.0"
+          xcodebuild -version | awk 'NR == 1 { print $2 }' | grep -Eq '^27\.[0-9]+(\.[0-9]+)?$'
           swift --version | grep -Eq 'Swift version 6\.4(\.| )'
 
       - name: Lint

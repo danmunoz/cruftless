@@ -5,6 +5,7 @@ import SwiftUI
 public enum AppRoute: Hashable {
     case detail(TrackedLocation)
     case gradleCacheRisk(location: TrackedLocation, child: ChildEntry)
+    case androidTools(ChildEntry)
     case review(DeletionPlan)
     case result(DeletionResult)
     case selection(TrackedLocation)
@@ -28,6 +29,7 @@ public extension AppModel {
     }
 
     func popoverDidDisappear() {
+        cancelAndroidPreparation()
         cancelPreparation()
         guard navigationPath.contains(where: \.isSelectionFlow) else {
             popToRoot()
@@ -97,6 +99,14 @@ public extension AppModel {
         case LocationCatalog.simulatorDevices.id:
             do {
                 let devices = try await simulatorService.devices()
+                return await .devices(devices, sizes: scanEngine.childSizes(for: location.id))
+            } catch {
+                return .unavailable(error.localizedDescription)
+            }
+
+        case LocationCatalog.xctestDevices.id:
+            do {
+                let devices = try await simulatorService.devices(in: .xctest())
                 return await .devices(devices, sizes: scanEngine.childSizes(for: location.id))
             } catch {
                 return .unavailable(error.localizedDescription)

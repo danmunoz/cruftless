@@ -38,15 +38,15 @@ public actor ScanEngine {
             self.runtimeLister = runtimeCatalogLister
         } else if let runtimeLister {
             self.runtimeLister = {
-                SimulatorRuntimeListing(runtimes: try await runtimeLister())
+                try await SimulatorRuntimeListing(runtimes: runtimeLister())
             }
         } else {
             self.runtimeLister = { try await service.runtimeListing() }
         }
         if let deviceLister {
-            self.deviceLister = { deviceLister($0.runtimes) }
+            self.deviceLister = { listing, _ in deviceLister(listing.runtimes) }
         } else {
-            self.deviceLister = { service.devices(reconciledAgainst: $0) }
+            self.deviceLister = { service.devices(reconciledAgainst: $0, in: $1) }
         }
     }
 
@@ -101,7 +101,9 @@ public actor ScanEngine {
         }
         return run(locations: subset, merging: true, generation: generation)
     }
+}
 
+extension ScanEngine {
     private static func finishedStream() -> AsyncStream<ScanEvent> {
         AsyncStream { $0.finish() }
     }
@@ -270,9 +272,7 @@ public actor ScanEngine {
                     location,
                     roots: roots,
                     inodeSet: inodeSet,
-                    runtimeListing: runtimes.list,
-                    runtimesFailure: runtimes.failure,
-                    deviceLister: deviceLister
+                    simulatorContext: SimulatorScanContext(listing: runtimes.list, failure: runtimes.failure, deviceLister: deviceLister)
                 )
             }
         }
@@ -293,14 +293,16 @@ public actor ScanEngine {
             )
         }
 
-        let total = runtimes.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let total = runtimes.reduce(Int64(0)) { $0 + ($1.sizeIsKnown ? $1.sizeBytes : 0) }
+        let eligible = runtimes.reduce(Int64(0)) { $0 + ($1.sizeIsKnown && $1.canPlanDelete ? $1.sizeBytes : 0) }
         return LocationOutcome(
             locationId: location.id,
             entry: .sized(
                 location: location,
                 reclaimableBytes: total,
                 staleness: StalenessInfo(lastUsedDate: nil),
-                roots: []
+                roots: [],
+                eligibleCleanupBytes: eligible
             ),
             failure: nil,
             contents: .runtimes(runtimes)

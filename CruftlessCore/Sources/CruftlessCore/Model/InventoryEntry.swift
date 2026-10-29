@@ -28,7 +28,8 @@ public enum InventoryEntry: Sendable, Hashable, Identifiable {
         location: TrackedLocation,
         reclaimableBytes: Int64,
         staleness: StalenessInfo,
-        roots: [RootSize]
+        roots: [RootSize],
+        eligibleCleanupBytes: Int64? = nil
     )
     case unavailable(
         location: TrackedLocation,
@@ -41,7 +42,7 @@ public enum InventoryEntry: Sendable, Hashable, Identifiable {
 
     public var location: TrackedLocation {
         switch self {
-        case let .sized(loc, _, _, _):
+        case let .sized(loc, _, _, _, _):
             loc
         case let .unavailable(loc, _):
             loc
@@ -50,16 +51,25 @@ public enum InventoryEntry: Sendable, Hashable, Identifiable {
 
     public var reclaimableBytes: Int64 {
         switch self {
-        case let .sized(_, bytes, _, _):
+        case let .sized(_, bytes, _, _, _):
             bytes
         case .unavailable:
             0
         }
     }
 
+    public var eligibleCleanupBytes: Int64 {
+        switch self {
+        case let .sized(location, bytes, _, _, explicit):
+            guard location.mutationPolicy != .readOnly, location.tier.isDeletable else { return 0 }
+            return min(max(0, explicit ?? bytes), max(0, bytes))
+        case .unavailable: return 0
+        }
+    }
+
     public var staleness: StalenessInfo {
         switch self {
-        case let .sized(_, _, staleness, _):
+        case let .sized(_, _, staleness, _, _):
             staleness
         case .unavailable:
             StalenessInfo(lastUsedDate: nil)
@@ -78,7 +88,7 @@ public enum InventoryEntry: Sendable, Hashable, Identifiable {
 
     public var roots: [RootSize] {
         switch self {
-        case let .sized(_, _, _, roots):
+        case let .sized(_, _, _, roots, _):
             roots
         case .unavailable:
             []

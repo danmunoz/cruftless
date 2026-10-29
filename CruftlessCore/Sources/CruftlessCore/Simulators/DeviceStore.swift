@@ -14,6 +14,15 @@ public enum DeviceStore: Sendable {
     public static func loadDevices(
         from devicesDirectory: URL = DeviceStore.defaultDevicesDirectory
     ) -> [SimDevice] {
+        let ordinaryRoot = SimulatorDeviceSet.ordinary().root
+        let set: SimulatorDeviceSet = devicesDirectory.standardizedFileURL == ordinaryRoot
+            ? .ordinary() : SimulatorDeviceSet(kind: .ordinary, root: devicesDirectory)
+        return loadDevices(in: set)
+    }
+
+    public static func loadDevices(in deviceSet: SimulatorDeviceSet) -> [SimDevice] {
+        let devicesDirectory = deviceSet.root
+        guard !isSymlink(devicesDirectory) else { return [] }
         let path = devicesDirectory.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
         guard let dir = opendir(path) else { return [] }
         defer { closedir(dir) }
@@ -30,7 +39,7 @@ public enum DeviceStore: Sendable {
             let deviceDir = devicesDirectory.appendingPathComponent(name, isDirectory: true)
             let plistURL = deviceDir.appendingPathComponent("device.plist")
 
-            if let device = parseDevicePlist(at: plistURL, deviceDirectory: deviceDir) {
+            if let device = parseDevicePlist(at: plistURL, deviceDirectory: deviceDir, deviceSet: deviceSet) {
                 devices.append(device)
             }
         }
@@ -38,8 +47,12 @@ public enum DeviceStore: Sendable {
         return devices
     }
 
-    public static func parseDevicePlist(at plistURL: URL, deviceDirectory: URL) -> SimDevice? {
-        guard let data = try? Data(contentsOf: plistURL),
+    public static func parseDevicePlist(at plistURL: URL, deviceDirectory: URL, deviceSet: SimulatorDeviceSet? = nil) -> SimDevice? {
+        let deviceSet = deviceSet ?? SimulatorDeviceSet(kind: .ordinary, root: deviceDirectory.deletingLastPathComponent())
+        guard deviceDirectory.deletingLastPathComponent().standardizedFileURL == deviceSet.root,
+              !isSymlink(deviceSet.root), !isSymlink(deviceDirectory), !isSymlink(plistURL),
+              let folderUDID = try? SimctlIdentifier.validatedUDID(deviceDirectory.lastPathComponent),
+              let data = RootResolver.boundedSDKMetadata(at: plistURL, maximumBytes: 65536),
               let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         else {
             return nil
@@ -53,6 +66,7 @@ public enum DeviceStore: Sendable {
         // A UDID that is not a UUID never reaches `simctl`: `all` or `booted` in that slot would widen an erase to every device.
         guard let rawUDID = dict["UDID"] as? String ?? dict["udid"] as? String,
               let udid = try? SimctlIdentifier.validatedUDID(rawUDID),
+              udid == folderUDID,
               let name = dict["name"] as? String
         else {
             return nil
@@ -71,7 +85,13 @@ public enum DeviceStore: Sendable {
             runtime: runtime,
             state: state,
             lastUsedAt: lastUsedAt,
-            deviceDirectory: deviceDirectory
+            deviceDirectory: deviceDirectory,
+            deviceSet: deviceSet
         )
+    }
+
+    private static func isSymlink(_ url: URL) -> Bool {
+        var metadata = stat()
+        return lstat(url.path(percentEncoded: false), &metadata) == 0 && (metadata.st_mode & S_IFMT) == S_IFLNK
     }
 }

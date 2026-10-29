@@ -140,7 +140,11 @@ struct SimulatorBatchPlanningTests {
         #expect(plan.count == 2)
         #expect(plan.simulatorToolchainGeneration == generation)
         #expect(plan.policyGeneration == 17)
-        #expect(plan.affectedLocationIds == [LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id])
+        #expect(plan.affectedLocationIds == [
+            LocationCatalog.simulatorRuntimes.id,
+            LocationCatalog.simulatorDevices.id,
+            LocationCatalog.xctestDevices.id
+        ])
     }
 
     @Test("Duplicate, empty, mixed-generation, bundled, and removing runtimes refuse the full batch")

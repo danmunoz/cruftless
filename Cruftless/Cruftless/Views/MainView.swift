@@ -52,6 +52,9 @@ public struct MainView: View {
                 backTitle: backTitle(under: route)
             )
 
+        case let .androidTools(child):
+            AndroidToolsSetupView(child: child, model: model)
+
         case let .review(plan):
             ReviewView(
                 plan: plan,
@@ -95,7 +98,7 @@ public struct MainView: View {
             min(max(reportedContentHeight, PopoverMetrics.contentMinHeight), PopoverMetrics.height)
         case nil, .detail, .selection:
             PopoverMetrics.height
-        case .gradleCacheRisk, .selectionRisk:
+        case .gradleCacheRisk, .selectionRisk, .androidTools:
             PopoverMetrics.height
         }
     }
@@ -108,6 +111,7 @@ public struct MainView: View {
         case nil: "Overview"
         case let .detail(location): location.title
         case .gradleCacheRisk: "Gradle warning"
+        case .androidTools: "Android tools"
         case .review: "Review"
         case .result: "Result"
         case .selection: "Selection"
@@ -134,7 +138,7 @@ private struct DetailScreen: View {
             LocationSummaryDetailView(location: location, model: model, backTitle: backTitle)
         } else {
             switch location.id {
-            case LocationCatalog.simulatorDevices.id:
+            case LocationCatalog.simulatorDevices.id, LocationCatalog.xctestDevices.id:
                 SimulatorsDetailView(location: location, model: model, backTitle: backTitle)
             case LocationCatalog.simulatorRuntimes.id:
                 RuntimesDetailView(location: location, model: model, backTitle: backTitle)

@@ -98,7 +98,10 @@ struct SimulatorsTests {
             deviceDirectory: URL(fileURLWithPath: "/dev/u2")
         )
 
-        let reconciled = UnavailableDetector.reconcile(devices: [devNormal, devOrphan], runtimes: [installedRuntime])
+        let catalog = SimulatorRuntimeCatalog(runtimes: [.init(
+            identifier: installedRuntime.runtimeIdentifier, version: "18.6", build: installedRuntime.build, isAvailable: true
+        )])
+        let reconciled = UnavailableDetector.reconcile(devices: [devNormal, devOrphan], catalog: catalog)
         let sorted = UnavailableDetector.sort(devices: reconciled)
 
         #expect(sorted.first?.udid == "U2")
@@ -227,7 +230,9 @@ struct SimulatorsTests {
             _ = try await runnerBadJson.listRuntimes()
         }
     }
+}
 
+extension SimulatorsTests {
     // MARK: - Fail-closed planning
 
     @Test("Planning a bundled runtime deletion fails closed")
@@ -260,7 +265,11 @@ struct SimulatorsTests {
         #expect(plan.totalReclaimableBytes == 7_000_000_000)
         #expect(plan.items[0].consequence.contains("must be re-downloaded to run simulators on this OS version."))
         #expect(plan.items[0].consequence.contains("Simulators that use it stop working until it is installed again."))
-        #expect(plan.affectedLocationIds == Set([LocationCatalog.simulatorRuntimes.id, LocationCatalog.simulatorDevices.id]))
+        #expect(plan.affectedLocationIds == Set([
+            LocationCatalog.simulatorRuntimes.id,
+            LocationCatalog.simulatorDevices.id,
+            LocationCatalog.xctestDevices.id
+        ]))
     }
 
     @Test("Shutdown tolerates a device that is already shut down")

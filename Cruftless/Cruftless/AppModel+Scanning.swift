@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 extension AppModel {
     func platformSelectionDidChange(_ catalog: ActiveCatalog) {
+        cancelAndroidPreparation()
         guard !isDeleting else { return }
         cancelPreparation()
         planFailure = nil

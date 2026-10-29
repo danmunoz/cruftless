@@ -9,6 +9,10 @@ public struct Inventory: Sendable, Hashable {
     /// Bytes in recognized Gradle cache children that need per-attempt risk acceptance.
     public let optInReclaimableBytes: Int64
 
+    public var storedBytes: Int64 {
+        entries.reduce(0) { $0 + $1.reclaimableBytes }
+    }
+
     /// Cleanable bytes include ordinary deletion targets and the explicitly reviewed Gradle cache subset.
     public var cleanableBytes: Int64 {
         reclaimableBytes + optInReclaimableBytes
@@ -16,17 +20,7 @@ public struct Inventory: Sendable, Hashable {
 
     /// Total reclaimable bytes across the `regen`, `judgment` and `irreversible` entries.
     public var reclaimableBytes: Int64 {
-        entries.reduce(0) { total, entry in
-            switch entry {
-            case let .sized(loc, bytes, _, _):
-                if loc.mutationPolicy != .readOnly, loc.tier.isDeletable {
-                    return total + bytes
-                }
-                return total
-            case .unavailable:
-                return total
-            }
-        }
+        entries.reduce(0) { $0 + $1.eligibleCleanupBytes }
     }
 
     public init(

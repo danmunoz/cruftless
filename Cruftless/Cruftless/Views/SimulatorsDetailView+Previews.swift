@@ -9,7 +9,8 @@ import SwiftUI
             runtime: String,
             state: SimDeviceState,
             lastUsedDaysAgo: Int?,
-            isUnavailable: Bool = false
+            isUnavailable: Bool = false,
+            deviceSet: SimulatorDeviceSet = .ordinary()
         ) -> SimDevice {
             SimDevice(
                 udid: udid,
@@ -18,7 +19,8 @@ import SwiftUI
                 state: state,
                 lastUsedAt: lastUsedDaysAgo.flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: .now) },
                 deviceDirectory: URL(fileURLWithPath: "/tmp/simulators/\(udid)"),
-                isUnavailable: isUnavailable
+                isUnavailable: isUnavailable,
+                deviceSet: deviceSet
             )
         }
     }
@@ -40,6 +42,14 @@ import SwiftUI
         )
 
         static let devices = [booted, staleShutDown, freshShutDown, unavailable]
+
+        static let testClones = ["839A19", "5CC7A5"].map { suffix in
+            SimDevice.fixture(
+                udid: "00000000-0000-0000-0000-000000\(suffix)",
+                name: "Clone 3 of iPhone 18 Pro", runtime: iOS18, state: .shutdown,
+                lastUsedDaysAgo: 1, deviceSet: .xctest()
+            )
+        }
 
         static let sizes: [String: Int64] = [
             "1": 6_200_000_000,
@@ -101,6 +111,20 @@ import SwiftUI
         SimulatorsDetailView(
             location: LocationCatalog.simulatorDevices,
             model: .previewSimulators([], sizes: [:])
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("XCTest clones: names and identifiers") {
+        SimulatorsDetailView(
+            location: LocationCatalog.xctestDevices,
+            model: .previewDrillDown(
+                .devices(
+                    SimulatorsPreviewFixtures.testClones,
+                    sizes: Dictionary(uniqueKeysWithValues: SimulatorsPreviewFixtures.testClones.map { ($0.udid, Int64(12_200_000_000)) })
+                ),
+                for: LocationCatalog.xctestDevices.id
+            )
         )
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }

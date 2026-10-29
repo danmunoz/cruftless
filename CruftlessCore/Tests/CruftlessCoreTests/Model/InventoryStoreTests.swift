@@ -60,7 +60,7 @@ struct InventoryStoreTests {
         store.save(snapshot(bytes: 1))
         store.save(snapshot(bytes: 2))
 
-        #expect(store.load()?.rows.first?.kind == .sized(bytes: 2))
+        #expect(store.load()?.rows.first?.kind == .sized(bytes: 2, eligibleCleanupBytes: 2))
     }
 
     @Test("A missing file loads as nothing, not as an error")

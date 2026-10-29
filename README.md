@@ -36,10 +36,12 @@ by Apple.
 - Lets you choose whether to scan Apple development, Android development, or
   both.
 - Inventories Android Studio system data, Gradle caches, Android SDK packages,
-  and Android Virtual Devices. SDK packages, AVDs, and Android Studio data are
-  read-only; selected Gradle cache entries have a separate warning and review.
+  and Android Virtual Devices. SDK packages and Android Studio data remain
+  read-only. Stopped AVDs can be deleted individually through the modern Android CLI;
+  missing tools require installation permission. Selected Gradle cache entries have a separate warning and review.
 - Inventory and cleanup run locally, with no account, app analytics, or
   telemetry. Manual update checks contact GitHub for public release metadata.
+  Approved Android tool setup downloads official tooling from Google.
 - **Settings → Support** can prepare a local diagnostic report for review. It
   contains allowlisted version, toolchain, and Android SDK status fields;
   paths, usernames, host details, logs, and inventories are excluded. Cruftless
@@ -66,7 +68,7 @@ by Apple.
 | Android Studio system data | Inspect recognized system-cache locations; cleanup is not available. |
 | Gradle caches | Inspect shared cache entries; remove one eligible entry at a time after a one-use risk acknowledgement and review. Active builds may be interrupted, and offline builds may fail. |
 | Android SDK | Inspect installed packages; package removal is not available. |
-| Android Virtual Devices | Inspect each device's allocated storage; device data is not removed. |
+| Android Virtual Devices | Review and delete one stopped, inactive device through the modern Android CLI. |
 
 Entries are sorted by reclaimable size. Drill-downs let you inspect individual
 items before deciding what to remove.
@@ -97,8 +99,12 @@ You can add your own protected folders in **Settings → General**. Any deletion
 that contains a protected folder is refused rather than silently excluding part
 of the requested item.
 
-Android SDK packages, virtual devices, and Android Studio system data are
-inventory-only. Gradle caches are shared across projects, so removing an
+Android SDK packages and Android Studio system data are inventory-only. AVD
+removal requires a stopped, inactive device, the modern Android CLI, and the normal
+review step. Tools are checked only when Delete Device is requested; installation
+and first-run setup require permission. An external launch after the final state
+check is not prevented. Incomplete removal is reported and remaining storage stays
+visible. See [Android device cleanup](docs/ANDROID_AVD_CLEANUP.md). Gradle caches are shared across projects, so removing an
 eligible cache entry requires a per-attempt risk acknowledgement and the normal
 review step. Cruftless cannot verify that Gradle has stopped using those files.
 

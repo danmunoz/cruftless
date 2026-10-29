@@ -61,11 +61,12 @@ struct SimulatorServiceRuntimesTests {
         let service = SimulatorService(simctlRunner: SimctlRunner(executor: executor), imagesPlistURL: plistURL)
 
         let runtimes = try await service.runtimes()
-        let byID = Dictionary(uniqueKeysWithValues: runtimes.map { ($0.runtimeIdentifier, $0) })
+        let byID = Dictionary(uniqueKeysWithValues: runtimes.map { ("\($0.runtimeIdentifier)#\($0.build)", $0) })
 
-        #expect(runtimes.count == 2)
-        #expect(byID["com.apple.CoreSimulator.SimRuntime.iOS-18-6"]?.build == "PLIST-BUILD")
-        #expect(byID["com.apple.CoreSimulator.SimRuntime.iOS-17-0"]?.build == "2B")
+        #expect(runtimes.count == 3)
+        #expect(byID["com.apple.CoreSimulator.SimRuntime.iOS-18-6#PLIST-BUILD"]?.mutationCapability != .available)
+        #expect(byID["com.apple.CoreSimulator.SimRuntime.iOS-18-6#SIMCTL-BUILD"]?.identifier == uuid1)
+        #expect(byID["com.apple.CoreSimulator.SimRuntime.iOS-17-0#2B"]?.build == "2B")
     }
 
     @Test("Plist has entries, simctl fails: plist entries are returned, not an error")
