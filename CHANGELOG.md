@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.3]
+
+### Changes
+
+- Fix simulator storage discovery and device cleanup (#12) (c56573e)
+
 ## [1.2.2]
 
 ### Changes
