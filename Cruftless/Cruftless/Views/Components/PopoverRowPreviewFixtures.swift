@@ -8,7 +8,7 @@
         static func rows(hovered: Bool) -> some View {
             VStack(spacing: 2) {
                 PopoverRow(
-                    icon: .symbol("chevron.right"), title: "Clone 3 of iPhone 18 Pro",
+                    icon: .symbol("iphone"), title: "Clone 3 of iPhone 18 Pro",
                     sizeBytes: 12_200_000_000,
                     action: RowAction("Delete", isDestructive: true, accessibilityLabel: "Delete Test Simulator") {}
                 ) {
@@ -17,7 +17,7 @@
                 .previewHover(hovered)
 
                 PopoverRow(
-                    icon: .symbol("chevron.right"), title: longName,
+                    icon: .symbol("iphone"), title: longName,
                     sizeBytes: 999_900_000_000,
                     action: RowAction("Delete Test Simulator", isDestructive: true) {}
                 ) {

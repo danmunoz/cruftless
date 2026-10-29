@@ -160,8 +160,9 @@ public struct SimulatorsDetailView: View {
     }
 
     private func deviceRow(_ device: SimDevice) -> some View {
-        PopoverRow(
-            icon: .symbol(expanded.contains(device.id) ? "chevron.down" : "chevron.right"),
+        let canExpand = device.deviceSet.kind == .ordinary
+        return PopoverRow(
+            icon: .symbol(canExpand ? (expanded.contains(device.id) ? "chevron.down" : "chevron.right") : "iphone"),
             title: device.name,
             sizeBytes: sizeBytes(for: device),
             action: device.deviceSet.kind == .xctest
@@ -172,7 +173,7 @@ public struct SimulatorsDetailView: View {
                     for: device
                 ) } : nil)
                 : eraseAction(for: device),
-            onSelect: { toggle(device) },
+            onSelect: canExpand ? { toggle(device) } : nil,
             caption: { deviceCaption(device) }
         )
     }

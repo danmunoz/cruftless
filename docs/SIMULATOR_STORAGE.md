@@ -10,6 +10,8 @@ lists them separately as **Xcode test simulators** and includes a UUID suffix so
 clones with identical names remain distinguishable. The suffix appears beside
 the runtime in the subtitle. The row action is **Delete**, with the full
 **Delete Test Simulator** wording retained for accessibility and Review.
+XCTest rows use a static device icon and do not expand when clicked; **Delete**
+remains available on hover for eligible devices.
 
 Rows reserve the larger of the size label and action controls, including hidden
 hover controls. Long titles truncate with their full text available in a tooltip;
