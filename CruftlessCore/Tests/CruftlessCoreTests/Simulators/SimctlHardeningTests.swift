@@ -33,12 +33,27 @@ struct SimctlHardeningTests {
         #expect(executor.arguments == [["erase", validUDID]])
     }
 
-    @Test("XCTest deletion is scoped to the validated test device set")
+    @Test("XCTest deletion is scoped to the validated test device set",
+          .enabled(if: SimulatorDeviceSet.xctest().isProductionRoot))
     func xctestDeleteUsesSetArgument() async throws {
         let executor = SimctlDouble()
         let set = SimulatorDeviceSet.xctest()
         try await SimctlRunner(executor: executor).delete(udid: validUDID, in: set)
         #expect(executor.arguments == [["--set", set.root.path(percentEncoded: false), "delete", validUDID]])
+    }
+
+    @Test("An unverified XCTest device set never reaches simctl")
+    func unverifiedXCTestSetRefused() async {
+        let executor = SimctlDouble()
+        let set = SimulatorDeviceSet(
+            kind: .xctest,
+            root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        )
+        #expect(set.commandArguments == ["--set", set.root.path(percentEncoded: false)])
+        await #expect(throws: SimctlError.executionError("Refused: unsupported or unverified simulator device set.")) {
+            try await SimctlRunner(executor: executor).delete(udid: validUDID, in: set)
+        }
+        #expect(executor.arguments.isEmpty)
     }
 
     @Test("Runtime sentinels and flags are refused; real identifiers pass")
