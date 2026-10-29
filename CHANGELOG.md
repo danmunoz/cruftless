@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.3]
+
+### Fixed
+
+- Discover Xcode UI-test simulator clones and allow individual reviewed deletion
+  when they are inactive.
+- Include all installed iOS runtimes and distinguish missing runtimes from
+  installed runtimes that are unavailable.
+- Remove inactive Android emulator devices through the modern Android CLI, with
+  consent before preparing missing tools and verification after removal.
+- Keep long device names clear of hover actions and use a static device icon
+  for Xcode test simulators.
+
 ## [1.2.2]
 
 ### Changes
