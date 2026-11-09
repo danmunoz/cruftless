@@ -104,7 +104,8 @@ struct PopoverRow<Caption: View>: View {
             .opacity(contentOpacity)
         }
         .padding(.horizontal, PopoverMetrics.rowInset)
-        .frame(height: PopoverMetrics.rowHeight)
+        .padding(.vertical, 2)
+        .frame(minHeight: PopoverMetrics.rowHeight)
         .background {
             RoundedRectangle(cornerRadius: PopoverMetrics.rowCornerRadius, style: .continuous)
                 .fill(.quaternary.opacity(isHovered && isInteractive ? 1 : 0))
