@@ -182,6 +182,7 @@ public extension AppModel {
         freeSpaceDelta = nil
         reviewFreeSpaceBytes = nil
         deletionProgress = nil
+        deletionRun = nil
     }
 
     /// Every mutation of `navigationPath` goes through here.

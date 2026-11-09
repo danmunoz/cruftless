@@ -104,6 +104,9 @@ public final class AppModel {
     /// Current deletion progress shown in Review.
     public internal(set) var deletionProgress: DeletionProgress?
 
+    /// Per-item state of the plan being executed, shown in Review.
+    public internal(set) var deletionRun: DeletionRunState?
+
     public let scanEngine: ScanEngine
     public let simulatorService: SimulatorService
     public let deletionExecutor: DeletionExecutor
@@ -274,14 +277,23 @@ public final class AppModel {
         }
 
         let before = VolumeCapacity.query().freeBytes
-        let result = await deletionExecutor.execute(plan) { [weak self] progress in
-            Task { @MainActor in self?.deletionProgress = progress }
-        }
+        deletionRun = DeletionRunState(plan: plan)
+        let result = await deletionExecutor.execute(
+            plan,
+            onProgress: { [weak self] progress in
+                Task { @MainActor in self?.deletionProgress = progress }
+            },
+            onItemEvent: { [weak self] event in
+                Task { @MainActor in self?.deletionRun?.apply(event) }
+            }
+        )
+        deletionRun?.settle(with: result)
         deletionProgress = nil
         freeSpaceDelta = FreeSpaceDelta(before: before, after: VolumeCapacity.query().freeBytes)
         // Rescans only locations affected by the plan.
         startScan(plan.rescanScope, trigger: .user)
         presentDeletionResult(result, cleanupSessionID: cleanupSessionID)
+        deletionRun = nil
     }
 
     private func presentDeletionResult(_ result: DeletionResult, cleanupSessionID: String?) {

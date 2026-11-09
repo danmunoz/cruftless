@@ -120,6 +120,43 @@ import SwiftUI
         .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
     }
 
+    /// A five-item batch: two done, one failed, one active, one pending.
+    private func previewRun(_ plan: DeletionPlan) -> DeletionRunState {
+        var run = DeletionRunState(plan: plan)
+        func outcome(_ index: Int, _ status: ItemOutcomeStatus, _ bytes: Int64) -> ItemOutcome {
+            ItemOutcome(target: plan.items[index], status: status, freedBytes: bytes)
+        }
+        run.apply(.finished(index: 0, outcome: outcome(0, .succeeded, 18_300_000)))
+        run.apply(.finished(index: 1, outcome: outcome(1, .succeeded, 18_300_000)))
+        run.apply(.finished(index: 2, outcome: outcome(2, .failed(reason: "iPad (A16) is no longer shut down."), 0)))
+        run.apply(.started(index: 3))
+        return run
+    }
+
+    private var previewBatchPlan: DeletionPlan {
+        previewPlan(["iPad (A16)", "iPhone 16e", "iPad Pro 13-inch (M5)", "iPhone Air", "iPhone 17"].map {
+            previewPathTarget(
+                name: $0,
+                tier: .regen,
+                consequence: "Deletes this simulator completely. Installed apps and configuration will be permanently lost.",
+                reclaimableBytes: 18_300_000
+            )
+        })
+    }
+
+    #Preview("Review: batch in progress") {
+        ReviewView(
+            plan: previewBatchPlan,
+            isExecuting: true,
+            progress: DeletionProgress(verb: .delete, targetName: "iPhone Air", phase: .waitingForSpace),
+            run: previewRun(previewBatchPlan),
+            onConfirm: {},
+            onCancel: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
     #Preview("Review: flagged") {
         ReviewView(
             plan: .single(
