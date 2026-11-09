@@ -51,16 +51,16 @@ public struct SettingsView: View {
                 Label(SettingsSection.general.title, systemImage: SettingsSection.general.symbol)
             }
 
-            Tab(value: .about) {
-                AboutSettingsPane()
-            } label: {
-                Label(SettingsSection.about.title, systemImage: SettingsSection.about.symbol)
-            }
-
             Tab(value: .support) {
                 SupportSettingsPane(resolver: simulatorToolchainResolver, model: appModel)
             } label: {
                 Label(SettingsSection.support.title, systemImage: SettingsSection.support.symbol)
+            }
+
+            Tab(value: .about) {
+                AboutSettingsPane()
+            } label: {
+                Label(SettingsSection.about.title, systemImage: SettingsSection.about.symbol)
             }
         }
         .frame(width: SettingsMetrics.paneWidth)
