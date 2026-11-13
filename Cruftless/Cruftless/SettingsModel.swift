@@ -86,14 +86,6 @@ public final class SettingsModel {
         SettingsControlPolicy.showsPlatformOrder(for: platformSelection)
     }
 
-    /// Rows the General pane renders only when something failed or needs attention.
-    public var visibleErrorRowCount: Int {
-        let messages = [
-            launchAtLoginError, launchAtLoginNotice, scanReminderError, protectedPathError, platformSelectionError
-        ]
-        return messages.count { $0 != nil } + (launchAtLoginNeedsApproval ? 1 : 0)
-    }
-
     public func isPlatformToggleDisabled(_ platform: DevelopmentPlatform) -> Bool {
         SettingsControlPolicy.isPlatformToggleDisabled(
             platform,

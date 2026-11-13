@@ -98,7 +98,7 @@ struct SupportSettingsPane: View {
             )
         }
         .formStyle(.grouped)
-        .frame(width: SettingsMetrics.paneWidth, height: reportText == nil ? 430 : 620)
+        .settingsPaneSizing(estimate: 430, cap: 800)
         .task { await loadInitialState() }
         .onDisappear { noticeReset?.cancel() }
     }

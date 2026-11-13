@@ -90,12 +90,7 @@ public struct GeneralSettingsPane: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             settings.refreshSystemState()
         }
-        .frame(height: SettingsMetrics.generalPaneHeight(
-            protectedPathCount: settings.protectedPaths.count,
-            errorRowCount: settings.visibleErrorRowCount,
-            includesPlatformSelection: true,
-            includesPlatformOrder: settings.showsPlatformOrder
-        ))
+        .settingsPaneSizing(estimate: 700, cap: 800)
     }
 
     private func platformBinding(_ platform: DevelopmentPlatform) -> Binding<Bool> {
