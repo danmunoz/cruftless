@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0]
+
+### Changes
+
+- Settings polish, scan gating, Detail layout and Review receipt (#15) (e452900)
+
 ## [1.2.3]
 
 ### Fixed
