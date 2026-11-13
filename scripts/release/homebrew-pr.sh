@@ -63,7 +63,7 @@ actual_checksum="$(shasum -a 256 "$downloaded" | awk '{print $1}')"
 [[ "$expected_checksum" =~ ^[0-9a-fA-F]{64}$ && "$actual_checksum" == "$expected_checksum" ]] ||
   die "published DMG checksum does not match the locally verified release"
 codesign --verify --strict --verbose=2 "$downloaded"
-codesign -dvvv "$downloaded" 2>&1 | grep -Fq 'Authority=Developer ID Application:' ||
+has_developer_id_signature "$downloaded" ||
   die "published DMG lacks Developer ID Application signature"
 xcrun stapler validate "$downloaded"
 spctl --assess --type open --context context:primary-signature -vv "$downloaded"
