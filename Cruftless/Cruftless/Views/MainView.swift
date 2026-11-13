@@ -62,6 +62,7 @@ public struct MainView: View {
                 runningAppsWarning: model.runningAppsWarning,
                 isExecuting: model.isDeleting,
                 progress: model.deletionProgress,
+                run: model.deletionRun,
                 currentFreeBytes: model.reviewFreeSpaceBytes,
                 onConfirm: { await model.executeDeletion(plan: plan) },
                 onCancel: model.pop

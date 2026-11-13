@@ -73,13 +73,21 @@ struct ListFooter: View {
         }
     }
 
+    private func scannedText(at scannedAt: Date, now: Date) -> String {
+        if now.timeIntervalSince(scannedAt) < 60 {
+            return "Scanned just now"
+        }
+        return "Scanned \(scannedAt.formatted(.relative(presentation: .named, unitsStyle: .wide)))"
+    }
+
     @ViewBuilder
     private var status: some View {
         if let scanningLabel {
             Text(scanningLabel)
         } else if let scannedAt {
-            // A relative format, so the line keeps itself current while the popover stays open.
-            Text("Scanned \(scannedAt, format: .relative(presentation: .named))\(pausedSuffix)")
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text("\(scannedText(at: scannedAt, now: context.date))\(pausedSuffix)")
+            }
         } else if isAutomaticScanPaused {
             // Without this the paused state is indistinguishable from a scan that silently failed to start.
             Text("Paused in Low Power Mode")
@@ -100,13 +108,19 @@ struct ListFooter: View {
             )
             ListFooter(
                 scanningLabel: nil,
-                scannedAt: .now.addingTimeInterval(-7200),
+                scannedAt: .now.addingTimeInterval(-10),
                 isAutomaticScanPaused: false,
                 onOpenSettings: {}
             )
             ListFooter(
                 scanningLabel: nil,
                 scannedAt: .now.addingTimeInterval(-7200),
+                isAutomaticScanPaused: false,
+                onOpenSettings: {}
+            )
+            ListFooter(
+                scanningLabel: nil,
+                scannedAt: .now.addingTimeInterval(-10),
                 isAutomaticScanPaused: true,
                 onOpenSettings: {}
             )

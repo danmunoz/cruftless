@@ -11,6 +11,8 @@ public struct CategoryRowView: View {
     public var isOpening: Bool = false
     /// True while this location's size is being re-measured.
     public var isMeasuring: Bool = false
+    /// Replaces the action label (for example "Copied") and keeps the hover controls shown while set.
+    public var actionConfirmation: String?
     public let onSelect: () -> Void
     public let onAction: () -> Void
     /// Re-measures this location.
@@ -20,6 +22,7 @@ public struct CategoryRowView: View {
         entry: InventoryEntry,
         isOpening: Bool = false,
         isMeasuring: Bool = false,
+        actionConfirmation: String? = nil,
         onSelect: @escaping () -> Void,
         onAction: @escaping () -> Void,
         onRescan: (() -> Void)? = nil
@@ -27,6 +30,7 @@ public struct CategoryRowView: View {
         self.entry = entry
         self.isOpening = isOpening
         self.isMeasuring = isMeasuring
+        self.actionConfirmation = actionConfirmation
         self.onSelect = onSelect
         self.onAction = onAction
         self.onRescan = onRescan
@@ -36,23 +40,20 @@ public struct CategoryRowView: View {
         entry.location.tier
     }
 
-    /// A drill-down row carries both: the row opens Detail, the capsule clears the whole location.
+    /// A drill-down row carries both: the row opens Detail, the capsule clears the whole location. A flagged location has no capsule.
     private var action: RowAction? {
         let isDyldCacheCommand = entry.location.id == LocationCatalog.simulatorDyldCache.id
         // Inert while it is being re-measured, like the skeleton rows of a first scan.
-        guard !entry.isUnavailable, !isMeasuring,
+        guard !entry.isUnavailable, !isMeasuring, tier != .irreversible,
               !entry.location.mutationPolicy.isReadOnly || isDyldCacheCommand,
               tier != .info || isDyldCacheCommand
         else { return nil }
         return RowAction(
             DesignTokens.actionLabel(for: tier),
             isDestructive: tier.isFlagged,
+            confirmation: actionConfirmation,
             handler: onAction
         )
-    }
-
-    private var showsReadOnlyLock: Bool {
-        entry.location.mutationPolicy.isReadOnly && entry.location.id != LocationCatalog.gradleCaches.id
     }
 
     public var body: some View {
@@ -67,7 +68,7 @@ public struct CategoryRowView: View {
             rescan: onRescan,
             // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
             showsChevron: !entry.isUnavailable && !isMeasuring,
-            isReadOnly: showsReadOnlyLock,
+            isReadOnly: entry.location.isInventoryOnly,
             isPlaceholder: isMeasuring,
             isUnavailable: entry.isUnavailable,
             isOpening: isOpening,
@@ -111,13 +112,34 @@ public struct CategoryRowView: View {
         .frame(width: PopoverMetrics.width)
     }
 
+    #Preview("Rows: hover, focus and confirmation") {
+        VStack(spacing: 2) {
+            PopoverRow(
+                icon: .symbol("hammer"), title: "Derived Data", sizeBytes: 4_200_000_000,
+                action: RowAction("Clear") {}, rescan: {}, showsChevron: true, onSelect: {}
+            )
+            .previewHover(true)
+            CategoryRowView(
+                entry: PreviewFixtures.sampleEntries[5],
+                actionConfirmation: "Copied",
+                onSelect: {},
+                onAction: {},
+                onRescan: {}
+            )
+            PopoverRow(icon: .symbol("folder"), title: "Focused row", sizeBytes: 1_200_000_000, showsChevron: true, onSelect: {})
+                .previewFocus(true)
+        }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+
     #Preview("Rows: every tier") {
         VStack(spacing: 2) {
             previewRow(0) // simulator devices, drill-down
             previewRow(3) // derived data, regen
             previewRow(5) // Xcode installs, reveal
             previewRow(6) // dyld cache, read-only: padlock
-            previewRow(10) // archives, flagged, sub-GB size
+            previewRow(10) // archives, flagged, no capsule, sub-GB size
             previewRow(12) // products/logs, sub-GB size
             CategoryRowView(
                 entry: .sized(
@@ -141,7 +163,7 @@ public struct CategoryRowView: View {
         .frame(width: PopoverMetrics.width)
     }
 
-    #Preview("Rows: Android read-only and unavailable") {
+    #Preview("Rows: Android locked, actionable and unavailable") {
         let readOnlyRegenLocation = TrackedLocation(
             id: "androidPreviewReadOnlyRegen",
             platform: .android,

@@ -6,8 +6,10 @@ private final class MockFilesystemWatcher: FilesystemWatcher, @unchecked Sendabl
     var monitoredPaths: [String] = []
     var changeHandler: (@Sendable (String) -> Void)?
     var isStopped = false
+    var startCount = 0
 
     func startMonitoring(paths: [String], onChange: @escaping @Sendable (String) -> Void) {
+        startCount += 1
         monitoredPaths = paths
         changeHandler = onChange
         isStopped = false
@@ -108,13 +110,61 @@ struct FSEventsInvalidatorTests {
         invalidator.stopMonitoring()
     }
 
+    @Test("A root that does not exist yet is watched, so creating it invalidates its location")
+    func missingRootIsWatched() async throws {
+        let mockWatcher = MockFilesystemWatcher()
+        let scopes = LockedScopes()
+        let invalidator = FSEventsInvalidator(watcher: mockWatcher, debounce: .milliseconds(30)) {
+            scopes.append($0)
+        }
+        let base = try Self.makeBase()
+        defer { TestFileSystem.removeDirectoryRecursively(at: base) }
+        let missing = base.appendingPathComponent("DerivedData", isDirectory: true)
+
+        invalidator.startMonitoring(roots: [WatchedRoot(locationId: "derivedData", url: missing)])
+        #expect(mockWatcher.monitoredPaths == [missing.path])
+
+        mockWatcher.simulateChange(path: missing.appendingPathComponent("Build").path)
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(scopes.values == [.locations(["derivedData"])])
+        invalidator.stopMonitoring()
+    }
+
+    @Test("Re-registering the roots already watched keeps the running stream")
+    func unchangedRootsKeepStream() throws {
+        let mockWatcher = MockFilesystemWatcher()
+        let invalidator = FSEventsInvalidator(watcher: mockWatcher) { _ in }
+        let base = try Self.makeBase()
+        defer { TestFileSystem.removeDirectoryRecursively(at: base) }
+        let derived = base.appendingPathComponent("DerivedData", isDirectory: true)
+        let archives = base.appendingPathComponent("Archives", isDirectory: true)
+
+        invalidator.replaceMonitoring(roots: [WatchedRoot(locationId: "derivedData", url: derived)], policyGeneration: 1)
+        invalidator.replaceMonitoring(roots: [WatchedRoot(locationId: "derivedData", url: derived)], policyGeneration: 1)
+        #expect(mockWatcher.startCount == 1)
+        #expect(!mockWatcher.isStopped)
+
+        invalidator.replaceMonitoring(
+            roots: [
+                WatchedRoot(locationId: "derivedData", url: derived),
+                WatchedRoot(locationId: "archives", url: archives)
+            ],
+            policyGeneration: 1
+        )
+        #expect(mockWatcher.startCount == 2)
+        #expect(Set(mockWatcher.monitoredPaths) == [derived.path, archives.path])
+        invalidator.stopMonitoring()
+    }
+
     // MARK: - Scoping
 
     private static func makeBase() throws -> URL {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("cruftless-scope-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.resolvingSymlinksInPath()
+        // Spelled as FSEvents reports it: `/private/var`, which `resolvingSymlinksInPath()` shortens to `/var`.
+        return URL(fileURLWithPath: ProtectedPaths.normalize(base), isDirectory: true)
     }
 
     private static func makeChild(of base: URL, named name: String) throws -> URL {

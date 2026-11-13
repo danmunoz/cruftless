@@ -53,33 +53,47 @@ public struct DetailView: View {
         contents?.children.map { !$0.isEmpty } ?? false
     }
 
-    public var body: some View {
-        VStack(spacing: 0) {
-            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
-                LoadStateView(
-                    isLoading: contents == nil,
-                    loadingTitle: "Reading \(location.title)…",
-                    error: contents?.failureReason,
-                    errorTitle: "Couldn't read \(location.title)",
-                    isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
-                    emptySymbol: "folder",
-                    emptyTitle: "Nothing here",
-                    emptyMessage: "This location has no items Cruftless can list.",
-                    retry: { model.reloadDrillDown(for: location) },
-                    content: { content }
-                )
-            }
+    private var detailSummary: DetailSummary? {
+        guard let contents, !contents.isUnavailable else { return nil }
+        return DetailSummary(bytes: total, count: children.count, unit: .item)
+    }
 
-            if hasRows, !batchableChildren.isEmpty, location.tier.isDeletable,
-               !location.mutationPolicy.isReadOnly {
-                footer
+    private var offersClearAll: Bool {
+        hasRows && !batchableChildren.isEmpty && location.tier.isDeletable && !location.mutationPolicy.isReadOnly
+    }
+
+    private var hasNotes: Bool {
+        contents?.inventoryIssue != nil
+            || !(contents?.androidSDKDiagnostics.isEmpty ?? true)
+            || (location.platform == .android && !sourcePaths.isEmpty)
+    }
+
+    public var body: some View {
+        LocationDetailScaffold(location: location, model: model, backTitle: backTitle, summary: detailSummary) {
+            LoadStateView(
+                isLoading: contents == nil,
+                loadingTitle: "Reading \(location.title)…",
+                error: contents?.failureReason,
+                errorTitle: "Couldn't read \(location.title)",
+                isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
+                emptySymbol: "folder",
+                emptyTitle: "Nothing here",
+                emptyMessage: "This location has no items Cruftless can list.",
+                retry: { model.reloadDrillDown(for: location) },
+                content: { content }
+            )
+        } footerTrailing: {
+            if offersClearAll {
+                clearAllFooter
             }
         }
     }
 
     private var content: some View {
         LazyVStack(spacing: 2) {
-            summary
+            if hasNotes {
+                notes
+            }
 
             if let planFailure = model.planFailure {
                 NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
@@ -93,18 +107,9 @@ public struct DetailView: View {
         .padding(.vertical, 8)
     }
 
-    private var summary: some View {
+    /// Location-level notices that belong above the rows: inventory issues, SDK diagnostics, and Android root provenance.
+    private var notes: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(ByteFormatter.format(total))
-                    .font(.system(size: 22, weight: .semibold))
-                    .monospacedDigit()
-
-                Text("^[\(children.count) item](inflect: true)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-
             if let issue = contents?.inventoryIssue {
                 Label(issue, systemImage: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
@@ -130,12 +135,6 @@ public struct DetailView: View {
                 .padding(7)
                 .background(.orange.opacity(0.08), in: .rect(cornerRadius: 6))
             }
-
-            Text(
-                "\(tierWordText) \(Text(verbatim: "·").foregroundStyle(.tertiary)) \(consequenceText)"
-            )
-            .font(.system(size: 11))
-            .lineLimit(2)
 
             if location.platform == .android {
                 ForEach(sourcePaths, id: \.self) { path in
@@ -199,25 +198,24 @@ public struct DetailView: View {
         }
     }
 
-    private var footer: some View {
-        PopoverFooter {
-            HStack(spacing: 10) {
-                if batchableChildren.count < children.count {
-                    Text("Archives marked ⚠ are not included.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                Button("Clear All") {
-                    model.plan { context in
-                        try DeletionPlanner.children(batchableChildren, in: location, context: context)
-                    }
-                }
-                .buttonStyle(.glass)
-                .controlSize(.large)
+    private var clearAllFooter: some View {
+        HStack(spacing: 10) {
+            if batchableChildren.count < children.count {
+                Text("Archives marked ⚠ are not included.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Button("Clear All") {
+                model.plan { context in
+                    try DeletionPlanner.children(batchableChildren, in: location, context: context)
+                }
+            }
+            .buttonStyle(.glass)
+            .controlSize(.large)
         }
     }
 
@@ -230,23 +228,6 @@ public struct DetailView: View {
         default:
             child.name
         }
-    }
-
-    private var tierWordText: Text {
-        Text(location.id == LocationCatalog.androidAVDs.id
-            ? "Device data"
-            : DesignTokens.tierWord(for: location.tier, locationId: location.id))
-            .foregroundStyle(DesignTokens.tierColor(for: location.tier))
-    }
-
-    private var consequenceText: Text {
-        Text(Self.firstSentence(of: location.consequence))
-            .foregroundStyle(.secondary)
-    }
-
-    private static func firstSentence(of text: String) -> String {
-        guard let periodIndex = text.firstIndex(of: ".") else { return text }
-        return String(text[..<text.index(after: periodIndex)])
     }
 }
 

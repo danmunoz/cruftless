@@ -37,8 +37,9 @@ and its deletion identifiers. Absence from the image catalog does not establish
 that a runtime was removed.
 
 Device runtime status distinguishes available, installed but unavailable,
-confirmed missing, and unknown. Failed lookups and ambiguous builds remain
-unknown. Runtime command authority and device usability are independent: an
+confirmed missing, and unknown. Failed lookups remain unknown. When several
+installed builds share one runtime identifier, the device is available if any
+build is available, and installed but unavailable otherwise. Runtime command authority and device usability are independent: an
 installed runtime that cannot be deleted can still support usable simulators.
 
 Installed runtimes omitted by the image catalog remain visible. Their backing

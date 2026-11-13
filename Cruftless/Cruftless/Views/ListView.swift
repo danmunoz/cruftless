@@ -11,6 +11,8 @@ public struct ListView: View {
     public let onOpenSettings: () -> Void
 
     @State private var showsUpperBoundNote = false
+    @State private var copiedLocationId: String?
+    @State private var copiedResetTask: Task<Void, Never>?
 
     public init(model: AppModel, onOpenSettings: @escaping () -> Void) {
         self.model = model
@@ -96,7 +98,7 @@ public struct ListView: View {
         if model.isScanning {
             ProgressView()
                 .controlSize(.small)
-                .frame(width: 26, height: 26)
+                .frame(width: 20, height: 20)
                 .help(scanningLabel ?? "Scanning…")
         } else {
             RefreshGlyphButton { model.refreshScan() }
@@ -184,19 +186,47 @@ public struct ListView: View {
         let visiblePlatforms = model.settings.platformSectionOrder.orderedPlatforms.filter { platform in
             inventory.entries.contains { $0.location.platform == platform }
         }
-        return ScrollView {
+        return ScrollViewReader { proxy in
+            entryScroll(inventory, measuring: measuring, visiblePlatforms: visiblePlatforms)
+                .onChange(of: model.planFailure) { _, new in
+                    if new != nil { scrollToNotices(proxy) }
+                }
+                .onChange(of: model.scanFailure) { _, new in
+                    if new != nil { scrollToNotices(proxy) }
+                }
+                .onChange(of: model.preferenceIssues.count) { old, new in
+                    if new > old { scrollToNotices(proxy) }
+                }
+        }
+    }
+
+    private func scrollToNotices(_ proxy: ScrollViewProxy) {
+        withAnimation(.snappy) { proxy.scrollTo(Self.noticesId, anchor: .top) }
+    }
+
+    private static let noticesId = "list-notices"
+
+    private func entryScroll(
+        _ inventory: Inventory,
+        measuring: Set<String>,
+        visiblePlatforms: [DevelopmentPlatform]
+    ) -> some View {
+        ScrollView {
             LazyVStack(spacing: 2) {
-                ForEach(model.preferenceIssues, id: \.self) { issue in
-                    NoticeStrip(symbol: "gearshape.fill", tint: .orange, text: issue.message)
-                }
+                VStack(spacing: 0) {
+                    ForEach(model.preferenceIssues, id: \.self) { issue in
+                        NoticeStrip(symbol: "gearshape.fill", tint: .orange, text: issue.message)
+                    }
 
-                if let failure = model.scanFailure {
-                    NoticeStrip(symbol: "exclamationmark.circle.fill", tint: .red, text: failure)
-                }
+                    if let failure = model.scanFailure {
+                        NoticeStrip(symbol: "exclamationmark.circle.fill", tint: .red, text: failure)
+                    }
 
-                if let planFailure = model.planFailure {
-                    NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+                    if let planFailure = model.planFailure {
+                        NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+                    }
                 }
+                .id(Self.noticesId)
 
                 ForEach(visiblePlatforms, id: \.self) { platform in
                     PlatformInventorySection(
@@ -204,6 +234,8 @@ public struct ListView: View {
                         entries: inventory.entries.filter { $0.location.platform == platform },
                         measuring: measuring,
                         preparingLocationId: model.preparingLocationId,
+                        planningLocationId: model.planningLocationId,
+                        copiedLocationId: copiedLocationId,
                         showsTopSeparator: platform != visiblePlatforms.first,
                         onSelect: { select($0) },
                         onAction: { performAction(for: $0) },
@@ -247,14 +279,12 @@ public struct ListView: View {
             guard entry.location.id == LocationCatalog.simulatorDyldCache.id else { return }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(DesignTokens.dyldCacheCommand, forType: .string)
+            confirmCopy(of: entry.location.id)
         case .irreversible:
-            // Never actioned in bulk from the list.
             if entry.location.hasDrillDown {
                 model.openDetail(for: entry.location)
             } else {
-                model.reportPlanFailure(
-                    "\(entry.location.title) holds irreversible items and can only be cleared one at a time."
-                )
+                Task { await model.planWholeLocation(entry) }
             }
         case .regen, .judgment:
             guard !model.isRestored(entry) else {
@@ -266,189 +296,14 @@ public struct ListView: View {
     }
 }
 
-private struct PlatformInventorySection: View {
-    let platform: DevelopmentPlatform
-    let entries: [InventoryEntry]
-    let measuring: Set<String>
-    let preparingLocationId: String?
-    let showsTopSeparator: Bool
-    let onSelect: (InventoryEntry) -> Void
-    let onAction: (InventoryEntry) -> Void
-    let onRescan: (String) -> Void
-
-    private var sizedRows: [InventoryEntry] {
-        entries.filter { !$0.isUnavailable && $0.reclaimableBytes > 0 }
-    }
-
-    private var restRows: [InventoryEntry] {
-        let zeros = entries.filter { !$0.isUnavailable && $0.reclaimableBytes == 0 }
-        return zeros + entries.filter(\.isUnavailable)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if showsTopSeparator {
-                Hairline().padding(.vertical, 4)
-            }
-
-            Text(platform.sectionTitle)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, PopoverMetrics.rowInset)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
-
-            if platform == .android {
-                NoticeStrip(
-                    symbol: "lock.shield",
-                    tint: .orange,
-                    text: "SDK, virtual devices, and Android Studio data remain read-only. "
-                        + "Eligible Gradle cache folders can be cleared after a one-time risk review."
-                )
-            }
-
-            ForEach(sizedRows) { entry in
-                row(for: entry)
-            }
-
-            if !sizedRows.isEmpty, !restRows.isEmpty {
-                Hairline().padding(.vertical, 4)
-            }
-
-            ForEach(restRows) { entry in
-                row(for: entry)
-            }
+private extension ListView {
+    func confirmCopy(of locationId: String) {
+        copiedResetTask?.cancel()
+        copiedLocationId = locationId
+        copiedResetTask = Task {
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            copiedLocationId = nil
         }
-        .animation(.snappy(duration: 0.2), value: measuring)
-    }
-
-    private func row(for entry: InventoryEntry) -> some View {
-        CategoryRowView(
-            entry: entry,
-            isOpening: preparingLocationId == entry.location.id,
-            isMeasuring: measuring.contains(entry.location.id),
-            onSelect: { onSelect(entry) },
-            onAction: { onAction(entry) },
-            onRescan: { onRescan(entry.location.id) }
-        )
-    }
-}
-
-private extension DevelopmentPlatform {
-    var sectionTitle: String {
-        switch self {
-        case .apple: "Apple development"
-        case .android: "Android development"
-        }
-    }
-}
-
-#if DEBUG
-    #Preview("Platform section: Apple") {
-        PlatformInventorySection(
-            platform: .apple,
-            entries: PreviewFixtures.sampleEntries.filter { $0.location.platform == .apple },
-            measuring: [],
-            preparingLocationId: nil,
-            showsTopSeparator: false,
-            onSelect: { _ in },
-            onAction: { _ in },
-            onRescan: { _ in }
-        )
-        .frame(width: PopoverMetrics.width)
-    }
-
-    #Preview("Platform section: Android") {
-        PlatformInventorySection(
-            platform: .android,
-            entries: PreviewFixtures.androidReadOnlyEntries,
-            measuring: [],
-            preparingLocationId: nil,
-            showsTopSeparator: true,
-            onSelect: { _ in },
-            onAction: { _ in },
-            onRescan: { _ in }
-        )
-        .frame(width: PopoverMetrics.width)
-    }
-#endif
-
-/// The header's rescan control at rest: the glyph alone, tinting to full contrast under the pointer.
-struct RefreshGlyphButton: View {
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .frame(width: 20, height: 20)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .animation(.snappy(duration: 0.16), value: isHovered)
-        .onHover { isHovered = $0 }
-        .help("Rescan tracked locations")
-        .accessibilityLabel("Rescan")
-    }
-}
-
-/// Quiet footer control that still reads as clickable, with its own hover and pressed states.
-struct FooterButton: View {
-    let title: String
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    init(_ title: String, action: @escaping () -> Void) {
-        self.title = title
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11))
-                .foregroundStyle(isHovered ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background {
-                    Capsule().fill(.quaternary.opacity(isHovered ? 1 : 0))
-                }
-                .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-}
-
-/// Inline, non-blocking notice.
-struct NoticeStrip: View {
-    let symbol: String
-    let tint: Color
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol)
-                .font(.system(size: 11))
-                .foregroundStyle(tint)
-
-            Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, PopoverMetrics.rowInset)
-        .padding(.vertical, 8)
-        .background {
-            RoundedRectangle(cornerRadius: PopoverMetrics.rowCornerRadius, style: .continuous)
-                .fill(tint.opacity(0.1))
-        }
-        .padding(.bottom, 4)
     }
 }

@@ -70,7 +70,8 @@ private struct SelectionSessionScreen: View {
                 ReviewView(
                     plan: plan, backTitle: "Selection", runningAppsWarning: model.runningAppsWarning,
                     isExecuting: session.stage == .executing,
-                    progress: model.deletionProgress, currentFreeBytes: session.reviewFreeSpaceBytes,
+                    progress: model.deletionProgress, run: model.deletionRun,
+                    currentFreeBytes: session.reviewFreeSpaceBytes,
                     notice: session.notice,
                     canConfirm: session.isReady && !session.isRefreshing && !isPreviewFixture,
                     isBusy: model.isDeleting && session.stage != .executing,

@@ -2,7 +2,6 @@ import CruftlessCore
 import Foundation
 import Observation
 import ServiceManagement
-import UserNotifications
 
 public enum PlatformSectionOrder: String, CaseIterable, Hashable, Identifiable, Sendable {
     case appleFirst
@@ -31,7 +30,14 @@ public final class SettingsModel {
     private var storedPlatformSectionOrder: PlatformSectionOrder
     public private(set) var platformGeneration: UInt64 = 0
     public private(set) var platformSelectionError: String?
-    public var isDeletionExecuting = false
+    public var isDeletionExecuting = false {
+        didSet {
+            guard oldValue, !isDeletionExecuting else { return }
+            platformSelectionError = SettingsControlPolicy.clearingBusyMessage(platformSelectionError)
+            protectedPathError = SettingsControlPolicy.clearingBusyMessage(protectedPathError)
+        }
+    }
+
     public private(set) var launchAtLoginError: String?
     public private(set) var scanReminderError: String?
     public private(set) var protectedPathError: String?
@@ -63,25 +69,51 @@ public final class SettingsModel {
         protectedPathsStore.protectedPaths()
     }
 
-    /// Rows the General pane renders only when something failed.
-    public var visibleErrorRowCount: Int {
-        [launchAtLoginError, scanReminderError, protectedPathError, platformSelectionError].count { $0 != nil }
+    /// The login item's own explanation, shown whenever the status needs one and no write failure is on screen.
+    public var launchAtLoginNotice: String? {
+        launchAtLoginError == nil ? LaunchAtLoginPolicy.statusMessage(for: launchAtLoginStatus) : nil
+    }
+
+    public var launchAtLoginNeedsApproval: Bool {
+        LaunchAtLoginPolicy.needsApproval(launchAtLoginStatus)
+    }
+
+    public var canEditProtectedPaths: Bool {
+        SettingsControlPolicy.allowsProtectedPathEdits(isDeletionExecuting: isDeletionExecuting)
+    }
+
+    public var showsPlatformOrder: Bool {
+        SettingsControlPolicy.showsPlatformOrder(for: platformSelection)
+    }
+
+    public func isPlatformToggleDisabled(_ platform: DevelopmentPlatform) -> Bool {
+        SettingsControlPolicy.isPlatformToggleDisabled(
+            platform,
+            selection: platformSelection,
+            isDeletionExecuting: isDeletionExecuting
+        )
     }
 
     private let defaults: UserDefaults
     public let protectedPathsStore: ProtectedPathsStore
     public let policyGenerationAuthority: PolicyGenerationAuthority
+    private let reminderScheduler: ScanReminderScheduler
+    private let loginItemService: any LoginItemService
     private var reminderTask: Task<Void, Never>?
 
     public init(
         defaults: UserDefaults = .standard,
         protectedPathsStore: ProtectedPathsStore = .shared,
-        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority()
+        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority(),
+        reminderCenter: any ScanReminderCenter = UserNotificationReminderCenter(),
+        loginItemService: any LoginItemService = SystemLoginItemService()
     ) {
         self.defaults = defaults
+        self.loginItemService = loginItemService
+        reminderScheduler = ScanReminderScheduler(center: reminderCenter)
         self.protectedPathsStore = protectedPathsStore
         self.policyGenerationAuthority = policyGenerationAuthority
-        launchAtLoginStatus = SMAppService.mainApp.status
+        launchAtLoginStatus = loginItemService.status
         scanReminderEnabled = defaults.bool(forKey: Keys.scanReminderEnabled)
         storedPlatformSectionOrder = PlatformSectionOrder(
             rawValue: defaults.string(forKey: Keys.platformSectionOrder) ?? ""
@@ -105,35 +137,6 @@ public final class SettingsModel {
         }
     }
 
-    // MARK: - Launch at login
-
-    public func setLaunchAtLogin(_ enabled: Bool) {
-        launchAtLoginRevision &+= 1
-
-        var failure: String?
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            failure = error.localizedDescription
-        }
-
-        let status = SMAppService.mainApp.status
-        launchAtLoginStatus = status
-        launchAtLoginError = LaunchAtLoginPolicy.message(requested: enabled, status: status, failure: failure)
-    }
-
-    /// Re-reads the login item's state from the system, picking up an approval or removal made in System Settings.
-    public func refreshLaunchAtLoginStatus() {
-        let status = SMAppService.mainApp.status
-        guard status != launchAtLoginStatus else { return }
-        launchAtLoginStatus = status
-        launchAtLoginError = nil
-    }
-
     // MARK: - Scanning
 
     public func setPlatformSectionOrder(_ order: PlatformSectionOrder) {
@@ -144,18 +147,14 @@ public final class SettingsModel {
 
     public func setPlatformEnabled(_ platform: DevelopmentPlatform, _ enabled: Bool) {
         guard !isDeletionExecuting else {
-            platformSelectionError = "Platform selection is unavailable while a deletion is running."
+            platformSelectionError = SettingsControlPolicy.platformSelectionBusyMessage
             return
         }
-        var selected = platformSelection.platforms
-        if enabled {
-            selected.insert(platform)
-        } else {
-            guard selected.contains(platform), selected.count > 1 else { return }
-            selected.remove(platform)
-        }
-        let updated = PlatformSelection(selected)
-        guard updated != platformSelection else { return }
+        guard let updated = SettingsControlPolicy.updatedSelection(
+            from: platformSelection,
+            platform: platform,
+            enabled: enabled
+        ) else { return }
         platformSelectionError = nil
         platformSelection = updated
         defaults.set(updated.identifiers, forKey: Keys.selectedPlatforms)
@@ -176,8 +175,8 @@ public final class SettingsModel {
         if enabled {
             startReminderScheduling()
         } else {
-            UNUserNotificationCenter.current()
-                .removePendingNotificationRequests(withIdentifiers: [Self.reminderIdentifier])
+            defaults.removeObject(forKey: Keys.scanReminderSchedule)
+            reminderScheduler.disarm()
         }
     }
 
@@ -185,50 +184,52 @@ public final class SettingsModel {
         reminderTask?.cancel()
         let generation = platformGeneration
         reminderTask = Task { [weak self] in
-            await self?.scheduleReminder(generation: generation)
+            await self?.armReminder(generation: generation)
         }
     }
 
-    private func scheduleReminder(generation: UInt64) async {
-        let center = UNUserNotificationCenter.current()
-
-        let granted: Bool
-        do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
-        } catch {
-            failScanReminder("Cruftless could not request permission to send notifications.")
+    private func armReminder(generation: UInt64) async {
+        let outcome = await reminderScheduler.arm(
+            body: ScanReminderScheduler.body(for: platformSelection.platforms),
+            storedSchedule: storedReminderSchedule
+        )
+        guard scanReminderEnabled else {
+            reminderScheduler.disarm()
             return
         }
-        guard !Task.isCancelled, generation == platformGeneration else { return }
+        guard !Task.isCancelled else { return }
 
-        guard granted else {
-            failScanReminder(
-                "Notifications are turned off for Cruftless. Allow them in System Settings › Notifications."
-            )
+        if let message = outcome.failureMessage {
+            failScanReminder(message)
             return
         }
+        if case let .scheduled(schedule) = outcome {
+            storeReminderSchedule(schedule)
+        }
+        if generation != platformGeneration { startReminderScheduling() }
+    }
 
-        guard !Task.isCancelled, generation == platformGeneration else { return }
+    private var storedReminderSchedule: ScanReminderSchedule? {
+        defaults.data(forKey: Keys.scanReminderSchedule)
+            .flatMap { try? JSONDecoder().decode(ScanReminderSchedule.self, from: $0) }
+    }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Review developer disk bloat"
-        content.body = reminderBody
-        content.sound = .default
+    private func storeReminderSchedule(_ schedule: ScanReminderSchedule) {
+        guard let data = try? JSONEncoder().encode(schedule) else { return }
+        defaults.set(data, forKey: Keys.scanReminderSchedule)
+    }
 
-        do {
-            try await center.add(
-                UNNotificationRequest(
-                    identifier: Self.reminderIdentifier,
-                    content: content,
-                    trigger: UNTimeIntervalNotificationTrigger(
-                        timeInterval: Self.reminderInterval,
-                        repeats: true
-                    )
-                )
-            )
-            if generation != platformGeneration { startReminderScheduling() }
-        } catch {
-            failScanReminder("Cruftless could not schedule the weekly reminder.")
+    /// Turns the reminder off when the system has since refused notifications.
+    public func refreshScanReminderAuthorization() {
+        guard scanReminderEnabled else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let outcome = await reminderScheduler.checkPermission()
+            guard scanReminderEnabled, let message = outcome?.failureMessage else { return }
+            reminderTask?.cancel()
+            reminderTask = nil
+            reminderScheduler.disarm()
+            failScanReminder(message)
         }
     }
 
@@ -240,10 +241,15 @@ public final class SettingsModel {
 
     // MARK: - Protected paths
 
+    /// Reports a folder picker error; a cancelled pick reports nothing.
+    public func reportFolderPickerFailure(_ error: any Error) {
+        protectedPathError = ProtectedPathPolicy.pickerFailureMessage(for: error)
+    }
+
     /// Vets the folder before storing it.
     public func addProtectedPath(_ url: URL) {
         guard !isDeletionExecuting else {
-            protectedPathError = "Protected paths cannot change while a deletion is running."
+            protectedPathError = SettingsControlPolicy.protectedPathsBusyMessage
             return
         }
         if let rejection = ProtectedPathPolicy.rejection(for: url, existing: protectedPaths) {
@@ -259,7 +265,7 @@ public final class SettingsModel {
 
     public func removeProtectedPath(_ url: URL) {
         guard !isDeletionExecuting else {
-            protectedPathError = "Protected paths cannot change while a deletion is running."
+            protectedPathError = SettingsControlPolicy.protectedPathsBusyMessage
             return
         }
         guard protectedPaths.contains(where: { ProtectedPaths.normalize($0) == ProtectedPaths.normalize(url) }) else {
@@ -282,23 +288,52 @@ public final class SettingsModel {
 
     // MARK: - Helpers
 
-    private static let reminderIdentifier = "cruftless.scan-reminder"
-    private static let reminderInterval: TimeInterval = 7 * 24 * 60 * 60
-
-    private var reminderBody: String {
-        let selected = platformSelection.platforms
-        if selected == Set(DevelopmentPlatform.allCases) {
-            return "Open Cruftless to review Apple and Android development storage."
-        }
-        return selected.contains(.android)
-            ? "Open Cruftless to review Android development storage."
-            : "Open Cruftless to review Apple development storage."
-    }
-
     private enum Keys {
         static let scanReminderEnabled = "scanReminderEnabled"
         static let selectedPlatforms = "selectedPlatforms"
         static let platformSectionOrder = "platformSectionOrder"
+        static let scanReminderSchedule = "scanReminderSchedule"
+    }
+}
+
+public extension SettingsModel {
+    // MARK: - Launch at login
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLoginRevision &+= 1
+
+        var failure: String?
+        do {
+            if enabled {
+                try loginItemService.register()
+            } else {
+                try loginItemService.unregister()
+            }
+        } catch {
+            failure = error.localizedDescription
+        }
+
+        let status = loginItemService.status
+        launchAtLoginStatus = status
+        launchAtLoginError = LaunchAtLoginPolicy.failureMessage(requested: enabled, status: status, failure: failure)
+    }
+
+    func openLoginItemsSettings() {
+        loginItemService.openSystemSettings()
+    }
+
+    /// Re-reads every system-owned state the General pane mirrors.
+    func refreshSystemState() {
+        refreshLaunchAtLoginStatus()
+        refreshScanReminderAuthorization()
+    }
+
+    /// Re-reads the login item's state from the system, picking up an approval or removal made in System Settings.
+    func refreshLaunchAtLoginStatus() {
+        let status = loginItemService.status
+        guard status != launchAtLoginStatus else { return }
+        launchAtLoginStatus = status
+        launchAtLoginError = nil
     }
 }
 
@@ -306,9 +341,12 @@ public final class SettingsModel {
     extension SettingsModel {
         static func preview(
             protectedPaths: [URL] = [],
+            launchAtLoginStatus: SMAppService.Status = .notRegistered,
             launchAtLoginError: String? = nil,
             scanReminderError: String? = nil,
             protectedPathError: String? = nil,
+            platformSelectionError: String? = nil,
+            isDeletionExecuting: Bool = false,
             platforms: Set<DevelopmentPlatform> = Set(DevelopmentPlatform.allCases),
             platformSectionOrder: PlatformSectionOrder = .appleFirst
         ) -> SettingsModel {
@@ -318,16 +356,22 @@ public final class SettingsModel {
             for path in protectedPaths {
                 store.addPath(path)
             }
-            let model = SettingsModel(defaults: defaults, protectedPathsStore: store)
+            let model = SettingsModel(
+                defaults: defaults,
+                protectedPathsStore: store,
+                loginItemService: FixedLoginItemService(status: launchAtLoginStatus)
+            )
             model.setPlatformSectionOrder(platformSectionOrder)
             if platforms != Set(DevelopmentPlatform.allCases) {
                 for platform in DevelopmentPlatform.allCases {
                     model.setPlatformEnabled(platform, platforms.contains(platform))
                 }
             }
+            model.isDeletionExecuting = isDeletionExecuting
             model.launchAtLoginError = launchAtLoginError
             model.scanReminderError = scanReminderError
             model.protectedPathError = protectedPathError
+            model.platformSelectionError = platformSelectionError
             return model
         }
     }

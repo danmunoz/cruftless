@@ -32,6 +32,10 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case runtimeToolingUnavailable(name: String, reason: String)
     case protectedDescendantInSimulator(name: String, path: String)
     case simulatorToolchainMismatch
+    /// A deletion is running, so no new plan may start.
+    case deletionInProgress
+    /// The platform selection or catalog changed while the plan was being prepared.
+    case inventoryChanged(title: String)
 
     public var errorDescription: String? {
         switch self {
@@ -71,6 +75,10 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(name) can't be changed: \(path) contains a path you marked as protected."
         case .simulatorToolchainMismatch:
             "The simulator toolchain changed while these items were selected. Refresh and review them again."
+        case .deletionInProgress:
+            "A cleanup is already running. Wait for it to finish before starting another."
+        case let .inventoryChanged(title):
+            "\(title) changed while it was being prepared. Try again."
         }
     }
 

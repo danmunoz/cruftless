@@ -129,7 +129,14 @@ public final class FSEventsInvalidator: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.danmunoz.cruftless.fsevents.debounce")
     private let lock = NSLock()
     private var isMonitoring = false
-    private var pendingWorkItems: [DebounceKey: DispatchWorkItem] = [:]
+    /// One scheduled invalidation, tagged so a firing item clears only its own slot.
+    private struct PendingInvalidation {
+        let token: UInt64
+        let item: DispatchWorkItem
+    }
+
+    private var pendingWorkItems: [DebounceKey: PendingInvalidation] = [:]
+    private var nextToken: UInt64 = 0
     private var watcherGeneration: UInt64 = 0
     private var policyGeneration: UInt64 = 0
 
@@ -150,7 +157,10 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         replaceMonitoring(roots: roots)
     }
 
+    /// Watches `roots`; leaves a running stream alone when they resolve to what it already watches.
     public func replaceMonitoring(roots: [WatchedRoot], policyGeneration: UInt64? = nil) {
+        let nextRoots = Self.resolve(roots)
+
         lock.lock()
         if let policyGeneration {
             guard policyGeneration >= self.policyGeneration else {
@@ -159,9 +169,15 @@ public final class FSEventsInvalidator: @unchecked Sendable {
             }
             self.policyGeneration = policyGeneration
         }
+        if isMonitoring, nextRoots == watchedRoots {
+            lock.unlock()
+            return
+        }
         watcherGeneration &+= 1
         let generation = watcherGeneration
-        for item in pendingWorkItems.values { item.cancel() }
+        for pending in pendingWorkItems.values {
+            pending.item.cancel()
+        }
         pendingWorkItems.removeAll()
         watchedRoots = []
         let wasMonitoring = isMonitoring
@@ -169,17 +185,7 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         lock.unlock()
         if wasMonitoring { watcher.stopMonitoring() }
 
-        var resolved: [ResolvedRoot] = []
-        for root in roots {
-            let path = Self.withoutTrailingSlash(
-                root.url.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-            )
-            guard FileManager.default.fileExists(atPath: path) else { continue }
-            resolved.append(ResolvedRoot(path: path, locationId: root.locationId))
-        }
-
-        guard !resolved.isEmpty else { return }
-        let nextRoots = resolved.sorted { $0.path.count > $1.path.count }
+        guard !nextRoots.isEmpty else { return }
 
         var seen: Set<String> = []
         let paths = nextRoots.map(\.path).filter { seen.insert($0).inserted }
@@ -203,6 +209,16 @@ public final class FSEventsInvalidator: @unchecked Sendable {
         }
         isMonitoring = true
         lock.unlock()
+    }
+
+    /// Roots as FSEvents reports them, longest first; a root that does not exist yet is still watched, since FSEvents matches by path.
+    package static func resolve(_ roots: [WatchedRoot]) -> [ResolvedRoot] {
+        let resolved = Set(roots.map {
+            ResolvedRoot(path: withoutTrailingSlash(ProtectedPaths.normalize($0.url)), locationId: $0.locationId)
+        })
+        return resolved.sorted {
+            ($0.path.count, $0.path, $0.locationId) > ($1.path.count, $1.path, $1.locationId)
+        }
     }
 
     /// Attributes one event to the locations it invalidated, then debounces.
@@ -248,18 +264,19 @@ public final class FSEventsInvalidator: @unchecked Sendable {
     }
 
     private func scheduleInvalidate(_ scope: InvalidationScope, generation: UInt64) {
-        let keys: [DebounceKey]
-        switch scope {
+        let keys: [DebounceKey] = switch scope {
         case .everything:
-            keys = [.everything]
+            [.everything]
         case let .locations(ids):
-            keys = ids.map(DebounceKey.location)
+            ids.map(DebounceKey.location)
         }
 
         guard lockForCurrentGeneration(generation) else { return }
         if case .everything = scope {
             // A full rescan covers every pending per-location one.
-            for (_, item) in pendingWorkItems { item.cancel() }
+            for pending in pendingWorkItems.values {
+                pending.item.cancel()
+            }
             pendingWorkItems.removeAll()
         }
 
@@ -275,25 +292,31 @@ public final class FSEventsInvalidator: @unchecked Sendable {
     }
 
     private func makeWorkItem(for key: DebounceKey, generation: UInt64) -> DispatchWorkItem {
-        pendingWorkItems[key]?.cancel()
+        pendingWorkItems[key]?.item.cancel()
+        nextToken &+= 1
+        let token = nextToken
         let firing: InvalidationScope = switch key {
         case .everything: .everything
         case let .location(id): .locations([id])
         }
         let item = DispatchWorkItem { [weak self] in
             guard let self, lockForCurrentGeneration(generation) else { return }
-            pendingWorkItems[key] = nil
+            if pendingWorkItems[key]?.token == token {
+                pendingWorkItems[key] = nil
+            }
             lock.unlock()
             onInvalidate(firing)
         }
-        pendingWorkItems[key] = item
+        pendingWorkItems[key] = PendingInvalidation(token: token, item: item)
         return item
     }
 
     public func stopMonitoring() {
         lock.lock()
         watcherGeneration &+= 1
-        for (_, item) in pendingWorkItems { item.cancel() }
+        for pending in pendingWorkItems.values {
+            pending.item.cancel()
+        }
         pendingWorkItems.removeAll()
         watchedRoots = []
         let wasMonitoring = isMonitoring

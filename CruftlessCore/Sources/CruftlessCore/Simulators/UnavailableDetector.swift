@@ -14,18 +14,12 @@ public enum UnavailableDetector: Sendable {
                 return device.markingRuntimeAvailability(.unknown("The installed runtime catalog is unavailable."))
             }
             let matches = catalog.runtimes.filter { $0.identifier == device.runtime }
-            guard let runtime = matches.first else {
+            guard !matches.isEmpty else {
                 return device.markingRuntimeAvailability(.missing)
             }
-            guard matches.count == 1 else {
-                return device
-                    .markingRuntimeAvailability(
-                        .unknown("Multiple installed runtime builds match this simulator. Refresh the runtime catalog before cleanup.")
-                    )
-            }
-            if runtime.isAvailable { return device.markingRuntimeAvailability(.available) }
-            return device
-                .markingRuntimeAvailability(.installedUnavailable(runtime.availabilityError ?? "The installed runtime is unavailable."))
+            if matches.contains(where: \.isAvailable) { return device.markingRuntimeAvailability(.available) }
+            let reason = matches.compactMap(\.availabilityError).sorted().first
+            return device.markingRuntimeAvailability(.installedUnavailable(reason ?? "The installed runtime is unavailable."))
         }
     }
 

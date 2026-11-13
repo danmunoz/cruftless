@@ -79,7 +79,7 @@ public struct DiagnosticSDKIssue: Sendable, Hashable {
     }
 
     private static func boundedSize(_ size: Int?) -> Int? {
-        guard let size, (0...65_536).contains(size) else { return nil }
+        guard let size, (0 ... 65536).contains(size) else { return nil }
         return size
     }
 }
@@ -127,6 +127,7 @@ public struct DiagnosticReportSnapshot: Sendable, Hashable {
 public enum DiagnosticReportBuilder {
     public static let maximumBytes = 16 * 1024
     public static let maximumSDKIssues = 64
+    public static let maximumXcodeVersions = 8
 
     public static func build(_ snapshot: DiagnosticReportSnapshot) -> String {
         var lines = ["Cruftless Diagnostic Report", "Schema: 1"]
@@ -136,7 +137,7 @@ public enum DiagnosticReportBuilder {
         lines.append("Architecture: \(architecture(snapshot.architecture))")
         lines.append("Simulator toolchain: \(snapshot.toolchainResolution.rawValue)")
         lines.append("Toolchain source: \(snapshot.toolchainSource?.rawValue ?? "unknown")")
-        for (index, xcodeVersion) in snapshot.xcodeVersions.prefix(8).enumerated() {
+        for (index, xcodeVersion) in snapshot.xcodeVersions.prefix(maximumXcodeVersions).enumerated() {
             lines.append("Xcode \(label(index)): \(version(xcodeVersion) ?? "unknown")")
         }
         lines.append("Android SDK root source: \(sdkRootSource(snapshot.androidSDKRootSource))")

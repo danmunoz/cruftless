@@ -58,40 +58,36 @@ public struct SimulatorsDetailView: View {
         devices.filter { !$0.runtimeAvailability.isConfirmedMissing }
     }
 
-    private var runtimeSections: [RuntimeSection] {
-        Dictionary(grouping: available, by: \.runtime)
-            .map { runtimeId, devices in
-                RuntimeSection(runtimeId: runtimeId, devices: devices, total: total(of: devices))
-            }
-            .sorted { $0.total > $1.total }
-    }
-
     public var body: some View {
-        VStack(spacing: 0) {
-            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
-                LoadStateView(
-                    isLoading: contents == nil,
-                    loadingTitle: "Reading simulators…",
-                    error: contents?.failureReason,
-                    errorTitle: "Couldn't read simulators",
-                    isEmpty: devices.isEmpty,
-                    emptySymbol: "iphone.slash",
-                    emptyTitle: "No simulators",
-                    emptyMessage: "CoreSimulator has no devices on this Mac.",
-                    retry: { model.reloadDrillDown(for: location) },
-                    content: { content }
-                )
-            }
-
-            if let planFailure = model.planFailure {
-                NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
-                    .padding(.horizontal, 6)
+        LocationDetailScaffold(location: location, model: model, backTitle: backTitle, summary: detailSummary) {
+            LoadStateView(
+                isLoading: contents == nil,
+                loadingTitle: "Reading simulators…",
+                error: contents?.failureReason,
+                errorTitle: "Couldn't read simulators",
+                isEmpty: devices.isEmpty,
+                emptySymbol: "iphone.slash",
+                emptyTitle: "No simulators",
+                emptyMessage: "CoreSimulator has no devices on this Mac.",
+                retry: { model.reloadDrillDown(for: location) },
+                content: { content }
+            )
+        } footerTrailing: {
+            if bootedCount > 0 {
+                Text("\(bootedCount) booted")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
     }
 
     private var content: some View {
         LazyVStack(spacing: 2) {
+            if let planFailure = model.planFailure {
+                NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+            }
+
             if !unavailable.isEmpty {
                 runtimeRemovedHeader
                 ForEach(unavailable) { unavailableRow($0) }
@@ -153,7 +149,8 @@ public struct SimulatorsDetailView: View {
                     isDestructive: true,
                     accessibilityLabel: device.deviceSet.kind == .xctest ? "Delete Test Simulator" : nil
                 ) { plan(.delete, for: device) }
-                : nil
+                : nil,
+            allowsTallCaption: true
         ) {
             deviceStatusCaption(device, status: "Can't boot")
         }
@@ -173,6 +170,7 @@ public struct SimulatorsDetailView: View {
                     for: device
                 ) } : nil)
                 : eraseAction(for: device),
+            allowsTallCaption: true,
             onSelect: canExpand ? { toggle(device) } : nil,
             caption: { deviceCaption(device) }
         )
@@ -287,6 +285,27 @@ private struct RuntimeSection {
 }
 
 private enum SimulatorDeviceAction { case erase, delete, bloat }
+
+// MARK: - Grouping and totals
+
+private extension SimulatorsDetailView {
+    var runtimeSections: [RuntimeSection] {
+        Dictionary(grouping: available, by: \.runtime)
+            .map { runtimeId, devices in
+                RuntimeSection(runtimeId: runtimeId, devices: devices, total: total(of: devices))
+            }
+            .sorted { $0.total > $1.total }
+    }
+
+    var detailSummary: DetailSummary? {
+        guard let contents, !contents.isUnavailable else { return nil }
+        return DetailSummary(bytes: total(of: devices), count: devices.count, unit: .device)
+    }
+
+    var bootedCount: Int {
+        devices.count { $0.state.isBooted }
+    }
+}
 
 // MARK: - Behaviour
 

@@ -18,7 +18,7 @@ public extension AppModel {
         }
         planFailure = nil
         androidToolsStage = .checking
-        pushing { navigationPath.append(.androidTools(child)) }
+        pushing { push(.androidTools(child)) }
         prepareAndroidAVD(child, install: false)
     }
 

@@ -24,22 +24,26 @@ public struct RuntimesDetailView: View {
         contents?.runtimes ?? []
     }
 
+    private var detailSummary: DetailSummary? {
+        guard let contents, !contents.isUnavailable else { return nil }
+        let total = runtimes.reduce(Int64(0)) { $0 + ($1.sizeIsKnown ? $1.sizeBytes : 0) }
+        return DetailSummary(bytes: total, count: runtimes.count, unit: .runtime)
+    }
+
     public var body: some View {
-        VStack(spacing: 0) {
-            LocationDetailScaffold(location: location, model: model, backTitle: backTitle) {
-                LoadStateView(
-                    isLoading: contents == nil,
-                    loadingTitle: "Reading runtimes…",
-                    error: contents?.failureReason,
-                    errorTitle: "Couldn't read runtimes",
-                    isEmpty: runtimes.isEmpty,
-                    emptySymbol: "square.stack.3d.up.slash",
-                    emptyTitle: "No runtimes",
-                    emptyMessage: "No downloadable simulator runtimes are installed.",
-                    retry: { model.reloadDrillDown(for: location) },
-                    content: { content }
-                )
-            }
+        LocationDetailScaffold(location: location, model: model, backTitle: backTitle, summary: detailSummary) {
+            LoadStateView(
+                isLoading: contents == nil,
+                loadingTitle: "Reading runtimes…",
+                error: contents?.failureReason,
+                errorTitle: "Couldn't read runtimes",
+                isEmpty: runtimes.isEmpty,
+                emptySymbol: "square.stack.3d.up.slash",
+                emptyTitle: "No runtimes",
+                emptyMessage: "No downloadable simulator runtimes are installed.",
+                retry: { model.reloadDrillDown(for: location) },
+                content: { content }
+            )
         }
     }
 
@@ -51,6 +55,10 @@ public struct RuntimesDetailView: View {
 
     private var content: some View {
         LazyVStack(spacing: 2) {
+            if let planFailure = model.planFailure {
+                NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+            }
+
             ForEach(runtimes) { runtime in
                 PopoverRow(
                     icon: .symbol("square.stack.3d.up"),
@@ -58,7 +66,8 @@ public struct RuntimesDetailView: View {
                     sizeBytes: runtime.sizeIsKnown ? runtime.sizeBytes : nil,
                     action: runtime.canPlanDelete
                         ? RowAction("Delete") { planDelete(runtime) }
-                        : nil
+                        : nil,
+                    allowsTallCaption: true
                 ) {
                     caption(for: runtime)
                 }

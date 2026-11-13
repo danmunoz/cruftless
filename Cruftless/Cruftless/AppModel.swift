@@ -18,16 +18,13 @@ public final class AppModel {
     /// How far the scan the user is watching has got.
     public internal(set) var scanProgress = ScanProgress()
 
-    /// Who asked for the scan that is running, or nil when none is.
-    enum ScanTrigger: Sendable {
-        /// Launch, the Refresh button, a settings change, the rescan after a deletion: a scan someone is waiting for.
-        case user
-        /// An FSEvents invalidation.
-        case background
-    }
+    /// Admits, queues and throttles scans, one at a time.
+    var scanScheduler = ScanScheduler()
 
-    var activeScan: ScanTrigger?
-    var activeScanScope: InvalidationScope?
+    /// Who asked for the scan that is running, or nil when none is.
+    var activeScan: ScanTrigger? {
+        scanScheduler.active?.trigger
+    }
 
     /// True only while a scan someone asked for is running.
     public var isScanning: Bool {
@@ -76,6 +73,10 @@ public final class AppModel {
     var cleanupSessions: [String: CleanupSelectionSession] = [:]
 
     public internal(set) var preparingLocationId: String?
+    /// The location whose whole-location plan is being prepared.
+    public internal(set) var planningLocationId: String?
+    /// The `planFailure` text that came from refusing a restored row, cleared when a scan lands.
+    var restoredRefusalMessage: String?
 
     /// The in-flight cold fetch, so a second click supersedes the first and closing the popover cancels it.
     var prepareTask: Task<Void, Never>?
@@ -104,15 +105,14 @@ public final class AppModel {
     /// Current deletion progress shown in Review.
     public internal(set) var deletionProgress: DeletionProgress?
 
+    /// Per-item state of the plan being executed, shown in Review.
+    public internal(set) var deletionRun: DeletionRunState?
+
     public let scanEngine: ScanEngine
     public let simulatorService: SimulatorService
     public let deletionExecutor: DeletionExecutor
     var invalidator: FSEventsInvalidator?
 
-    var pendingInvalidation: InvalidationScope?
-    var pendingTrigger: ScanTrigger = .background
-
-    var hasStartedMonitoring = false
     var hasStartedInitialScan = false
     /// Location IDs measured during this session.
     var scannedLocationIds: Set<String> = []
@@ -134,9 +134,6 @@ public final class AppModel {
 
     /// Timestamp of the restored snapshot rows.
     var restoredInventoryDate: Date?
-
-    /// Bounds how often a filesystem event may rescan the same location.
-    var throttle = RescanThrottle()
 
     /// Wakes when the throttle's earliest held location comes due.
     var throttleWake: Task<Void, Never>?
@@ -215,7 +212,7 @@ public final class AppModel {
     }
 
     public func plan(_ build: (PlanningContext) throws -> DeletionPlan) {
-        plan(build, onSuccess: openReview(for:), onFailure: reportPlanFailure)
+        plan(build, onSuccess: openReview(for:), onFailure: { _ in })
     }
 
     func plan(
@@ -248,6 +245,7 @@ public final class AppModel {
             if alreadyAdmitted {
                 isDeleting = false
                 settings.isDeletionExecuting = false
+                resumeDeferredScans()
             }
             if let cleanupSessionID, let session = cleanupSessions[cleanupSessionID] {
                 session.notice = message
@@ -271,17 +269,27 @@ public final class AppModel {
         defer {
             isDeleting = false
             settings.isDeletionExecuting = false
+            resumeDeferredScans()
         }
 
         let before = VolumeCapacity.query().freeBytes
-        let result = await deletionExecutor.execute(plan) { [weak self] progress in
-            Task { @MainActor in self?.deletionProgress = progress }
-        }
+        deletionRun = DeletionRunState(plan: plan)
+        let result = await deletionExecutor.execute(
+            plan,
+            onProgress: { [weak self] progress in
+                Task { @MainActor in self?.deletionProgress = progress }
+            },
+            onItemEvent: { [weak self] event in
+                Task { @MainActor in self?.deletionRun?.apply(event) }
+            }
+        )
+        deletionRun?.settle(with: result)
         deletionProgress = nil
         freeSpaceDelta = FreeSpaceDelta(before: before, after: VolumeCapacity.query().freeBytes)
         // Rescans only locations affected by the plan.
         startScan(plan.rescanScope, trigger: .user)
         presentDeletionResult(result, cleanupSessionID: cleanupSessionID)
+        deletionRun = nil
     }
 
     private func presentDeletionResult(_ result: DeletionResult, cleanupSessionID: String?) {
@@ -292,14 +300,14 @@ public final class AppModel {
             session.stage = .result
             pushing {
                 if case .selectionReview = navigationPath.last { navigationPath.removeLast() }
-                navigationPath.append(.selectionResult(session.location))
+                push(.selectionResult(session.location))
             }
         } else {
             pushing {
                 if case .review = navigationPath.last {
                     navigationPath.removeLast()
                 }
-                navigationPath.append(.result(result))
+                push(.result(result))
             }
         }
     }

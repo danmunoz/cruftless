@@ -239,7 +239,19 @@ struct DeletionPlannerTests {
         )
         #expect(
             LocationCatalog.simulatorDevices.consequence
-                == TrackedLocation.defaultConsequence(for: .judgment)
+                == "Erasing removes a simulator's installed apps and their data."
+        )
+        #expect(
+            LocationCatalog.xctestDevices.consequence
+                == "Deleting removes a retained test simulator with its apps, data and snapshots."
+        )
+        #expect(
+            LocationCatalog.simulatorRuntimes.consequence
+                == "Simulators on a deleted runtime can't boot until it is downloaded again."
+        )
+        #expect(
+            LocationCatalog.simulatorDyldCache.consequence
+                == TrackedLocation.defaultConsequence(for: .info)
         )
     }
 

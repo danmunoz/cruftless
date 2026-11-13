@@ -4,7 +4,8 @@ extension DeletionExecutor {
     /// Executes all items in the plan sequentially, collecting per-item outcomes.
     public func execute(
         _ plan: DeletionPlan,
-        onProgress: (@Sendable (DeletionProgress) -> Void)? = nil
+        onProgress: (@Sendable (DeletionProgress) -> Void)? = nil,
+        onItemEvent: (@Sendable (DeletionItemEvent) -> Void)? = nil
     ) async -> DeletionResult {
         let androidTarget = plan.items.contains { if case .androidAVDDelete = $0 { true } else { false } }
         let invalidAndroidPlan = !plan.isPlannerAuthorized || plan.count != 1
@@ -40,33 +41,46 @@ extension DeletionExecutor {
             self.onProgress = nil
         }
 
-        return await executeItems(plan, admission: admission, hasSimulatorMutation: hasSimulatorMutation)
+        return await executeItems(
+            plan,
+            admission: admission,
+            hasSimulatorMutation: hasSimulatorMutation,
+            onItemEvent: onItemEvent
+        )
     }
 
     private func executeItems(
         _ plan: DeletionPlan,
         admission: (locationIDs: Set<String>, gradleAcknowledgement: GradleCacheRiskAcknowledgement?),
-        hasSimulatorMutation: Bool
+        hasSimulatorMutation: Bool,
+        onItemEvent: (@Sendable (DeletionItemEvent) -> Void)?
     ) async -> DeletionResult {
         var outcomes: [ItemOutcome] = []
         outcomes.reserveCapacity(plan.items.count)
         for (index, item) in plan.items.enumerated() {
             guard plan.policyGeneration == policyGenerationAuthority.currentGeneration else {
-                outcomes.append(contentsOf: plan.items[index...].map {
-                    ItemOutcome(target: $0, status: .notAttempted(reason: .policyChanged), freedBytes: 0)
-                })
+                for (offset, skipped) in plan.items[index...].enumerated() {
+                    let outcome = ItemOutcome(target: skipped, status: .notAttempted(reason: .policyChanged), freedBytes: 0)
+                    outcomes.append(outcome)
+                    onItemEvent?(.finished(index: index + offset, outcome: outcome))
+                }
                 break
             }
             if Task.isCancelled {
-                outcomes.append(ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0))
+                let outcome = ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0)
+                outcomes.append(outcome)
+                onItemEvent?(.finished(index: index, outcome: outcome))
                 continue
             }
-            outcomes.append(await executeSingle(
+            onItemEvent?(.started(index: index))
+            let outcome = await executeSingle(
                 item,
                 affectedLocationIds: plan.affectedLocationIds,
                 policyGeneration: plan.policyGeneration,
                 gradleCacheRiskAcknowledgement: admission.gradleAcknowledgement
-            ))
+            )
+            outcomes.append(outcome)
+            onItemEvent?(.finished(index: index, outcome: outcome))
         }
         if hasSimulatorMutation {
             await simulatorExecutor.endToolchainOperation(generation: plan.simulatorToolchainGeneration)

@@ -2,6 +2,22 @@ import Foundation
 import ServiceManagement
 
 public enum LaunchAtLoginPolicy: Sendable {
+    /// What the login item's state alone says, independent of any toggle attempt.
+    public static func statusMessage(for status: SMAppService.Status) -> String? {
+        switch status {
+        case .requiresApproval:
+            "Cruftless is waiting for approval in System Settings › General › Login Items."
+        case .notFound:
+            "macOS can't find the Cruftless login item. Move Cruftless to Applications and try again."
+        default:
+            nil
+        }
+    }
+
+    public static func needsApproval(_ status: SMAppService.Status) -> Bool {
+        status == .requiresApproval
+    }
+
     public static func message(
         requested: Bool,
         status: SMAppService.Status,
@@ -14,16 +30,18 @@ public enum LaunchAtLoginPolicy: Sendable {
                 : nil
         }
 
-        switch status {
-        case .enabled:
-            return nil
-        case .requiresApproval:
-            return "Cruftless is waiting for approval in System Settings › General › Login Items."
-        case .notFound:
-            return "macOS can't find the Cruftless login item. Move Cruftless to Applications and try again."
-        default:
-            return failure ?? "Cruftless could not be registered to launch at login."
-        }
+        if status == .enabled { return nil }
+        return statusMessage(for: status) ?? failure ?? "Cruftless could not be registered to launch at login."
+    }
+
+    /// The failure worth showing after a write; nil when `statusMessage(for:)` already explains the outcome.
+    public static func failureMessage(
+        requested: Bool,
+        status: SMAppService.Status,
+        failure: String? = nil
+    ) -> String? {
+        if requested, statusMessage(for: status) != nil { return nil }
+        return message(requested: requested, status: status, failure: failure)
     }
 }
 
@@ -46,6 +64,12 @@ public enum ProtectedPathRejection: Sendable, Equatable {
 
 /// Vets a folder before it joins the protected list.
 public enum ProtectedPathPolicy: Sendable {
+    /// The message for a failed folder pick; nil when the user simply cancelled.
+    public static func pickerFailureMessage(for error: any Error) -> String? {
+        if (error as? CocoaError)?.code == .userCancelled { return nil }
+        return "Cruftless could not read the folder you chose."
+    }
+
     public static func rejection(
         for url: URL,
         home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),

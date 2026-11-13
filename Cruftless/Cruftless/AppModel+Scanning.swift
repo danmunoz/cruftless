@@ -12,9 +12,7 @@ extension AppModel {
         scannedLocationIds = []
         throttleWake?.cancel()
         throttleWake = nil
-        throttle = RescanThrottle()
-        pendingInvalidation = nil
-        pendingTrigger = .background
+        scanScheduler.reset()
         scanProgress.reset()
         scanFailures = scanFailures.filter { catalog.ids.contains($0.key) }
         if !catalog.selection.platforms.contains(.apple) {
@@ -55,11 +53,39 @@ extension AppModel {
 
     /// Runs the scan a scope calls for: everything, or just the locations a filesystem event touched.
     func startScan(_ requested: InvalidationScope, trigger: ScanTrigger) {
-        let catalog = activeCatalog
-        guard let scope = admit(requested, trigger: trigger, catalog: catalog) else { return }
-        guard !enqueueIfBusy(scope, trigger: trigger) else { return }
+        let admission = scanScheduler.request(
+            ScanRequest(scope: requested, trigger: trigger),
+            at: .now,
+            catalog: activeCatalog.ids,
+            conditions: scanConditions
+        )
+        follow(admission)
+    }
 
-        let invalidatedIDs: Set<String> = switch scope {
+    /// Starts whatever background work a finished deletion was holding back.
+    func resumeDeferredScans() {
+        follow(scanScheduler.resume(at: .now, catalog: activeCatalog.ids, conditions: scanConditions))
+    }
+
+    private var scanConditions: ScanConditions {
+        ScanConditions(hasStartedInitialScan: hasStartedInitialScan, isDeleting: isDeleting)
+    }
+
+    /// Acts on the scheduler's answer: marks the sessions it will refresh, and runs the scan it started.
+    private func follow(_ admission: ScanScheduler.Admission?) {
+        scheduleThrottleWake()
+        let request: ScanRequest
+        switch admission {
+        case nil, .declined:
+            return
+        case let .queued(queued):
+            request = queued
+        case let .start(started):
+            request = started
+        }
+
+        let catalog = activeCatalog
+        let invalidatedIDs: Set<String> = switch request.scope {
         case .everything: catalog.ids
         case let .locations(ids): ids
         }
@@ -67,20 +93,9 @@ extension AppModel {
             session.invalidate(message: "Refreshing this location…")
         }
 
-        activeScan = trigger
-        activeScanScope = scope
+        guard case .start = admission else { return }
         checkRunningApps()
-        Task { await self.run(scope, catalog: catalog) }
-    }
-
-    private func admit(
-        _ requested: InvalidationScope,
-        trigger: ScanTrigger,
-        catalog: ActiveCatalog
-    ) -> InvalidationScope? {
-        guard trigger == .background else { return requested }
-        defer { scheduleThrottleWake() }
-        return throttle.admit(requested, at: .now, catalog: Array(catalog.ids))
+        Task { await self.run(request.scope, catalog: catalog) }
     }
 
     private func shouldRemoveRouteAfterPlatformChange(_ route: AppRoute) -> Bool {
@@ -119,12 +134,20 @@ extension AppModel {
         case let .completed(newInventory):
             inventory = newInventory
             scannedLocationIds.formUnion(tally.landedIds)
+            clearRestoredRefusal()
             isAutomaticScanPaused = false
             persistInventory()
         case let .failed(locationId, reason):
             tally.scannedIds.insert(locationId)
             tally.failures[locationId] = reason
         }
+    }
+
+    /// Drops the "measuring now" notice once a scan has landed.
+    private func clearRestoredRefusal() {
+        guard let message = restoredRefusalMessage else { return }
+        if planFailure == message { planFailure = nil }
+        restoredRefusalMessage = nil
     }
 
     private func updateProgress(for event: ScanEvent) {
@@ -138,27 +161,6 @@ extension AppModel {
         case let .locationScanned(entry):
             scanProgress.record(entry)
         }
-    }
-
-    /// Queues a request behind the scan already running, and reports whether it did.
-    private func enqueueIfBusy(_ scope: InvalidationScope, trigger: ScanTrigger) -> Bool {
-        guard activeScan != nil else { return false }
-
-        pendingInvalidation = pendingInvalidation?.merged(with: scope) ?? scope
-        let affectedIDs: Set<String> = switch scope {
-        case .everything:
-            activeCatalog.ids
-        case let .locations(ids):
-            ids
-        }
-        for (id, session) in cleanupSessions where affectedIDs.contains(id) {
-            session.invalidate(message: "Refreshing this location…")
-        }
-        if trigger == .user {
-            pendingTrigger = .user
-            activeScan = .user
-        }
-        return true
     }
 
     /// What one scan's events accumulated, folded in after the stream ends.
@@ -182,15 +184,9 @@ extension AppModel {
         }
 
         guard settings.platformGeneration == catalog.generation else {
-            activeScan = nil
-            activeScanScope = nil
+            scanScheduler.complete(walked: nil, at: .now)
             scanProgress.reset()
-            if let queued = pendingInvalidation {
-                let queuedTrigger = pendingTrigger
-                pendingInvalidation = nil
-                pendingTrigger = .background
-                startScan(queued, trigger: queuedTrigger)
-            }
+            resumeDeferredScans()
             return
         }
 
@@ -203,8 +199,7 @@ extension AppModel {
             drillDowns[id] = nil
         }
 
-        activeScan = nil
-        activeScanScope = nil
+        scanScheduler.complete(walked: walked(from: scope, touching: scannedIds, catalog: catalog), at: .now)
         scanProgress.reset()
         record(failures: failures, from: scope, touching: scannedIds)
         let affectedIDs: Set<String> = switch scope {
@@ -213,16 +208,11 @@ extension AppModel {
         }
         refreshCleanupSessions(affectedLocationIDs: affectedIDs, failures: failures)
 
-        throttle.recordCompletion(of: walked(from: scope, touching: scannedIds, catalog: catalog), at: .now)
-
         preferenceIssues = catalog.selection.platforms.contains(.apple) ? RootResolver.preferenceIssues() : []
 
-        if let queued = pendingInvalidation {
-            let queuedTrigger = pendingTrigger
-            pendingInvalidation = nil
-            pendingTrigger = .background
-            startScan(queued, trigger: queuedTrigger)
-        }
+        // Picks up a root whose resolution changed, such as a new Derived Data location; an unchanged set keeps its stream.
+        startMonitoring(for: catalog)
+        resumeDeferredScans()
     }
 
     /// The locations a finished scan is authoritative about: the same set `record(failures:)` replaces notices for.
@@ -242,7 +232,7 @@ extension AppModel {
     /// Re-arms the wake-up for the throttle's earliest held location.
     private func scheduleThrottleWake() {
         throttleWake?.cancel()
-        guard let wake = throttle.nextWake else {
+        guard let wake = scanScheduler.nextWake else {
             throttleWake = nil
             return
         }
@@ -251,7 +241,7 @@ extension AppModel {
         throttleWake = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self else { return }
-            guard let due = throttle.release(at: .now) else {
+            guard let due = scanScheduler.releaseDue(at: .now) else {
                 scheduleThrottleWake()
                 return
             }

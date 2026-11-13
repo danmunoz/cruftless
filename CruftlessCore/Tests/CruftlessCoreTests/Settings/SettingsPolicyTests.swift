@@ -43,6 +43,107 @@ struct LaunchAtLoginPolicyTests {
     }
 }
 
+@Suite("Launch at login status")
+struct LaunchAtLoginStatusTests {
+    @Test("Pending approval explains itself without any toggle attempt")
+    func approvalIsExplainedFromStatusAlone() {
+        let message = LaunchAtLoginPolicy.statusMessage(for: .requiresApproval)
+        #expect(message?.contains("Login Items") == true)
+        #expect(LaunchAtLoginPolicy.needsApproval(.requiresApproval))
+    }
+
+    @Test("A missing login item is explained from status alone")
+    func notFoundIsExplained() {
+        #expect(LaunchAtLoginPolicy.statusMessage(for: .notFound)?.contains("Applications") == true)
+        #expect(!LaunchAtLoginPolicy.needsApproval(.notFound))
+    }
+
+    @Test("Healthy states need no explanation", arguments: [SMAppService.Status.enabled, .notRegistered])
+    func healthyStatesAreSilent(status: SMAppService.Status) {
+        #expect(LaunchAtLoginPolicy.statusMessage(for: status) == nil)
+        #expect(!LaunchAtLoginPolicy.needsApproval(status))
+    }
+
+    @Test("A write that lands in a status with its own explanation adds no second message")
+    func writeFailureDefersToStatus() {
+        #expect(LaunchAtLoginPolicy.failureMessage(requested: true, status: .requiresApproval) == nil)
+        #expect(LaunchAtLoginPolicy.failureMessage(requested: true, status: .notFound, failure: "boom") == nil)
+    }
+
+    @Test("A write failure the status cannot explain is still reported")
+    func writeFailureSurfaces() {
+        #expect(
+            LaunchAtLoginPolicy.failureMessage(requested: true, status: .notRegistered, failure: "denied") == "denied"
+        )
+        #expect(LaunchAtLoginPolicy.failureMessage(requested: false, status: .enabled) != nil)
+    }
+}
+
+@Suite("Folder picker failures")
+struct FolderPickerFailureTests {
+    @Test("Cancelling the picker is silent")
+    func cancelIsSilent() {
+        #expect(ProtectedPathPolicy.pickerFailureMessage(for: CocoaError(.userCancelled)) == nil)
+    }
+
+    @Test("Any other picker error is reported")
+    func otherErrorsAreReported() {
+        #expect(ProtectedPathPolicy.pickerFailureMessage(for: CocoaError(.fileReadNoPermission)) != nil)
+    }
+}
+
+@Suite("Settings control policy")
+struct SettingsControlPolicyTests {
+    private let both = PlatformSelection.all
+
+    @Test("The only selected platform cannot be turned off")
+    func lastPlatformIsLocked() {
+        #expect(SettingsControlPolicy.isPlatformToggleDisabled(.apple, selection: .appleOnly, isDeletionExecuting: false))
+        #expect(!SettingsControlPolicy.isPlatformToggleDisabled(.android, selection: .appleOnly, isDeletionExecuting: false))
+        #expect(!SettingsControlPolicy.isPlatformToggleDisabled(.apple, selection: both, isDeletionExecuting: false))
+    }
+
+    @Test("A running deletion locks every platform toggle")
+    func deletionLocksToggles() {
+        for platform in DevelopmentPlatform.allCases {
+            #expect(SettingsControlPolicy.isPlatformToggleDisabled(platform, selection: both, isDeletionExecuting: true))
+        }
+    }
+
+    @Test("Turning a platform on or off yields the new selection")
+    func togglingUpdatesSelection() {
+        #expect(SettingsControlPolicy.updatedSelection(from: both, platform: .android, enabled: false) == .appleOnly)
+        #expect(SettingsControlPolicy.updatedSelection(from: .appleOnly, platform: .android, enabled: true) == both)
+    }
+
+    @Test("Removing the last platform or repeating a state changes nothing")
+    func refusedAndNoOpChanges() {
+        #expect(SettingsControlPolicy.updatedSelection(from: .appleOnly, platform: .apple, enabled: false) == nil)
+        #expect(SettingsControlPolicy.updatedSelection(from: .appleOnly, platform: .android, enabled: false) == nil)
+        #expect(SettingsControlPolicy.updatedSelection(from: both, platform: .apple, enabled: true) == nil)
+    }
+
+    @Test("The order picker shows only when both platforms are listed")
+    func orderPickerVisibility() {
+        #expect(SettingsControlPolicy.showsPlatformOrder(for: both))
+        #expect(!SettingsControlPolicy.showsPlatformOrder(for: .androidOnly))
+    }
+
+    @Test("Protected path edits lock during a deletion")
+    func protectedPathEdits() {
+        #expect(SettingsControlPolicy.allowsProtectedPathEdits(isDeletionExecuting: false))
+        #expect(!SettingsControlPolicy.allowsProtectedPathEdits(isDeletionExecuting: true))
+    }
+
+    @Test("Busy messages clear when the deletion ends; other messages stay")
+    func busyMessagesClear() {
+        #expect(SettingsControlPolicy.clearingBusyMessage(SettingsControlPolicy.platformSelectionBusyMessage) == nil)
+        #expect(SettingsControlPolicy.clearingBusyMessage(SettingsControlPolicy.protectedPathsBusyMessage) == nil)
+        #expect(SettingsControlPolicy.clearingBusyMessage("Already covered by ~/Dev.") == "Already covered by ~/Dev.")
+        #expect(SettingsControlPolicy.clearingBusyMessage(nil) == nil)
+    }
+}
+
 @Suite("Protected path admission")
 struct ProtectedPathPolicyTests {
     private let home = URL(fileURLWithPath: "/Users/tester", isDirectory: true)

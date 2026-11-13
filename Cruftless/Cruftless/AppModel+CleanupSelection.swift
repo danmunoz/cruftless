@@ -62,17 +62,7 @@ extension AppModel {
     }
 
     private func isCleanupLocationScanPending(_ locationID: String) -> Bool {
-        scope(activeScanScope, covers: locationID) || scope(pendingInvalidation, covers: locationID)
-    }
-
-    private func scope(_ scope: InvalidationScope?, covers locationID: String) -> Bool {
-        guard let scope else { return false }
-        return switch scope {
-        case .everything:
-            activeCatalog.ids.contains(locationID)
-        case let .locations(ids):
-            ids.contains(locationID)
-        }
+        scanScheduler.covers(locationID, catalog: activeCatalog.ids)
     }
 
     func refreshSelection(_ session: CleanupSelectionSession) {
@@ -142,7 +132,7 @@ extension AppModel {
             }
             session.stage = .gradleRisk(child)
             session.notice = nil
-            pushing { navigationPath.append(.selectionRisk(location: session.location, child: child)) }
+            pushing { push(.selectionRisk(location: session.location, child: child)) }
             return
         }
 
@@ -173,7 +163,7 @@ extension AppModel {
             self.checkRunningApps()
             session.stage = .review
             session.notice = nil
-            pushing { navigationPath.append(.selectionReview(session.location)) }
+            pushing { push(.selectionReview(session.location)) }
         } onFailure: { message in
             session.stage = .selection
             session.notice = message
@@ -284,7 +274,7 @@ extension AppModel {
             session.reviewFreeSpaceBytes = capacity.totalBytes > 0 ? capacity.freeBytes : nil
             session.stage = .review
             session.notice = nil
-            pushing { navigationPath.append(.selectionReview(session.location)) }
+            pushing { push(.selectionReview(session.location)) }
         } onFailure: { message in
             session.notice = message
         }

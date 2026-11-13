@@ -63,18 +63,26 @@ struct SimulatorRuntimeCatalogTests {
         #expect(SimulatorRuntimeAssetInventory.sizeBytes(version: "18.6", build: "wrong", root: root) == nil)
     }
 
-    @Test("Multiple installed builds produce an order-independent unknown device state")
-    func ambiguousBuildsRefuseAuthority() {
+    @Test("Multiple installed builds resolve to the same state in any order")
+    func duplicateBuildsResolveDeterministically() {
         let device = SimDevice(udid: UUID().uuidString, name: "Phone", runtime: "runtime", state: .shutdown,
                                lastUsedAt: nil, deviceDirectory: URL(fileURLWithPath: "/tmp/device"))
-        let builds: [SimulatorRuntimeCatalog.Runtime] = [
+        func resolve(_ builds: [SimulatorRuntimeCatalog.Runtime]) -> [SimRuntimeAvailability] {
+            [builds, builds.reversed()].map {
+                UnavailableDetector.reconcile(devices: [device], catalog: .init(runtimes: $0))[0].runtimeAvailability
+            }
+        }
+        let mixed = resolve([
             .init(identifier: "runtime", version: "1", build: "A", isAvailable: true),
             .init(identifier: "runtime", version: "1", build: "B", isAvailable: false)
-        ]
-        let first = UnavailableDetector.reconcile(devices: [device], catalog: .init(runtimes: builds))[0]
-        let reversed = UnavailableDetector.reconcile(devices: [device], catalog: .init(runtimes: builds.reversed()))[0]
-        #expect(first.runtimeAvailability == reversed.runtimeAvailability)
-        if case .unknown = first.runtimeAvailability {} else { Issue.record("Ambiguous builds must not grant authority") }
+        ])
+        #expect(mixed == [.available, .available])
+        let allUnavailable = resolve([
+            .init(identifier: "runtime", version: "1", build: "A", isAvailable: false, availabilityError: "b-error"),
+            .init(identifier: "runtime", version: "1", build: "B", isAvailable: false, availabilityError: "a-error")
+        ])
+        #expect(allUnavailable == [.installedUnavailable("a-error"), .installedUnavailable("a-error")])
+        #expect(!allUnavailable[0].isConfirmedMissing)
     }
 
     @Test("Full-catalog builds have distinct stable row identities")

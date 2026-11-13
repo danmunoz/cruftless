@@ -14,6 +14,15 @@ public enum MutationPolicy: Sendable, Hashable {
     }
 }
 
+/// A dedicated, reviewed per-item removal route that a `.readOnly` location still offers outside `DeletionPlanner`'s path routes.
+public enum ItemRemoval: Sendable, Hashable {
+    case none
+    /// Eligible cache folders, after a one-time risk acknowledgement.
+    case gradleCacheRiskReview
+    /// One stopped device at a time, through Google's Android CLI.
+    case androidVirtualDevice
+}
+
 /// Where a tracked location's size comes from.
 public enum SizeSource: Sendable, Hashable {
     /// Walk the location's resolved filesystem roots.
@@ -33,6 +42,7 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
     public let stalenessSource: StalenessSource
     public let sizeSource: SizeSource
     public let mutationPolicy: MutationPolicy
+    public let itemRemoval: ItemRemoval
     public let resolveRoots: @Sendable () -> [URL]
 
     public let consequence: String
@@ -51,6 +61,7 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
         stalenessSource: StalenessSource,
         sizeSource: SizeSource = .filesystemRoots,
         mutationPolicy: MutationPolicy = .pathDeletion,
+        itemRemoval: ItemRemoval = .none,
         consequence: String? = nil,
         discoveryIssue: @escaping @Sendable () -> String? = { nil },
         resolveRoots: @escaping @Sendable () -> [URL],
@@ -65,10 +76,16 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
         self.stalenessSource = stalenessSource
         self.sizeSource = sizeSource
         self.mutationPolicy = mutationPolicy
+        self.itemRemoval = itemRemoval
         self.consequence = consequence ?? Self.defaultConsequence(for: tier)
         self.discoveryIssue = discoveryIssue
         self.resolveRoots = resolveRoots
         self.resolveDefaultRoots = resolveDefaultRoots
+    }
+
+    /// True when the app can remove nothing in this location: read-only, with no dedicated per-item route.
+    public var isInventoryOnly: Bool {
+        mutationPolicy.isReadOnly && itemRemoval == .none
     }
 
     /// The fallback consequence for a location with nothing more specific to say: what its tier already promises.

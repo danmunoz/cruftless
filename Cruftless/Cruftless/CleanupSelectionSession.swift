@@ -103,7 +103,9 @@ final class CleanupSelectionSession {
         notes = Self.notes(for: contents)
         isReady = isScanned && failure == nil && !contents.isUnavailable
         isRefreshing = false
-        if let failure {
+        if stage == .executing || stage == .result {
+            // The selected rows leave the inventory as they are deleted; that is progress, not a stale selection.
+        } else if let failure {
             notice = failure
         } else if !isReady {
             notice = "Cruftless needs a completed scan of this location before it can review a selection."

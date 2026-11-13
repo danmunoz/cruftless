@@ -1,6 +1,7 @@
 import CruftlessCore
 import SwiftUI
 
+/// The leading footer action on every Detail screen with a child listing.
 struct SelectItemsButton: View {
     let location: TrackedLocation
     let model: AppModel
@@ -9,14 +10,11 @@ struct SelectItemsButton: View {
         Button {
             model.openSelection(for: location)
         } label: {
-            Image(systemName: "checklist")
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 26, height: 26)
+            Label("Select Items", systemImage: "checklist")
         }
         .disabled(model.isDeleting)
         .buttonStyle(.glass)
-        .clipShape(.circle)
-        .help("Select Items")
+        .controlSize(.large)
         .accessibilityLabel("Select Items in \(location.title)")
         .accessibilityIdentifier("cleanup.select-items.\(location.id)")
     }

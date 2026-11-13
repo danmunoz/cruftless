@@ -10,7 +10,13 @@ public actor ScanEngine {
     /// Lists the simulator devices, reconciled against a runtime list the scan has already fetched.
     public typealias DeviceLister = @Sendable ([SimRuntime]) -> [SimDevice]
     var cachedCurrentInventory: Inventory?
-    var currentGeneration: UInt64 = 0
+    /// The newest generation admitted, readable off the actor so a queued walk can tell it is no longer wanted.
+    let generationGate = ScanGenerationGate()
+    var currentGeneration: UInt64 {
+        get { generationGate.current }
+        set { generationGate.current = newValue }
+    }
+
     var cachedGradleCacheCleanableBytes: Int64 = 0
 
     /// Sizes captured during the scan, keyed by location id, then by resolved root path, then by each measured path under it.
@@ -60,8 +66,15 @@ public actor ScanEngine {
         var contents: DrillDownContent?
     }
 
+    /// What one scan shares with each location it walks.
+    struct LocationWalk: Sendable {
+        let inodeSet: InodeSet
+        let runtimesTask: Task<SimulatorRuntimeListing, any Error>?
+        let generation: UInt64
+    }
+
     /// Where the walks run.
-    private static let walkQueue = DispatchQueue(
+    package static let walkQueue = DispatchQueue(
         label: "com.danmunoz.cruftless.scan.walk",
         qos: .default
     )
@@ -80,8 +93,7 @@ public actor ScanEngine {
         catalog: [TrackedLocation] = LocationCatalog.all,
         generation: UInt64 = 0
     ) -> AsyncStream<ScanEvent> {
-        guard generation >= currentGeneration else { return Self.finishedStream() }
-        currentGeneration = generation
+        guard adopt(generation) else { return Self.finishedStream() }
         return run(locations: catalog, merging: false, generation: generation)
     }
 
@@ -90,10 +102,9 @@ public actor ScanEngine {
         catalog: [TrackedLocation] = LocationCatalog.all,
         generation: UInt64 = 0
     ) -> AsyncStream<ScanEvent> {
-        guard generation >= currentGeneration else { return Self.finishedStream() }
-        currentGeneration = generation
+        guard adopt(generation) else { return Self.finishedStream() }
         guard cachedCurrentInventory != nil else {
-            return scan(catalog: catalog, generation: generation)
+            return run(locations: catalog, merging: false, generation: generation)
         }
         let subset = catalog.filter { locationIds.contains($0.id) }
         guard !subset.isEmpty else {
@@ -184,8 +195,7 @@ extension ScanEngine {
                     await self.scanSingleLocation(
                         location,
                         roots: roots,
-                        inodeSet: inodes,
-                        runtimesTask: runtimesTask,
+                        walk: LocationWalk(inodeSet: inodes, runtimesTask: runtimesTask, generation: generation),
                         into: continuation
                     )
                 }
@@ -248,10 +258,12 @@ extension ScanEngine {
     private func scanSingleLocation(
         _ location: TrackedLocation,
         roots: [URL],
-        inodeSet: InodeSet,
-        runtimesTask: Task<SimulatorRuntimeListing, any Error>?,
+        walk: LocationWalk,
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> LocationOutcome {
+        let runtimesTask = walk.runtimesTask
+        let inodeSet = walk.inodeSet
+        let generation = walk.generation
         switch location.sizeSource {
         case .simulatorRuntimes:
             // No walk to wait for: this row is the `simctl` lookup, so it is under way as soon as it is awaited.
@@ -265,8 +277,13 @@ extension ScanEngine {
                 ? await Self.resolveRuntimes(runtimesTask)
                 : (list: nil, failure: nil)
             let deviceLister = deviceLister
+            let gate = generationGate
 
             return await offActor {
+                // A newer generation superseded this scan while the walk waited its turn.
+                guard gate.current == generation else {
+                    return LocationOutcome(locationId: location.id, entry: nil, failure: nil)
+                }
                 continuation.yield(.locationStarted(locationId: location.id))
                 return Self.scanFilesystemLocation(
                     location,

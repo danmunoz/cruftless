@@ -1,5 +1,5 @@
-import SwiftUI
 import CruftlessCore
+import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     case general
@@ -31,16 +31,21 @@ public struct SettingsView: View {
     public let settings: SettingsModel
     public let simulatorToolchainResolver: SimulatorToolchainResolver
     public let appModel: AppModel?
-    @State private var selection: SettingsSection = .general
+    @State private var selection: SettingsSection
+    private let discoversToolchainsOnAppear: Bool
 
     public init(
         settings: SettingsModel,
         simulatorToolchainResolver: SimulatorToolchainResolver = .shared,
-        appModel: AppModel? = nil
+        appModel: AppModel? = nil,
+        initialSection: SettingsSection = .general,
+        discoversToolchainsOnAppear: Bool = true
     ) {
         self.settings = settings
         self.simulatorToolchainResolver = simulatorToolchainResolver
         self.appModel = appModel
+        self.discoversToolchainsOnAppear = discoversToolchainsOnAppear
+        _selection = State(initialValue: initialSection)
     }
 
     public var body: some View {
@@ -51,16 +56,20 @@ public struct SettingsView: View {
                 Label(SettingsSection.general.title, systemImage: SettingsSection.general.symbol)
             }
 
+            Tab(value: .support) {
+                SupportSettingsPane(
+                    resolver: simulatorToolchainResolver,
+                    discoversCandidatesOnAppear: discoversToolchainsOnAppear,
+                    model: appModel
+                )
+            } label: {
+                Label(SettingsSection.support.title, systemImage: SettingsSection.support.symbol)
+            }
+
             Tab(value: .about) {
                 AboutSettingsPane()
             } label: {
                 Label(SettingsSection.about.title, systemImage: SettingsSection.about.symbol)
-            }
-
-            Tab(value: .support) {
-                SupportSettingsPane(resolver: simulatorToolchainResolver, model: appModel)
-            } label: {
-                Label(SettingsSection.support.title, systemImage: SettingsSection.support.symbol)
             }
         }
         .frame(width: SettingsMetrics.paneWidth)
@@ -70,24 +79,6 @@ public struct SettingsView: View {
 enum SettingsMetrics {
     /// Matches the width Apple uses for a two-column preferences pane.
     static let paneWidth: CGFloat = 540
-
-    /// A grouped `Form` is a scroll view with no intrinsic height, so the General pane states one.
-    static func generalPaneHeight(
-        protectedPathCount: Int,
-        errorRowCount: Int = 0,
-        includesPlatformSelection: Bool = false,
-        includesPlatformOrder: Bool = false
-    ) -> CGFloat {
-        // Height with the empty-state placeholder row showing and no errors.
-        let base: CGFloat = 463 + (includesPlatformSelection ? 90 : 0) + (includesPlatformOrder ? 84 : 0)
-        let placeholderRow: CGFloat = 37
-        let pathRow: CGFloat = 51
-        let errorRow: CGFloat = 32
-        let errors = CGFloat(max(0, errorRowCount)) * errorRow
-        guard protectedPathCount > 0 else { return base + errors }
-        let grown = base - placeholderRow + CGFloat(protectedPathCount) * pathRow
-        return min(grown + errors, 700 + errors)
-    }
 }
 
 #if DEBUG
@@ -107,9 +98,14 @@ enum SettingsMetrics {
     }
 
     #Preview("Settings: Protected paths") {
-        SettingsView(settings: .preview(protectedPaths: [
-            URL(fileURLWithPath: "/Users/daniel/Developer/ImportantProject"),
-            URL(fileURLWithPath: "/Users/daniel/Desktop/ReleaseArtifacts")
-        ]))
+        SettingsView(settings: .preview(protectedPaths: SettingsPreviewFixtures.protectedPaths))
+    }
+
+    #Preview("Settings: Support") {
+        SettingsView(settings: .preview(), initialSection: .support, discoversToolchainsOnAppear: false)
+    }
+
+    #Preview("Settings: About") {
+        SettingsView(settings: .preview(), initialSection: .about)
     }
 #endif

@@ -1,11 +1,15 @@
 import CruftlessCore
 import SwiftUI
 
-struct LocationDetailScaffold<Content: View>: View {
+/// The frame every Detail screen shares: a header carrying the measured total, the tier strip, a scrolling body, and a
+/// footer band with Select Items on the left and the screen's own location action on the right.
+struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
     let location: TrackedLocation
     let model: AppModel
     let backTitle: String
+    let summary: DetailSummary?
     let content: Content
+    let footerTrailing: FooterTrailing
 
     @State private var isInfoExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -14,39 +18,51 @@ struct LocationDetailScaffold<Content: View>: View {
         location: TrackedLocation,
         model: AppModel,
         backTitle: String,
-        @ViewBuilder content: () -> Content
+        summary: DetailSummary?,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder footerTrailing: () -> FooterTrailing
     ) {
         self.location = location
         self.model = model
         self.backTitle = backTitle
+        self.summary = summary
         self.content = content()
+        self.footerTrailing = footerTrailing()
     }
 
     #if DEBUG
         init(
             location: TrackedLocation,
             model: AppModel,
+            summary: DetailSummary? = nil,
             previewInfoExpanded: Bool,
-            @ViewBuilder content: () -> Content
+            @ViewBuilder content: () -> Content,
+            @ViewBuilder footerTrailing: () -> FooterTrailing
         ) {
-            self.location = location
-            self.model = model
-            backTitle = "Overview"
-            self.content = content()
+            self.init(
+                location: location,
+                model: model,
+                backTitle: "Overview",
+                summary: summary,
+                content: content,
+                footerTrailing: footerTrailing
+            )
             _isInfoExpanded = State(initialValue: previewInfoExpanded)
         }
     #endif
 
+    /// Every location with a child listing offers Select Items, except Android Virtual Devices.
+    private var offersSelection: Bool {
+        location.hasDrillDown && location.id != LocationCatalog.androidAVDs.id
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            PopoverHeader(title: location.title, backTitle: backTitle, onBack: model.pop) {
-                HStack(spacing: 6) {
-                    if location.hasDrillDown, location.id != LocationCatalog.androidAVDs.id {
-                        SelectItemsButton(location: location, model: model)
-                    }
-                    infoButton
-                }
+            PopoverHeader(title: location.title, subtitle: summary?.text, backTitle: backTitle, onBack: model.pop) {
+                infoButton
             }
+            Hairline()
+            LocationTierStrip(location: location)
             Hairline()
 
             GeometryReader { geometry in
@@ -63,6 +79,17 @@ struct LocationDetailScaffold<Content: View>: View {
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
                 }
                 .scrollBounceBehavior(.basedOnSize)
+            }
+
+            PopoverFooter {
+                HStack(spacing: 10) {
+                    if offersSelection {
+                        SelectItemsButton(location: location, model: model)
+                    }
+                    Spacer(minLength: 0)
+                    footerTrailing
+                }
+                .frame(minHeight: PopoverMetrics.footerControlHeight)
             }
         }
     }
@@ -126,24 +153,56 @@ struct LocationInfoPanel: View {
     }
 }
 
+extension LocationDetailScaffold where FooterTrailing == EmptyView {
+    init(
+        location: TrackedLocation,
+        model: AppModel,
+        backTitle: String,
+        summary: DetailSummary?,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.init(
+            location: location,
+            model: model,
+            backTitle: backTitle,
+            summary: summary,
+            content: content,
+            footerTrailing: { EmptyView() }
+        )
+    }
+}
+
 #if DEBUG
-    #Preview("Section info: collapsed") {
-        LocationDetailScaffold(location: LocationCatalog.derivedData, model: .previewPopulated(), backTitle: "Overview") {
+    #Preview("Scaffold: collapsed info, Clear All") {
+        LocationDetailScaffold(
+            location: LocationCatalog.derivedData,
+            model: .previewPopulated(),
+            backTitle: "Overview",
+            summary: DetailSummary(bytes: 18_400_000_000, count: 12, unit: .item)
+        ) {
             Text("Build files").padding()
+        } footerTrailing: {
+            Button("Clear All") {}
+                .buttonStyle(.glass)
+                .controlSize(.large)
         }
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Section info: expanded archives") {
+    #Preview("Scaffold: expanded archives, no summary yet") {
         LocationDetailScaffold(location: LocationCatalog.archives, model: .previewPopulated(), previewInfoExpanded: true) {
             PopoverPlaceholder(symbol: "archivebox", title: "Nothing here")
+        } footerTrailing: {
+            EmptyView()
         }
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Section info: expanded Gradle") {
+    #Preview("Scaffold: expanded Gradle error") {
         LocationDetailScaffold(location: LocationCatalog.gradleCaches, model: .previewPopulated(), previewInfoExpanded: true) {
             PopoverPlaceholder(symbol: "exclamationmark.triangle", title: "Couldn't read Gradle caches")
+        } footerTrailing: {
+            EmptyView()
         }
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
