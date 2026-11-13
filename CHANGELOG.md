@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1]
+
+### Changes
+
+- false login item warning and sticky simulator toolchain failures (#18) (406fdfa)
+- detect the Developer ID signature without a pipe (#17) (acb6492)
+
 ## [1.3.0]
 
 ### Added
