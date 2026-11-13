@@ -8,8 +8,8 @@ extension SimulatorToolchainResolver {
         let version: String?
     }
 
-    static func validate(candidate: URL) async -> SimulatorToolchain? {
-        guard let metadata = await inspect(candidate: candidate) else { return nil }
+    static func probe(candidate: URL) async -> SimulatorToolchainProbe {
+        guard let metadata = await inspect(candidate: candidate) else { return .unusable }
         let app = metadata.appURL
         let developer = metadata.developerDirectory
 
@@ -25,27 +25,29 @@ extension SimulatorToolchainResolver {
             guard result.status == 0,
                   canonicalPath(URL(fileURLWithPath: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))) ==
                     canonicalPath(developer.appendingPathComponent("usr/bin/simctl"))
-            else { return nil }
+            else { return .unusable }
 
             let runtimeList = try await BoundedProcess.run(
                 executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
                 arguments: ["simctl", "runtime", "list", "-j"],
                 environment: environment,
-                timeout: probeTimeout
+                timeout: runtimeListProbeTimeout
             )
             guard runtimeList.status == 0,
                   let data = runtimeList.stdout.data(using: .utf8),
                   (try? JSONSerialization.jsonObject(with: data)) is [String: [String: Any]]
-            else { return nil }
+            else { return .unusable }
 
-            return SimulatorToolchain(
+            return .usable(SimulatorToolchain(
                 id: canonicalPath(app),
                 appURL: app,
                 developerDirectory: developer,
                 version: metadata.version
-            )
+            ))
+        } catch BoundedProcess.RunError.timedOut {
+            return .timedOut
         } catch {
-            return nil
+            return .unusable
         }
     }
 

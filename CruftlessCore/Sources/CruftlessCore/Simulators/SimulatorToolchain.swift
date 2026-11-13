@@ -72,22 +72,38 @@ public enum SimulatorToolchainResolution: Sendable, Equatable {
     }
 }
 
+/// The outcome of checking one Xcode installation.
+public enum SimulatorToolchainProbe: Sendable, Equatable {
+    case usable(SimulatorToolchain)
+    case unusable
+    case timedOut
+
+    public var toolchain: SimulatorToolchain? {
+        guard case let .usable(toolchain) = self else { return nil }
+        return toolchain
+    }
+}
+
 /// Resolves only validated Xcode installations and coalesces concurrent probes.
+///
+/// A ready resolution is cached; a failed one is kept for display but probed again on the next `resolve()`.
 public actor SimulatorToolchainResolver {
     public static let shared = SimulatorToolchainResolver(persistsSelection: true)
     public static let candidateLimit = 8
     static let probeTimeout: Duration = .seconds(2)
+    static let runtimeListProbeTimeout: Duration = .seconds(6)
     private static let preferenceKey = "selectedSimulatorXcodePath"
     static let validationQueue = DispatchQueue(label: "com.danmunoz.cruftless.xcode-validation", qos: .utility)
 
     public typealias CandidateProvider = @Sendable () async -> [URL]
     public typealias SelectionProvider = @Sendable () async -> URL?
     public typealias CandidateValidator = @Sendable (URL) async -> SimulatorToolchain?
+    public typealias CandidateProber = @Sendable (URL) async -> SimulatorToolchainProbe
 
     let candidates: CandidateProvider
     let refreshCandidates: CandidateProvider
     let selectedDirectory: SelectionProvider
-    let validator: CandidateValidator
+    let prober: CandidateProber
     private var cached: SimulatorToolchainResolution?
     private var refreshTask: Task<SimulatorToolchainResolution, Never>?
     private var activeOperationGeneration: UUID?
@@ -102,6 +118,7 @@ public actor SimulatorToolchainResolver {
         refreshCandidates: CandidateProvider? = nil,
         selectedDirectory: SelectionProvider? = nil,
         validator: CandidateValidator? = nil,
+        prober: CandidateProber? = nil,
         persistsSelection: Bool = false
     ) {
         let candidateProvider = candidates ?? { await XcodeInstallDiscovery.discover(refresh: false) }
@@ -114,7 +131,13 @@ public actor SimulatorToolchainResolver {
             self.refreshCandidates = { await XcodeInstallDiscovery.discover(refresh: true) }
         }
         self.selectedDirectory = selectedDirectory ?? { await Self.readSelectedDirectory() }
-        self.validator = validator ?? { await Self.validate(candidate: $0) }
+        if let prober {
+            self.prober = prober
+        } else if let validator {
+            self.prober = { await validator($0).map(SimulatorToolchainProbe.usable) ?? .unusable }
+        } else {
+            self.prober = { await Self.probe(candidate: $0) }
+        }
         self.persistsSelection = persistsSelection
         explicitChoice = persistsSelection
             ? UserDefaults.standard.string(forKey: Self.preferenceKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -124,7 +147,7 @@ public actor SimulatorToolchainResolver {
     public func resolve(refresh: Bool = false) async -> SimulatorToolchainResolution {
         if acquiringOperationGeneration != nil, let cached { return cached }
         if activeOperationCount > 0, let cached { return cached }
-        if !refresh, let cached { return cached }
+        if !refresh, let cached, cached.toolchain != nil { return cached }
         if !refresh, let refreshTask { return await refreshTask.value }
         if refresh {
             refreshTask?.cancel()
@@ -160,8 +183,8 @@ public actor SimulatorToolchainResolver {
             .sorted { Self.canonicalPath($0) < Self.canonicalPath($1) }
         return await withTaskGroup(of: SimulatorToolchain?.self, returning: [SimulatorToolchain].self) { group in
             for installation in unique.prefix(Self.candidateLimit) {
-                let validator = self.validator
-                group.addTask { await validator(installation) }
+                let prober = self.prober
+                group.addTask { await prober(installation).toolchain }
             }
             var results: [SimulatorToolchain] = []
             for await result in group {
@@ -179,7 +202,7 @@ public actor SimulatorToolchainResolver {
         let revision = resolutionRevision
         refreshTask?.cancel()
         refreshTask = nil
-        guard let toolchain = await validator(appURL),
+        guard let toolchain = await prober(appURL).toolchain,
               revision == resolutionRevision,
               activeOperationCount == 0,
               acquiringOperationGeneration == nil
@@ -222,7 +245,7 @@ public actor SimulatorToolchainResolver {
         refreshTask?.cancel()
         refreshTask = nil
         acquiringOperationGeneration = generation
-        let validated = await validator(toolchain.appURL)
+        let validated = await prober(toolchain.appURL).toolchain
         guard acquiringOperationGeneration == generation,
               case let .ready(currentToolchain, _, stillCurrentGeneration) = cached,
               stillCurrentGeneration == generation,
@@ -245,17 +268,24 @@ public actor SimulatorToolchainResolver {
 
     func performResolution(refresh: Bool) async -> SimulatorToolchainResolution {
         if let explicitChoice {
-            guard let selected = await validator(explicitChoice) else {
-                return .unavailable(.invalidSelection)
+            switch await prober(explicitChoice) {
+            case let .usable(selected): return .ready(selected, source: .userSelected, generation: UUID())
+            case .timedOut: return .unavailable(.probeFailed)
+            case .unusable: return .unavailable(.invalidSelection)
             }
-            return .ready(selected, source: .userSelected, generation: UUID())
         }
-        let selected = await selectedDirectory()
-        if let selected,
-           let toolchain = await validator(selected) {
-            return .ready(toolchain, source: .selected, generation: UUID())
+        var timedOut = false
+        if let selected = await selectedDirectory() {
+            switch await prober(selected) {
+            case let .usable(toolchain): return .ready(toolchain, source: .selected, generation: UUID())
+            case .timedOut: timedOut = true
+            case .unusable: break
+            }
         }
+        return await resolveDiscovered(refresh: refresh, selectionTimedOut: timedOut)
+    }
 
+    private func resolveDiscovered(refresh: Bool, selectionTimedOut: Bool) async -> SimulatorToolchainResolution {
         let installations = await (refresh ? refreshCandidates : candidates)()
         var unique = Dictionary(grouping: installations, by: Self.canonicalPath).values.compactMap(\.first)
         unique.sort { Self.canonicalPath($0) < Self.canonicalPath($1) }
@@ -263,18 +293,21 @@ public actor SimulatorToolchainResolver {
             return .unavailable(.candidateLimitExceeded)
         }
 
-        let usable = await withTaskGroup(of: SimulatorToolchain?.self, returning: [SimulatorToolchain].self) { group in
+        let probes = await withTaskGroup(of: SimulatorToolchainProbe.self, returning: [SimulatorToolchainProbe].self) { group in
             for candidate in unique {
-                let validator = self.validator
-                group.addTask { await validator(candidate) }
+                let prober = self.prober
+                group.addTask { await prober(candidate) }
             }
-            var values: [SimulatorToolchain] = []
+            var values: [SimulatorToolchainProbe] = []
             for await value in group {
-                if let value { values.append(value) }
+                values.append(value)
             }
-            return values.sorted { $0.id < $1.id }
+            return values
         }
-        guard !usable.isEmpty else { return .unavailable(.unavailable) }
+        let usable = probes.compactMap(\.toolchain).sorted { $0.id < $1.id }
+        guard !usable.isEmpty else {
+            return .unavailable(selectionTimedOut || probes.contains(.timedOut) ? .probeFailed : .unavailable)
+        }
         guard usable.count == 1, let toolchain = usable.first else {
             return .unavailable(.ambiguous(candidateCount: usable.count))
         }
