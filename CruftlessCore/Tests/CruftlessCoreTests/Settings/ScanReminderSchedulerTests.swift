@@ -100,6 +100,28 @@ struct ScanReminderSchedulerTests {
         #expect(await center.pendingReminders().isEmpty)
     }
 
+    @Test("Permission revoked after enabling is reported as denied")
+    func revokedPermissionIsDetected() async {
+        let center = FakeReminderCenter(authorization: .denied)
+        #expect(await scheduler(center).checkPermission() == .permissionDenied)
+    }
+
+    @Test("Granted or undecided permission needs no action")
+    func undeniedPermissionIsSilent() async {
+        for status in [ScanReminderAuthorization.authorized, .notDetermined] {
+            let center = FakeReminderCenter(authorization: status)
+            #expect(await scheduler(center).checkPermission() == nil)
+        }
+    }
+
+    @Test("Checking permission never prompts or schedules")
+    func checkingPermissionHasNoSideEffects() async {
+        let center = FakeReminderCenter(authorization: .denied)
+        _ = await scheduler(center).checkPermission()
+        #expect(await center.added.isEmpty)
+        #expect(await center.authorizationRequests == 0)
+    }
+
     @Test("Bodies name the selected platforms")
     func bodies() {
         #expect(ScanReminderScheduler.body(for: [.apple]).contains("Apple development"))
@@ -115,13 +137,17 @@ private final class FakeReminderCenter: ScanReminderCenter, @unchecked Sendable 
     private let granted: Bool
     private let authorizationThrows: Bool
     private let addThrows: Bool
+    private let authorization: ScanReminderAuthorization
+    private var requestCount = 0
 
     init(
         pending: [PendingScanReminder] = [],
         granted: Bool = true,
         authorizationThrows: Bool = false,
-        addThrows: Bool = false
+        addThrows: Bool = false,
+        authorization: ScanReminderAuthorization = .authorized
     ) {
+        self.authorization = authorization
         self.pending = pending
         self.granted = granted
         self.authorizationThrows = authorizationThrows
@@ -132,7 +158,16 @@ private final class FakeReminderCenter: ScanReminderCenter, @unchecked Sendable 
         get async { lock.withLock { addedRequests } }
     }
 
+    var authorizationRequests: Int {
+        get async { lock.withLock { requestCount } }
+    }
+
+    func authorizationStatus() async -> ScanReminderAuthorization {
+        authorization
+    }
+
     func requestAuthorization() async throws -> Bool {
+        lock.withLock { requestCount += 1 }
         if authorizationThrows { throw CocoaError(.featureUnsupported) }
         return granted
     }

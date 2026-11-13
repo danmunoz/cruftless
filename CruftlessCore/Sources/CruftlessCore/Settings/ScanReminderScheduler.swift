@@ -41,8 +41,16 @@ public struct ScanReminderRequest: Sendable, Equatable {
     public let schedule: ScanReminderSchedule
 }
 
+/// The system's current notification permission, without prompting.
+public enum ScanReminderAuthorization: Sendable, Equatable {
+    case notDetermined
+    case denied
+    case authorized
+}
+
 /// The notification daemon, as far as the reminder needs it.
 public protocol ScanReminderCenter: Sendable {
+    func authorizationStatus() async -> ScanReminderAuthorization
     func requestAuthorization() async throws -> Bool
     func pendingReminders() async -> [PendingScanReminder]
     func add(_ request: ScanReminderRequest) async throws
@@ -126,6 +134,11 @@ public struct ScanReminderScheduler: Sendable {
             return .schedulingFailed
         }
         return .scheduled(schedule)
+    }
+
+    /// `.permissionDenied` when the system now refuses notifications, so an enabled reminder can be turned off.
+    public func checkPermission() async -> ScanReminderOutcome? {
+        await center.authorizationStatus() == .denied ? .permissionDenied : nil
     }
 
     public func disarm() {

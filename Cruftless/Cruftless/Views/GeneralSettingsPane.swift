@@ -2,9 +2,11 @@ import AppKit
 import Combine
 import CruftlessCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct GeneralSettingsPane: View {
     public let settings: SettingsModel
+    @State private var isFolderImporterPresented = false
 
     public init(settings: SettingsModel) {
         self.settings = settings
@@ -17,6 +19,12 @@ public struct GeneralSettingsPane: View {
             Section {
                 Toggle("Launch at login", isOn: $settings.isLaunchAtLoginEnabled)
                 SettingsErrorRow(message: settings.launchAtLoginError)
+                if let notice = settings.launchAtLoginNotice {
+                    SettingsNoticeRow(message: notice)
+                }
+                if settings.launchAtLoginNeedsApproval {
+                    Button("Open Login Items", action: settings.openLoginItemsSettings)
+                }
             } header: {
                 Text("Startup")
             } footer: {
@@ -27,28 +35,29 @@ public struct GeneralSettingsPane: View {
                 Toggle("Weekly scan reminder", isOn: $settings.isScanReminderEnabled)
                 SettingsErrorRow(message: settings.scanReminderError)
             } header: {
-                Text("Scanning")
+                Text("Reminders")
             } footer: {
                 Text("The reminder is a weekly local notification and never scans your disk.")
             }
 
             Section {
                 Toggle("Apple development", isOn: platformBinding(.apple))
-                    .disabled(cannotDisable(.apple))
+                    .disabled(settings.isPlatformToggleDisabled(.apple))
                 Toggle("Android development", isOn: platformBinding(.android))
-                    .disabled(cannotDisable(.android))
+                    .disabled(settings.isPlatformToggleDisabled(.android))
                 SettingsErrorRow(message: settings.platformSelectionError)
             } header: {
-                Text("Platforms to scan")
+                Text("Platforms to Scan")
             } footer: {
                 Text(
-                    "Android includes shared Gradle caches that can affect non-Android projects. " +
-                        "SDK and Android Studio storage is read-only. Device deletion needs Android tools and review; "
-                            + "Gradle cleanup needs a risk review."
+                    "Android includes shared Gradle caches that other projects may use. "
+                        + "SDK and Android Studio storage is read-only. "
+                        + "Deleting devices needs the Android tools. "
+                        + "Gradle cleanup asks for an extra risk review."
                 )
             }
 
-            if showsPlatformOrder {
+            if settings.showsPlatformOrder {
                 Section {
                     Picker("Show first", selection: $settings.platformSectionOrder) {
                         Text("Apple development").tag(PlatformSectionOrder.appleFirst)
@@ -56,7 +65,7 @@ public struct GeneralSettingsPane: View {
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("Main page order")
+                    Text("Main Page Order")
                 } footer: {
                     Text("Choose which platform section appears first in the main list.")
                 }
@@ -65,25 +74,28 @@ public struct GeneralSettingsPane: View {
             ProtectedPathsSection(
                 paths: settings.protectedPaths,
                 errorMessage: settings.protectedPathError,
-                onAdd: chooseFolder,
+                isEditable: settings.canEditProtectedPaths,
+                onAdd: { isFolderImporterPresented = true },
                 onRemove: settings.removeProtectedPath
             )
         }
         .formStyle(.grouped)
-        .onAppear { settings.refreshLaunchAtLoginStatus() }
+        .fileImporter(
+            isPresented: $isFolderImporterPresented,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false,
+            onCompletion: handleFolderSelection
+        )
+        .onAppear { settings.refreshSystemState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            settings.refreshLaunchAtLoginStatus()
+            settings.refreshSystemState()
         }
         .frame(height: SettingsMetrics.generalPaneHeight(
             protectedPathCount: settings.protectedPaths.count,
             errorRowCount: settings.visibleErrorRowCount,
             includesPlatformSelection: true,
-            includesPlatformOrder: showsPlatformOrder
+            includesPlatformOrder: settings.showsPlatformOrder
         ))
-    }
-
-    private var showsPlatformOrder: Bool {
-        settings.platformSelection.platforms == Set(DevelopmentPlatform.allCases)
     }
 
     private func platformBinding(_ platform: DevelopmentPlatform) -> Binding<Bool> {
@@ -93,20 +105,12 @@ public struct GeneralSettingsPane: View {
         )
     }
 
-    private func cannotDisable(_ platform: DevelopmentPlatform) -> Bool {
-        settings.isDeletionExecuting ||
-            (settings.platformSelection.platforms.count == 1 && settings.platformSelection.platforms.contains(platform))
-    }
-
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Protect Folder"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.addProtectedPath(url)
+    private func handleFolderSelection(_ result: Result<[URL], any Error>) {
+        switch result {
+        case let .success(urls):
+            if let url = urls.first { settings.addProtectedPath(url) }
+        case let .failure(error):
+            settings.reportFolderPickerFailure(error)
         }
     }
 }
@@ -123,9 +127,20 @@ private struct SettingsErrorRow: View {
     }
 }
 
+private struct SettingsNoticeRow: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "info.circle.fill")
+            .foregroundStyle(.secondary)
+            .font(.callout)
+    }
+}
+
 private struct ProtectedPathsSection: View {
     let paths: [URL]
     let errorMessage: String?
+    let isEditable: Bool
     let onAdd: () -> Void
     let onRemove: (URL) -> Void
 
@@ -136,11 +151,12 @@ private struct ProtectedPathsSection: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(paths, id: \.self) { path in
-                    ProtectedPathRow(path: path) { onRemove(path) }
+                    ProtectedPathRow(path: path, isEnabled: isEditable) { onRemove(path) }
                 }
             }
 
             Button("Add Folder…", action: onAdd)
+                .disabled(!isEditable)
             SettingsErrorRow(message: errorMessage)
         } header: {
             Text("Protected Paths")
@@ -152,6 +168,7 @@ private struct ProtectedPathsSection: View {
 
 private struct ProtectedPathRow: View {
     let path: URL
+    let isEnabled: Bool
     let onRemove: () -> Void
 
     var body: some View {
@@ -161,6 +178,7 @@ private struct ProtectedPathRow: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
+            .disabled(!isEnabled)
             .help("Stop protecting this folder")
             .accessibilityLabel("Stop protecting \(path.lastPathComponent)")
         } label: {
@@ -193,20 +211,27 @@ private struct ProtectedPathRow: View {
     }
 
     #Preview("General Settings: Errors") {
-        GeneralSettingsPane(settings: .preview(
-            launchAtLoginError: "Cruftless is waiting for approval in System Settings › General › Login Items.",
-            scanReminderError: "Notifications are turned off for Cruftless. "
-                + "Allow them in System Settings › Notifications.",
-            protectedPathError: ProtectedPathRejection.volumeRoot.message
-        ))
-        .frame(width: SettingsMetrics.paneWidth)
+        GeneralSettingsPane(settings: SettingsPreviewFixtures.errors)
+            .frame(width: SettingsMetrics.paneWidth)
     }
 
     #Preview("General Settings: Protected paths") {
-        GeneralSettingsPane(settings: .preview(protectedPaths: [
-            URL(fileURLWithPath: "/Users/daniel/Developer/ImportantProject"),
-            URL(fileURLWithPath: "/Users/daniel/Desktop/ReleaseArtifacts")
-        ]))
-        .frame(width: SettingsMetrics.paneWidth)
+        GeneralSettingsPane(settings: .preview(protectedPaths: SettingsPreviewFixtures.protectedPaths))
+            .frame(width: SettingsMetrics.paneWidth)
+    }
+
+    #Preview("General Settings: Login approval pending") {
+        GeneralSettingsPane(settings: SettingsPreviewFixtures.pendingApproval)
+            .frame(width: SettingsMetrics.paneWidth)
+    }
+
+    #Preview("General Settings: Deletion running") {
+        GeneralSettingsPane(settings: SettingsPreviewFixtures.deletionRunning)
+            .frame(width: SettingsMetrics.paneWidth)
+    }
+
+    #Preview("General Settings: Platform selection refused") {
+        GeneralSettingsPane(settings: SettingsPreviewFixtures.platformSelectionRefused)
+            .frame(width: SettingsMetrics.paneWidth)
     }
 #endif

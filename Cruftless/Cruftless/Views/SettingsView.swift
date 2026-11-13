@@ -1,5 +1,5 @@
-import SwiftUI
 import CruftlessCore
+import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     case general
@@ -31,16 +31,21 @@ public struct SettingsView: View {
     public let settings: SettingsModel
     public let simulatorToolchainResolver: SimulatorToolchainResolver
     public let appModel: AppModel?
-    @State private var selection: SettingsSection = .general
+    @State private var selection: SettingsSection
+    private let discoversToolchainsOnAppear: Bool
 
     public init(
         settings: SettingsModel,
         simulatorToolchainResolver: SimulatorToolchainResolver = .shared,
-        appModel: AppModel? = nil
+        appModel: AppModel? = nil,
+        initialSection: SettingsSection = .general,
+        discoversToolchainsOnAppear: Bool = true
     ) {
         self.settings = settings
         self.simulatorToolchainResolver = simulatorToolchainResolver
         self.appModel = appModel
+        self.discoversToolchainsOnAppear = discoversToolchainsOnAppear
+        _selection = State(initialValue: initialSection)
     }
 
     public var body: some View {
@@ -52,7 +57,11 @@ public struct SettingsView: View {
             }
 
             Tab(value: .support) {
-                SupportSettingsPane(resolver: simulatorToolchainResolver, model: appModel)
+                SupportSettingsPane(
+                    resolver: simulatorToolchainResolver,
+                    discoversCandidatesOnAppear: discoversToolchainsOnAppear,
+                    model: appModel
+                )
             } label: {
                 Label(SettingsSection.support.title, systemImage: SettingsSection.support.symbol)
             }
@@ -107,9 +116,14 @@ enum SettingsMetrics {
     }
 
     #Preview("Settings: Protected paths") {
-        SettingsView(settings: .preview(protectedPaths: [
-            URL(fileURLWithPath: "/Users/daniel/Developer/ImportantProject"),
-            URL(fileURLWithPath: "/Users/daniel/Desktop/ReleaseArtifacts")
-        ]))
+        SettingsView(settings: .preview(protectedPaths: SettingsPreviewFixtures.protectedPaths))
+    }
+
+    #Preview("Settings: Support") {
+        SettingsView(settings: .preview(), initialSection: .support, discoversToolchainsOnAppear: false)
+    }
+
+    #Preview("Settings: About") {
+        SettingsView(settings: .preview(), initialSection: .about)
     }
 #endif

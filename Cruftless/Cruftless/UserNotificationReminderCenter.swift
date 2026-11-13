@@ -5,6 +5,14 @@ import UserNotifications
 public struct UserNotificationReminderCenter: ScanReminderCenter {
     public init() {}
 
+    public func authorizationStatus() async -> ScanReminderAuthorization {
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .denied: .denied
+        case .notDetermined: .notDetermined
+        default: .authorized
+        }
+    }
+
     public func requestAuthorization() async throws -> Bool {
         try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
     }
