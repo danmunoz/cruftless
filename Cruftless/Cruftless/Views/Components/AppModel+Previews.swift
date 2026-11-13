@@ -52,7 +52,7 @@
         /// A first ever scan, part way through: three locations measured, the rest still pending, and the header total climbing.
         static func previewScanning() -> AppModel {
             let model = AppModel()
-            model.activeScan = .user
+            model.scanScheduler = ScanScheduler(active: ScanRequest(scope: .everything, trigger: .user))
             model.scanProgress = PreviewFixtures.partialScanProgress
             return model
         }
@@ -61,7 +61,7 @@
             measuring location: TrackedLocation = LocationCatalog.derivedData
         ) -> AppModel {
             let model = previewPopulated()
-            model.activeScan = .user
+            model.scanScheduler = ScanScheduler(active: ScanRequest(scope: .locations([location.id]), trigger: .user))
             model.scanProgress = PreviewFixtures.rescanProgress(measuring: location)
             return model
         }
@@ -69,7 +69,7 @@
         /// The frame before the scan has said what it will cover: no checklist yet, just "Scanning…".
         static func previewScanningWithoutPlan() -> AppModel {
             let model = AppModel()
-            model.activeScan = .user
+            model.scanScheduler = ScanScheduler(active: ScanRequest(scope: .everything, trigger: .user))
             return model
         }
 

@@ -62,17 +62,7 @@ extension AppModel {
     }
 
     private func isCleanupLocationScanPending(_ locationID: String) -> Bool {
-        scope(activeScanScope, covers: locationID) || scope(pendingInvalidation, covers: locationID)
-    }
-
-    private func scope(_ scope: InvalidationScope?, covers locationID: String) -> Bool {
-        guard let scope else { return false }
-        return switch scope {
-        case .everything:
-            activeCatalog.ids.contains(locationID)
-        case let .locations(ids):
-            ids.contains(locationID)
-        }
+        scanScheduler.covers(locationID, catalog: activeCatalog.ids)
     }
 
     func refreshSelection(_ session: CleanupSelectionSession) {

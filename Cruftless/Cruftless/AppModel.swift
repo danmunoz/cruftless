@@ -18,16 +18,13 @@ public final class AppModel {
     /// How far the scan the user is watching has got.
     public internal(set) var scanProgress = ScanProgress()
 
-    /// Who asked for the scan that is running, or nil when none is.
-    enum ScanTrigger: Sendable {
-        /// Launch, the Refresh button, a settings change, the rescan after a deletion: a scan someone is waiting for.
-        case user
-        /// An FSEvents invalidation.
-        case background
-    }
+    /// Admits, queues and throttles scans, one at a time.
+    var scanScheduler = ScanScheduler()
 
-    var activeScan: ScanTrigger?
-    var activeScanScope: InvalidationScope?
+    /// Who asked for the scan that is running, or nil when none is.
+    var activeScan: ScanTrigger? {
+        scanScheduler.active?.trigger
+    }
 
     /// True only while a scan someone asked for is running.
     public var isScanning: Bool {
@@ -116,10 +113,6 @@ public final class AppModel {
     public let deletionExecutor: DeletionExecutor
     var invalidator: FSEventsInvalidator?
 
-    var pendingInvalidation: InvalidationScope?
-    var pendingTrigger: ScanTrigger = .background
-
-    var hasStartedMonitoring = false
     var hasStartedInitialScan = false
     /// Location IDs measured during this session.
     var scannedLocationIds: Set<String> = []
@@ -141,9 +134,6 @@ public final class AppModel {
 
     /// Timestamp of the restored snapshot rows.
     var restoredInventoryDate: Date?
-
-    /// Bounds how often a filesystem event may rescan the same location.
-    var throttle = RescanThrottle()
 
     /// Wakes when the throttle's earliest held location comes due.
     var throttleWake: Task<Void, Never>?
@@ -255,6 +245,7 @@ public final class AppModel {
             if alreadyAdmitted {
                 isDeleting = false
                 settings.isDeletionExecuting = false
+                resumeDeferredScans()
             }
             if let cleanupSessionID, let session = cleanupSessions[cleanupSessionID] {
                 session.notice = message
@@ -278,6 +269,7 @@ public final class AppModel {
         defer {
             isDeleting = false
             settings.isDeletionExecuting = false
+            resumeDeferredScans()
         }
 
         let before = VolumeCapacity.query().freeBytes
