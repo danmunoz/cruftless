@@ -35,7 +35,7 @@ public struct AboutSettingsPane: View {
                     updateCheckState = .updateAvailable(release)
                 }
             } catch {
-                updateCheckState = .failed
+                updateCheckState = .failed(CruftlessUpdateCheckFailure(error))
             }
         }
     }
@@ -120,27 +120,32 @@ private enum AboutUpdateCheckState: Equatable {
     case checking
     case upToDate
     case updateAvailable(CruftlessRelease)
-    case failed
+    case failed(CruftlessUpdateCheckFailure)
 }
 
 private struct AboutUpdateSection: View {
     @Binding var state: AboutUpdateCheckState
     @Binding var didCopyCommand: Bool
     let checkForUpdates: () -> Void
+    @State private var copyReset: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 8) {
             Text("Updates ship through Homebrew.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
                 Text(verbatim: Self.updateCommand)
                     .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
 
                 Button(action: copyUpdateCommand) {
                     Image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
                         .imageScale(.small)
                         .frame(minWidth: 20, minHeight: 20)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help(didCopyCommand ? "Copied" : "Copy Homebrew update command")
@@ -148,6 +153,8 @@ private struct AboutUpdateSection: View {
             }
 
             updateStatus
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Button(action: checkForUpdates) {
                 if state == .checking {
@@ -160,12 +167,10 @@ private struct AboutUpdateSection: View {
                     Text("Check for Updates")
                 }
             }
-            .buttonStyle(.link)
             .disabled(state == .checking)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
+        .onDisappear { copyReset?.cancel() }
     }
 
     @ViewBuilder
@@ -181,7 +186,9 @@ private struct AboutUpdateSection: View {
                 Link("View Release", destination: release.releaseURL)
                 Text("The Homebrew update may take a little while to appear.")
             }
-        case .failed:
+        case .failed(.installedVersionUnavailable):
+            Text("This build has no release version, so Cruftless can’t compare it with the latest release.")
+        case .failed(.checkFailed):
             Text("Couldn’t check for updates. Try again.")
         }
     }
@@ -190,9 +197,17 @@ private struct AboutUpdateSection: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         didCopyCommand = pasteboard.setString(Self.updateCommand, forType: .string)
+        copyReset?.cancel()
+        guard didCopyCommand else { return }
+        copyReset = Task {
+            try? await Task.sleep(for: Self.copyConfirmationLifetime)
+            guard !Task.isCancelled else { return }
+            didCopyCommand = false
+        }
     }
 
     private static let updateCommand = "brew upgrade cruftless"
+    private static let copyConfirmationLifetime: Duration = .seconds(2)
 }
 
 #if DEBUG
@@ -233,8 +248,28 @@ private struct AboutUpdateSection: View {
 
     #Preview("Update Check Error") {
         AboutUpdateSection(
-            state: .constant(.failed),
+            state: .constant(.failed(.checkFailed)),
             didCopyCommand: .constant(false),
+            checkForUpdates: {}
+        )
+        .frame(width: SettingsMetrics.paneWidth)
+        .padding()
+    }
+
+    #Preview("Development Build") {
+        AboutUpdateSection(
+            state: .constant(.failed(.installedVersionUnavailable)),
+            didCopyCommand: .constant(false),
+            checkForUpdates: {}
+        )
+        .frame(width: SettingsMetrics.paneWidth)
+        .padding()
+    }
+
+    #Preview("Command Copied") {
+        AboutUpdateSection(
+            state: .constant(.notChecked),
+            didCopyCommand: .constant(true),
             checkForUpdates: {}
         )
         .frame(width: SettingsMetrics.paneWidth)
