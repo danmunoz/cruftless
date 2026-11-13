@@ -45,9 +45,9 @@ struct ReviewItemRow: View {
                 }
             }
         }
-        .padding(10)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: 10))
         .opacity(state.map(Self.opacity(for:)) ?? 1)
         .accessibilityElement(children: .combine)
         .accessibilityValue(state.map(Self.accessibilityText(for:)) ?? "")

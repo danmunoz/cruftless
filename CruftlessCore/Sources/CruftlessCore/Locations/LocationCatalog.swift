@@ -20,6 +20,7 @@ public enum LocationCatalog: Sendable {
         hasDrillDown: true,
         stalenessSource: .simulatorPlist,
         mutationPolicy: .simctl,
+        consequence: "Erasing removes a simulator's installed apps and their data.",
         resolveRoots: RootResolver.simulatorDevicesRoot
     )
 
@@ -31,6 +32,7 @@ public enum LocationCatalog: Sendable {
         hasDrillDown: true,
         stalenessSource: .simulatorPlist,
         mutationPolicy: .simctl,
+        consequence: "Deleting removes a retained test simulator with its apps, data and snapshots.",
         resolveRoots: RootResolver.xctestDevicesRoot
     )
 
@@ -43,6 +45,7 @@ public enum LocationCatalog: Sendable {
         stalenessSource: .topLevelMtime,
         sizeSource: .simulatorRuntimes,
         mutationPolicy: .simctl,
+        consequence: "Simulators on a deleted runtime can't boot until it is downloaded again.",
         resolveRoots: { [] }
     )
 

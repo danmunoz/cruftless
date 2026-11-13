@@ -117,7 +117,11 @@ public struct ReviewView: View {
     }
 
     private var summary: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        ReviewReceiptCard(
+            reclaimableBytes: plan.totalReclaimableBytes,
+            currentFreeBytes: currentFreeBytes,
+            showsFreeSpace: !isExecuting
+        ) {
             if isExecuting, let run {
                 executionHeader(run)
             } else {
@@ -130,22 +134,6 @@ public struct ReviewView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
-            }
-
-            Text("This can't be undone. Files are deleted permanently, not moved to the Trash.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let currentFreeBytes {
-                Text(
-                    "Free now \(ByteFormatter.format(currentFreeBytes)) · "
-                        + "After ~\(ByteFormatter.format(currentFreeBytes + plan.totalReclaimableBytes))"
-                )
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -174,7 +162,7 @@ public struct ReviewView: View {
     }
 
     private var items: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(plan.items) { item in
                 ReviewItemRow(
                     item: item,
@@ -183,6 +171,10 @@ public struct ReviewView: View {
                     showsActionLabel: showsActionLabels
                 )
                 .id(item.id)
+
+                if item.id != plan.items.last?.id {
+                    Hairline()
+                }
             }
         }
     }

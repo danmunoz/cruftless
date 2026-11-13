@@ -15,6 +15,8 @@ public enum PopoverMetrics {
     public static let sizeColumn: CGFloat = 56
     public static let chevronColumn: CGFloat = 12
     public static let footerHeight: CGFloat = 36
+    /// Minimum height of a footer band's control row, so a band with no buttons keeps the same height.
+    public static let footerControlHeight: CGFloat = 30
 
     /// The pace of one navigation.
     public static let pushAnimation: Animation = .smooth(duration: 0.3)
@@ -37,17 +39,21 @@ struct PopoverHeader<Trailing: View>: View {
     }
 
     let title: String
+    /// Second line under the title, such as a Detail screen's measured total.
+    let subtitle: Text?
     let backTitle: String
     let onBack: () -> Void
     @ViewBuilder var trailing: Trailing
 
     init(
         title: String,
+        subtitle: Text? = nil,
         backTitle: String,
         onBack: @escaping () -> Void,
         @ViewBuilder trailing: () -> Trailing = { EmptyView() }
     ) {
         self.title = title
+        self.subtitle = subtitle
         self.backTitle = backTitle
         self.onBack = onBack
         self.trailing = trailing()
@@ -67,9 +73,21 @@ struct PopoverHeader<Trailing: View>: View {
 
             Spacer(minLength: 8)
 
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+
+                if let subtitle {
+                    subtitle
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 8)
 
@@ -77,7 +95,7 @@ struct PopoverHeader<Trailing: View>: View {
                 .frame(minWidth: Self.controlSize, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, subtitle == nil ? 10 : 7)
     }
 }
 
