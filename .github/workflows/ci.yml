@@ -49,6 +49,9 @@ jobs:
       - name: Test release cut helper
         run: bash scripts/release/tests/cut-test.sh
 
+      - name: Test release signature check
+        run: bash scripts/release/tests/signature-check-test.sh
+
       - name: Verify app release metadata
         run: |
           settings="$(xcodebuild -project Cruftless/Cruftless.xcodeproj -scheme Cruftless -configuration Release -showBuildSettings)"

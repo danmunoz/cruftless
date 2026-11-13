@@ -129,6 +129,12 @@ require_marker() {
   require_file "$1/$2"
 }
 
+has_developer_id_signature() {
+  local details
+  details="$(codesign -dvvv "$1" 2>&1)" || return 1
+  grep -Fq 'Authority=Developer ID Application:' <<< "$details"
+}
+
 find_developer_id_identity() {
   local requested="${1:-}" identities count
   identities="$(security find-identity -v -p codesigning 2>/dev/null |
