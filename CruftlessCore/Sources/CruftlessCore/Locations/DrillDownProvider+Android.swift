@@ -62,7 +62,7 @@ extension DrillDownProvider {
                 reclaimableBytes: size,
                 staleness: calculateStaleness(url: device.directory, source: .newestChildMtime, statMtime: mtime),
                 tier: .info,
-                consequence: "Read-only Android Virtual Device. Its apps, settings, snapshots and disk images are user data."
+                consequence: "Android Virtual Device. Its apps, settings, snapshots and disk images are user data."
             )
         }.sorted { $0.reclaimableBytes > $1.reclaimableBytes }
         let measuredTotal = rootSizes.reduce(Int64(0)) { $0 + $1.allocatedBytes }

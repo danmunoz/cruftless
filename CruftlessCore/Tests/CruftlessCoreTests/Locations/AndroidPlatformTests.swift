@@ -30,6 +30,19 @@ struct AndroidPlatformTests {
         #expect(PlatformSelection.androidOnly.catalog().locations == locations)
     }
 
+    @Test("Only locations with no removal route at all are inventory-only")
+    func inventoryOnlyMatchesRemovalRoutes() {
+        let inventoryOnly = Set(LocationCatalog.all.filter(\.isInventoryOnly).map(\.id))
+        #expect(inventoryOnly == [
+            LocationCatalog.simulatorDyldCache.id,
+            LocationCatalog.androidStudioSystem.id,
+            LocationCatalog.androidSDK.id
+        ])
+        #expect(LocationCatalog.gradleCaches.itemRemoval == .gradleCacheRiskReview)
+        #expect(LocationCatalog.androidAVDs.itemRemoval == .androidVirtualDevice)
+        #expect(LocationCatalog.all.filter { !$0.mutationPolicy.isReadOnly }.allSatisfy { $0.itemRemoval == .none })
+    }
+
     @Test("Read-only mutation policy excludes a deceptively deletable tier from cleanable totals")
     func readOnlyCapabilityOwnsTotals() {
         let location = TrackedLocation(

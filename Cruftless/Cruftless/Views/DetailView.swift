@@ -233,9 +233,7 @@ public struct DetailView: View {
     }
 
     private var tierWordText: Text {
-        Text(location.id == LocationCatalog.androidAVDs.id
-            ? "Device data"
-            : DesignTokens.tierWord(for: location.tier, locationId: location.id))
+        Text(DesignTokens.tierWord(for: location.tier, locationId: location.id))
             .foregroundStyle(DesignTokens.tierColor(for: location.tier))
     }
 

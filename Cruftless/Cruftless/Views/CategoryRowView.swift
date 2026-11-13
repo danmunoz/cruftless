@@ -56,10 +56,6 @@ public struct CategoryRowView: View {
         )
     }
 
-    private var showsReadOnlyLock: Bool {
-        entry.location.mutationPolicy.isReadOnly && entry.location.id != LocationCatalog.gradleCaches.id
-    }
-
     public var body: some View {
         PopoverRow(
             icon: entry.location.icon,
@@ -72,7 +68,7 @@ public struct CategoryRowView: View {
             rescan: onRescan,
             // No chevron while measuring: the row is not selectable, and a first scan's pending rows do not carry one either.
             showsChevron: !entry.isUnavailable && !isMeasuring,
-            isReadOnly: showsReadOnlyLock,
+            isReadOnly: entry.location.isInventoryOnly,
             isPlaceholder: isMeasuring,
             isUnavailable: entry.isUnavailable,
             isOpening: isOpening,
@@ -167,7 +163,7 @@ public struct CategoryRowView: View {
         .frame(width: PopoverMetrics.width)
     }
 
-    #Preview("Rows: Android read-only and unavailable") {
+    #Preview("Rows: Android locked, actionable and unavailable") {
         let readOnlyRegenLocation = TrackedLocation(
             id: "androidPreviewReadOnlyRegen",
             platform: .android,

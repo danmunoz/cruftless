@@ -32,8 +32,9 @@ public enum DesignTokens {
         switch locationId {
         case LocationCatalog.gradleCaches.id:
             "Risk review required"
-        case LocationCatalog.androidStudioSystem.id, LocationCatalog.androidSDK.id,
-            LocationCatalog.androidAVDs.id:
+        case LocationCatalog.androidAVDs.id:
+            "Device data"
+        case LocationCatalog.androidStudioSystem.id, LocationCatalog.androidSDK.id:
             "Read only"
         default:
             nil

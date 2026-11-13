@@ -39,7 +39,7 @@ struct PlatformInventorySection: View {
                 .padding(.bottom, platform == .android ? 0 : 2)
 
             if platform == .android {
-                Text("Read-only except eligible Gradle caches")
+                Text("Read-only except Gradle caches and devices")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -64,8 +64,9 @@ struct PlatformInventorySection: View {
     }
 
     private static let androidNotice =
-        "SDK, virtual devices, and Android Studio data remain read-only. "
-            + "Eligible Gradle cache folders can be cleared after a one-time risk review."
+        "SDK and Android Studio data remain read-only. "
+            + "Eligible Gradle cache folders can be cleared after a one-time risk review. "
+            + "Stopped virtual devices can be deleted one at a time after review."
 
     private func row(for entry: InventoryEntry) -> some View {
         CategoryRowView(
