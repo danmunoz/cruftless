@@ -13,9 +13,11 @@ struct SupportSettingsPane: View {
     @State private var reportText: String?
     @State private var reportMessage: String?
     @State private var didCopyReport = false
+    private let discoversCandidatesOnAppear: Bool
 
     init(
         resolver: SimulatorToolchainResolver,
+        discoversCandidatesOnAppear: Bool = true,
         model: AppModel? = nil,
         initialResolution: SimulatorToolchainResolution? = nil,
         initialCandidates: [SimulatorToolchain] = [],
@@ -24,10 +26,13 @@ struct SupportSettingsPane: View {
         initialIsRefreshing: Bool = false
     ) {
         self.resolver = resolver
+        self.discoversCandidatesOnAppear = discoversCandidatesOnAppear
         self.model = model
         _resolution = State(initialValue: initialResolution)
         _candidates = State(initialValue: initialCandidates)
-        _selectedCandidateID = State(initialValue: initialCandidates.first?.id ?? "")
+        _selectedCandidateID = State(
+            initialValue: Self.preferredCandidateID(in: initialCandidates, resolution: initialResolution)
+        )
         _reportText = State(initialValue: initialReportText)
         _reportMessage = State(initialValue: initialReportMessage)
         _isRefreshing = State(initialValue: initialIsRefreshing)
@@ -63,9 +68,25 @@ struct SupportSettingsPane: View {
         }
         .formStyle(.grouped)
         .frame(width: SettingsMetrics.paneWidth, height: reportText == nil ? 430 : 620)
-        .task {
-            if resolution == nil { resolution = await resolver.cachedResolution() }
+        .task { await loadInitialState() }
+    }
+
+    private func loadInitialState() async {
+        if resolution == nil { resolution = await resolver.cachedResolution() }
+        guard discoversCandidatesOnAppear, candidates.isEmpty else { return }
+        candidates = await resolver.discoverUsableCandidates()
+        selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
+    }
+
+    /// The Xcode in use when it is listed, otherwise the first usable one.
+    static func preferredCandidateID(
+        in candidates: [SimulatorToolchain],
+        resolution: SimulatorToolchainResolution?
+    ) -> String {
+        if let current = resolution?.toolchain?.id, candidates.contains(where: { $0.id == current }) {
+            return current
         }
+        return candidates.first?.id ?? ""
     }
 
     private func refresh() async {
@@ -74,9 +95,7 @@ struct SupportSettingsPane: View {
         resolution = await resolver.resolve(refresh: true)
         candidates = await resolver.discoverUsableCandidates(refresh: true)
         model?.refreshScan()
-        if candidates.contains(where: { $0.id == selectedCandidateID }) == false {
-            selectedCandidateID = candidates.first?.id ?? ""
-        }
+        selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
     }
 
     private func selectCandidate() async {
@@ -230,8 +249,8 @@ private struct SupportToolchainSection: View {
                     "It does not change macOS’s Xcode selection. If Xcode asks to install " +
                     "components or accept its license, complete that in Xcode, then refresh."
             )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -276,8 +295,8 @@ private struct DiagnosticReportSection: View {
                 "Prepare a local report to inspect. It includes allowlisted version and status fields only. " +
                     "Paths, usernames, host details, logs, environment values, and inventories are excluded."
             )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
             Button("Prepare Diagnostic Report", action: onPrepare)
                 .disabled(isRefreshing)
             if isRefreshing { ProgressView().controlSize(.small) }
@@ -310,6 +329,7 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: loading") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.loading,
             initialIsRefreshing: true
         )
@@ -318,6 +338,7 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: ready") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.ready,
             initialCandidates: [ToolchainPreviewFixtures.stable]
         )
@@ -326,18 +347,24 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: ambiguous") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.ambiguous,
             initialCandidates: [ToolchainPreviewFixtures.stable, ToolchainPreviewFixtures.beta]
         )
     }
 
     #Preview("Support: unavailable") {
-        SupportSettingsPane(resolver: SimulatorToolchainResolver(), initialResolution: ToolchainPreviewFixtures.unavailable)
+        SupportSettingsPane(
+            resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
+            initialResolution: ToolchainPreviewFixtures.unavailable
+        )
     }
 
     #Preview("Support: invalid selection") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: .unavailable(.invalidSelection)
         )
     }
@@ -345,6 +372,7 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: report preview") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.ready,
             initialReportText: "Cruftless Diagnostic Report\nSchema: 1\nSimulator toolchain: available\n",
             initialReportMessage: "Preview ready. Nothing has been copied or saved."
@@ -354,6 +382,7 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: truncated report") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.ready,
             initialReportText: "Cruftless Diagnostic Report\nSDK issues truncated: yes\n",
             initialReportMessage: "Preview ready. Nothing has been copied or saved."
@@ -363,6 +392,7 @@ private struct DiagnosticReportSection: View {
     #Preview("Support: report failure") {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
+            discoversCandidatesOnAppear: false,
             initialResolution: ToolchainPreviewFixtures.unavailable,
             initialReportMessage: "Could not save the report to that location."
         )
