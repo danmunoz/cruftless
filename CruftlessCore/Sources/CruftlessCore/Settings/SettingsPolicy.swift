@@ -3,25 +3,45 @@ import ServiceManagement
 
 public enum LaunchAtLoginPolicy: Sendable {
     /// What the login item's state alone says, independent of any toggle attempt.
+    ///
+    /// `.notFound` is silent here because `SMAppService.mainApp` also reports it for an app never registered.
     public static func statusMessage(for status: SMAppService.Status) -> String? {
-        switch status {
-        case .requiresApproval:
-            "Cruftless is waiting for approval in System Settings › General › Login Items."
-        case .notFound:
-            "macOS can't find the Cruftless login item. Move Cruftless to Applications and try again."
-        default:
-            nil
-        }
+        status == .requiresApproval
+            ? "Cruftless is waiting for approval in System Settings › General › Login Items."
+            : nil
     }
 
     public static func needsApproval(_ status: SMAppService.Status) -> Bool {
         status == .requiresApproval
     }
 
+    /// Whether the pane offers System Settings › Login Items as the way forward.
+    public static func offersLoginItemsSettings(status: SMAppService.Status, hasFailure: Bool) -> Bool {
+        needsApproval(status) || (hasFailure && status == .notFound)
+    }
+
+    /// The explanation for a registration that left the login item unfound.
+    public static func notFoundMessage(isInApplicationsFolder: Bool) -> String {
+        isInApplicationsFolder
+            ? "macOS couldn't add Cruftless to your login items. Add it in System Settings › General › Login Items."
+            : "macOS couldn't add Cruftless to your login items. Move Cruftless to Applications and try again."
+    }
+
+    /// Whether `bundleURL` sits in `/Applications` or `~/Applications`.
+    public static func isInApplicationsFolder(
+        _ bundleURL: URL,
+        home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    ) -> Bool {
+        let path = bundleURL.standardizedFileURL.path
+        let roots = ["/Applications", home.standardizedFileURL.path + "/Applications"]
+        return roots.contains { path.hasPrefix($0 + "/") }
+    }
+
     public static func message(
         requested: Bool,
         status: SMAppService.Status,
-        failure: String? = nil
+        failure: String? = nil,
+        isInApplicationsFolder: Bool = true
     ) -> String? {
         guard requested else {
             // Disabling succeeds when the item is not enabled.
@@ -31,6 +51,7 @@ public enum LaunchAtLoginPolicy: Sendable {
         }
 
         if status == .enabled { return nil }
+        if status == .notFound { return notFoundMessage(isInApplicationsFolder: isInApplicationsFolder) }
         return statusMessage(for: status) ?? failure ?? "Cruftless could not be registered to launch at login."
     }
 
@@ -38,10 +59,16 @@ public enum LaunchAtLoginPolicy: Sendable {
     public static func failureMessage(
         requested: Bool,
         status: SMAppService.Status,
-        failure: String? = nil
+        failure: String? = nil,
+        isInApplicationsFolder: Bool = true
     ) -> String? {
         if requested, statusMessage(for: status) != nil { return nil }
-        return message(requested: requested, status: status, failure: failure)
+        return message(
+            requested: requested,
+            status: status,
+            failure: failure,
+            isInApplicationsFolder: isInApplicationsFolder
+        )
     }
 }
 

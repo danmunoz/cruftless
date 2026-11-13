@@ -322,3 +322,75 @@ private actor ToolchainValidationGate {
         waiter = nil
     }
 }
+
+@Suite("Simulator toolchain probe failures")
+struct SimulatorToolchainProbeFailureTests {
+    private static let xcode = SimulatorToolchain(
+        id: "/Applications/Xcode.app",
+        appURL: URL(fileURLWithPath: "/Applications/Xcode.app", isDirectory: true),
+        developerDirectory: URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer", isDirectory: true),
+        version: "27.2"
+    )
+
+    @Test("A probe that times out is reported as a timeout, not as missing setup")
+    func timeoutIsProbeFailed() async {
+        let resolver = SimulatorToolchainResolver(
+            candidates: { [Self.xcode.appURL] },
+            selectedDirectory: { Self.xcode.appURL },
+            prober: { _ in .timedOut }
+        )
+        #expect(await resolver.resolve().failure == .probeFailed)
+    }
+
+    @Test("A timed-out explicit choice is reported as a timeout, not an invalid selection")
+    func explicitChoiceTimeout() async {
+        let outcome = ToolchainProbeScript([.usable(Self.xcode), .timedOut])
+        let resolver = SimulatorToolchainResolver(
+            candidates: { [] },
+            selectedDirectory: { nil },
+            prober: { _ in await outcome.next() }
+        )
+        #expect(await resolver.select(Self.xcode.appURL).toolchain == Self.xcode)
+        #expect(await resolver.resolve(refresh: true).failure == .probeFailed)
+    }
+
+    @Test("A failed resolution is probed again on the next resolve without a manual refresh")
+    func failureIsNotSticky() async {
+        let outcome = ToolchainProbeScript([.timedOut, .usable(Self.xcode)])
+        let resolver = SimulatorToolchainResolver(
+            candidates: { [] },
+            selectedDirectory: { Self.xcode.appURL },
+            prober: { _ in await outcome.next() }
+        )
+        #expect(await resolver.resolve().failure == .probeFailed)
+        #expect(await resolver.cachedResolution()?.failure == .probeFailed)
+        #expect(await resolver.resolve().toolchain == Self.xcode)
+    }
+
+    @Test("A ready resolution is reused without probing again")
+    func readyIsCached() async {
+        let outcome = ToolchainProbeScript([.usable(Self.xcode), .unusable])
+        let resolver = SimulatorToolchainResolver(
+            candidates: { [] },
+            selectedDirectory: { Self.xcode.appURL },
+            prober: { _ in await outcome.next() }
+        )
+        let first = await resolver.resolve()
+        let second = await resolver.resolve()
+        #expect(first.toolchain == Self.xcode)
+        #expect(second.generation == first.generation)
+    }
+}
+
+/// Hands out probe outcomes in order, repeating the last one once exhausted.
+private actor ToolchainProbeScript {
+    private var outcomes: [SimulatorToolchainProbe]
+
+    init(_ outcomes: [SimulatorToolchainProbe]) {
+        self.outcomes = outcomes
+    }
+
+    func next() -> SimulatorToolchainProbe {
+        outcomes.count > 1 ? outcomes.removeFirst() : outcomes[0]
+    }
+}

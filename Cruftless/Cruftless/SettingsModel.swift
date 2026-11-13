@@ -74,8 +74,11 @@ public final class SettingsModel {
         launchAtLoginError == nil ? LaunchAtLoginPolicy.statusMessage(for: launchAtLoginStatus) : nil
     }
 
-    public var launchAtLoginNeedsApproval: Bool {
-        LaunchAtLoginPolicy.needsApproval(launchAtLoginStatus)
+    public var launchAtLoginOffersSystemSettings: Bool {
+        LaunchAtLoginPolicy.offersLoginItemsSettings(
+            status: launchAtLoginStatus,
+            hasFailure: launchAtLoginError != nil
+        )
     }
 
     public var canEditProtectedPaths: Bool {
@@ -315,7 +318,12 @@ public extension SettingsModel {
 
         let status = loginItemService.status
         launchAtLoginStatus = status
-        launchAtLoginError = LaunchAtLoginPolicy.failureMessage(requested: enabled, status: status, failure: failure)
+        launchAtLoginError = LaunchAtLoginPolicy.failureMessage(
+            requested: enabled,
+            status: status,
+            failure: failure,
+            isInApplicationsFolder: LaunchAtLoginPolicy.isInApplicationsFolder(Bundle.main.bundleURL)
+        )
     }
 
     func openLoginItemsSettings() {
