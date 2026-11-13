@@ -2,9 +2,29 @@
 
 ## [1.3.0]
 
-### Changes
+### Added
 
-- Settings polish, scan gating, Detail layout and Review receipt (#15) (e452900)
+- Show per-item progress in Review while a cleanup runs.
+
+### Improved
+
+- Detail screens share one layout, and Review ends in a receipt card.
+- Settings tabs are tighter, sized to their content, and list the About tab
+  last.
+- List rows grow to fit multi-line captions, and the Home screen is tidier.
+
+### Fixed
+
+- Resolve simulators that match several installed runtime builds.
+- Stop the Settings window crashing when switching to the Support tab.
+- List installed Xcodes when Settings > Support opens.
+- Keep the weekly scan reminder's countdown across relaunches and settings
+  changes.
+- Stop List row actions pushing a screen twice.
+- Keep the stale-selection notice out of running and finished cleanups.
+- Drop the stale lock from the Android Virtual Devices row.
+- Avoid redundant background rescans: gate them until the first scan, skip
+  superseded walks, and watch folders that do not exist yet.
 
 ## [1.2.3]
 
