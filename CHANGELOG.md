@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.1]
+
+### Fixed
+
+- Stop Settings warning that the login item is missing before Launch at login
+  is ever turned on, and only ask to move Cruftless when it is outside an
+  Applications folder.
+- Stop a slow first check of Xcode's simulator tools marking every simulator
+  "Runtime status unknown" until a manual refresh. A timeout is now reported as
+  one, gets more time, and is checked again automatically.
+
 ## [1.3.0]
 
 ### Added
