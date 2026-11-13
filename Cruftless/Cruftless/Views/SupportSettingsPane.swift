@@ -4,38 +4,75 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SupportSettingsPane: View {
+    /// Seed values for previews.
+    struct InitialState {
+        var resolution: SimulatorToolchainResolution?
+        var candidates: [SimulatorToolchain] = []
+        var reportText: String?
+        var notice: DiagnosticReportNotice?
+        var reportIsStale = false
+        var isWorkingOnToolchain = false
+        var isPreparingReport = false
+    }
+
+    private static let noticeLifetime: Duration = .seconds(2)
+
     let resolver: SimulatorToolchainResolver
     let model: AppModel?
     @State private var resolution: SimulatorToolchainResolution?
-    @State private var candidates: [SimulatorToolchain] = []
-    @State private var selectedCandidateID = ""
-    @State private var isRefreshing = false
+    @State private var candidates: [SimulatorToolchain]
+    @State private var selectedCandidateID: String
+    @State private var isWorkingOnToolchain: Bool
+    @State private var isPreparingReport: Bool
     @State private var reportText: String?
-    @State private var reportMessage: String?
-    @State private var didCopyReport = false
+    @State private var preparedSummary: DiagnosticToolchainSummary?
+    @State private var notice: DiagnosticReportNotice?
+    @State private var noticeReset: Task<Void, Never>?
     private let discoversCandidatesOnAppear: Bool
 
     init(
         resolver: SimulatorToolchainResolver,
         discoversCandidatesOnAppear: Bool = true,
         model: AppModel? = nil,
-        initialResolution: SimulatorToolchainResolution? = nil,
-        initialCandidates: [SimulatorToolchain] = [],
-        initialReportText: String? = nil,
-        initialReportMessage: String? = nil,
-        initialIsRefreshing: Bool = false
+        preview: InitialState = InitialState()
     ) {
         self.resolver = resolver
         self.discoversCandidatesOnAppear = discoversCandidatesOnAppear
         self.model = model
-        _resolution = State(initialValue: initialResolution)
-        _candidates = State(initialValue: initialCandidates)
+        _resolution = State(initialValue: preview.resolution)
+        _candidates = State(initialValue: preview.candidates)
         _selectedCandidateID = State(
-            initialValue: Self.preferredCandidateID(in: initialCandidates, resolution: initialResolution)
+            initialValue: Self.preferredCandidateID(in: preview.candidates, resolution: preview.resolution)
         )
-        _reportText = State(initialValue: initialReportText)
-        _reportMessage = State(initialValue: initialReportMessage)
-        _isRefreshing = State(initialValue: initialIsRefreshing)
+        _isWorkingOnToolchain = State(initialValue: preview.isWorkingOnToolchain)
+        _isPreparingReport = State(initialValue: preview.isPreparingReport)
+        _reportText = State(initialValue: preview.reportText)
+        _notice = State(initialValue: preview.notice)
+        let current = DiagnosticToolchainSummary(resolution: preview.resolution, candidates: preview.candidates)
+        let outdated = DiagnosticToolchainSummary(status: .timedOut, source: nil, xcodeVersions: [])
+        _preparedSummary = State(initialValue: preview.reportText == nil ? nil : (preview.reportIsStale ? outdated : current))
+    }
+
+    private var currentSummary: DiagnosticToolchainSummary {
+        DiagnosticToolchainSummary(resolution: resolution, candidates: candidates)
+    }
+
+    private var isReportStale: Bool {
+        reportText != nil && preparedSummary != currentSummary
+    }
+
+    private var isDeletionRunning: Bool {
+        model?.settings.isDeletionExecuting ?? false
+    }
+
+    private var candidateSelection: Binding<String> {
+        Binding(
+            get: { selectedCandidateID },
+            set: { newValue in
+                selectedCandidateID = newValue
+                Task { await applySelection(newValue) }
+            }
+        )
     }
 
     var body: some View {
@@ -43,24 +80,18 @@ struct SupportSettingsPane: View {
             SupportToolchainSection(
                 resolution: resolution,
                 candidates: candidates,
-                selectedCandidateID: $selectedCandidateID,
-                isRefreshing: isRefreshing,
-                candidateTitle: candidateTitle,
-                onSelect: { Task { await selectCandidate() } },
+                selectedCandidateID: candidateSelection,
+                isWorking: isWorkingOnToolchain,
+                isDeletionRunning: isDeletionRunning,
                 onRefresh: { Task { await refresh() } },
                 onChoose: chooseXcode,
-                onUseSystem: {
-                    Task {
-                        await resolver.useSystemSelection()
-                        await refresh()
-                    }
-                }
+                onUseSystem: { Task { await useSystemSelection() } }
             )
             DiagnosticReportSection(
                 reportText: reportText,
-                reportMessage: reportMessage,
-                didCopy: didCopyReport,
-                isRefreshing: isRefreshing,
+                notice: notice,
+                isStale: isReportStale,
+                isPreparing: isPreparingReport,
                 onPrepare: { Task { await prepareReport() } },
                 onCopy: copyPreviewedReport,
                 onSave: savePreviewedReport
@@ -69,6 +100,7 @@ struct SupportSettingsPane: View {
         .formStyle(.grouped)
         .frame(width: SettingsMetrics.paneWidth, height: reportText == nil ? 430 : 620)
         .task { await loadInitialState() }
+        .onDisappear { noticeReset?.cancel() }
     }
 
     private func loadInitialState() async {
@@ -78,7 +110,7 @@ struct SupportSettingsPane: View {
         selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
     }
 
-    /// The Xcode in use when it is listed, otherwise the first usable one.
+    /// The Xcode in use when it is listed, otherwise none, so every listed Xcode can be chosen.
     static func preferredCandidateID(
         in candidates: [SimulatorToolchain],
         resolution: SimulatorToolchainResolution?
@@ -86,24 +118,47 @@ struct SupportSettingsPane: View {
         if let current = resolution?.toolchain?.id, candidates.contains(where: { $0.id == current }) {
             return current
         }
-        return candidates.first?.id ?? ""
+        return ""
     }
 
     private func refresh() async {
-        isRefreshing = true
-        defer { isRefreshing = false }
+        guard beginToolchainWork() else { return }
+        defer { isWorkingOnToolchain = false }
         resolution = await resolver.resolve(refresh: true)
         candidates = await resolver.discoverUsableCandidates(refresh: true)
         model?.refreshScan()
         selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
     }
 
-    private func selectCandidate() async {
-        guard let candidate = candidates.first(where: { $0.id == selectedCandidateID }) else { return }
-        isRefreshing = true
-        resolution = await resolver.select(candidate.appURL)
+    private func applySelection(_ candidateID: String) async {
+        guard let candidate = candidates.first(where: { $0.id == candidateID }) else { return }
+        if case let .ready(current, .userSelected, _)? = resolution, current.id == candidate.id { return }
+        await select(candidate.appURL)
+    }
+
+    private func select(_ appURL: URL) async {
+        guard beginToolchainWork() else { return }
+        defer { isWorkingOnToolchain = false }
+        resolution = await resolver.select(appURL)
         model?.refreshScan()
-        isRefreshing = false
+        selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
+    }
+
+    private func useSystemSelection() async {
+        guard beginToolchainWork() else { return }
+        defer { isWorkingOnToolchain = false }
+        await resolver.useSystemSelection()
+        resolution = await resolver.resolve(refresh: true)
+        candidates = await resolver.discoverUsableCandidates(refresh: true)
+        model?.refreshScan()
+        selectedCandidateID = Self.preferredCandidateID(in: candidates, resolution: resolution)
+    }
+
+    /// Claims the toolchain busy state unless another toolchain action or a cleanup is running.
+    private func beginToolchainWork() -> Bool {
+        guard !isWorkingOnToolchain, !isDeletionRunning else { return false }
+        isWorkingOnToolchain = true
+        return true
     }
 
     private func chooseXcode() {
@@ -115,49 +170,21 @@ struct SupportSettingsPane: View {
         panel.prompt = "Choose Xcode"
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
-                isRefreshing = true
-                resolution = await resolver.select(url)
-                model?.refreshScan()
-                isRefreshing = false
-            }
+            Task { @MainActor in await select(url) }
         }
     }
 
     private func copyPreviewedReport() {
-        guard let reportText else { return }
+        guard let reportText, !isReportStale else { return }
         NSPasteboard.general.clearContents()
-        didCopyReport = NSPasteboard.general.setString(reportText, forType: .string)
-        reportMessage = didCopyReport ? "Report copied." : "Could not copy the report."
+        show(NSPasteboard.general.setString(reportText, forType: .string) ? .copied : .copyFailed)
     }
 
     private func prepareReport() async {
-        isRefreshing = true
-        defer { isRefreshing = false }
-        let current = await resolver.cachedResolution()
-        let status: DiagnosticProbeStatus
-        let source: SimulatorToolchainSource?
-        let versions: [String]
-        switch current {
-        case nil:
-            status = .notChecked
-            source = nil
-            versions = []
-        case let .some(.ready(toolchain, selectedSource, _)):
-            status = .available
-            source = selectedSource
-            versions = toolchain.version.map { [$0] } ?? []
-        case let .some(.unavailable(failure)):
-            if case .ambiguous = failure {
-                status = .ambiguous
-            } else if case .probeFailed = failure {
-                status = .timedOut
-            } else {
-                status = .unavailable
-            }
-            source = nil
-            versions = []
-        }
+        guard !isPreparingReport else { return }
+        isPreparingReport = true
+        defer { isPreparingReport = false }
+        let summary = currentSummary
         let operatingSystem = ProcessInfo.processInfo.operatingSystemVersion
         let sdkData = model?.androidSDKReportData
         reportText = DiagnosticReportBuilder.build(DiagnosticReportSnapshot(
@@ -165,20 +192,20 @@ struct SupportSettingsPane: View {
             appBuild: Bundle.main.object(forInfoDictionaryKey: CruftlessVersion.buildKey) as? String,
             macOSVersion: "\(operatingSystem.majorVersion).\(operatingSystem.minorVersion).\(operatingSystem.patchVersion)",
             architecture: Self.architecture,
-            toolchainResolution: status,
-            toolchainSource: source,
-            xcodeVersions: versions,
+            toolchainResolution: summary.status,
+            toolchainSource: summary.source,
+            xcodeVersions: summary.xcodeVersions,
             androidSDKRootSource: sdkData?.rootSource,
             sdkIssues: sdkData?.issues ?? [],
             sdkIssueCount: sdkData?.count ?? 0,
             sdkIssuesTruncated: sdkData?.truncated ?? false
         ))
-        didCopyReport = false
-        reportMessage = "Preview ready. Nothing has been copied or saved."
+        preparedSummary = summary
+        show(.prepared)
     }
 
     private func savePreviewedReport() {
-        guard let reportText else { return }
+        guard let reportText, !isReportStale else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "Cruftless-Diagnostic-Report.txt"
@@ -187,11 +214,23 @@ struct SupportSettingsPane: View {
             Task { @MainActor in
                 do {
                     try await DiagnosticReportExporter.save(reportText, to: url)
-                    reportMessage = "Report saved."
+                    show(.saved)
                 } catch {
-                    reportMessage = "Could not save the report to that location."
+                    show(.saveFailed)
                 }
             }
+        }
+    }
+
+    /// Shows a notice, and returns a transient one to the prepared state after a short delay.
+    private func show(_ newNotice: DiagnosticReportNotice) {
+        noticeReset?.cancel()
+        notice = newNotice
+        guard newNotice.isTransient else { return }
+        noticeReset = Task {
+            try? await Task.sleep(for: Self.noticeLifetime)
+            guard !Task.isCancelled else { return }
+            notice = .prepared
         }
     }
 
@@ -204,197 +243,104 @@ struct SupportSettingsPane: View {
             "unknown"
         #endif
     }
-
-    private func candidateTitle(_ candidate: SimulatorToolchain) -> String {
-        let name = candidate.appURL.deletingPathExtension().lastPathComponent
-        guard let version = candidate.version, !version.isEmpty else { return name }
-        return "\(name) · \(version)"
-    }
-}
-
-private struct SupportToolchainSection: View {
-    let resolution: SimulatorToolchainResolution?
-    let candidates: [SimulatorToolchain]
-    @Binding var selectedCandidateID: String
-    let isRefreshing: Bool
-    let candidateTitle: (SimulatorToolchain) -> String
-    let onSelect: () -> Void
-    let onRefresh: () -> Void
-    let onChoose: () -> Void
-    let onUseSystem: () -> Void
-
-    var body: some View {
-        Section("Simulator tools") {
-            status
-            if !candidates.isEmpty {
-                Picker("Use Xcode", selection: $selectedCandidateID) {
-                    ForEach(candidates) { candidate in
-                        Text(candidateTitle(candidate)).tag(candidate.id)
-                    }
-                }
-                Button("Use Selected Xcode", action: onSelect)
-                    .disabled(selectedCandidateID.isEmpty || isRefreshing)
-            }
-            HStack {
-                Button("Refresh Toolchain Status", action: onRefresh)
-                    .disabled(isRefreshing)
-                if isRefreshing { ProgressView().controlSize(.small) }
-                Button("Choose Xcode…", action: onChoose)
-                    .disabled(isRefreshing)
-            }
-            Button("Use System Selection", action: onUseSystem)
-                .disabled(isRefreshing)
-            Text(
-                "Cruftless uses this local selection for simulator listing and actions. " +
-                    "It does not change macOS’s Xcode selection. If Xcode asks to install " +
-                    "components or accept its license, complete that in Xcode, then refresh."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var status: some View {
-        switch resolution {
-        case let .ready(toolchain, source, _):
-            LabeledContent("Current") {
-                Text(candidateTitle(toolchain) + " · " + sourceTitle(source))
-                    .foregroundStyle(.secondary)
-            }
-        case let .unavailable(failure):
-            Label(failure.localizedDescription, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-        case nil:
-            Label("Not checked. Refresh to inspect simulator tools.", systemImage: "questionmark.circle")
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func sourceTitle(_ source: SimulatorToolchainSource) -> String {
-        switch source {
-        case .selected: "System selection"
-        case .discovered: "Only usable Xcode found"
-        case .userSelected: "Cruftless selection"
-        }
-    }
-}
-
-private struct DiagnosticReportSection: View {
-    let reportText: String?
-    let reportMessage: String?
-    let didCopy: Bool
-    let isRefreshing: Bool
-    let onPrepare: () -> Void
-    let onCopy: () -> Void
-    let onSave: () -> Void
-
-    var body: some View {
-        Section("Diagnostic report") {
-            Text(
-                "Prepare a local report to inspect. It includes allowlisted version and status fields only. " +
-                    "Paths, usernames, host details, logs, environment values, and inventories are excluded."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            Button("Prepare Diagnostic Report", action: onPrepare)
-                .disabled(isRefreshing)
-            if isRefreshing { ProgressView().controlSize(.small) }
-            if let reportText {
-                ScrollView {
-                    Text(verbatim: reportText)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                }
-                .frame(height: 150)
-                .background(.background.secondary, in: .rect(cornerRadius: 8))
-                HStack {
-                    Button(didCopy ? "Copied" : "Copy Report", systemImage: didCopy ? "checkmark" : "doc.on.doc", action: onCopy)
-                    Button("Save Report…", systemImage: "square.and.arrow.down", action: onSave)
-                }
-            }
-            if let reportMessage {
-                Text(reportMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Link("Open issue tracker", destination: URL(string: "https://github.com/danmunoz/cruftless/issues")!)
-        }
-    }
 }
 
 #if DEBUG
-    #Preview("Support: loading") {
+    private func supportPane(
+        _ preview: SupportSettingsPane.InitialState,
+        model: AppModel? = nil
+    ) -> some View {
         SupportSettingsPane(
             resolver: SimulatorToolchainResolver(),
             discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.loading,
-            initialIsRefreshing: true
+            model: model,
+            preview: preview
         )
+    }
+
+    #Preview("Support: loading") {
+        supportPane(.init(resolution: ToolchainPreviewFixtures.loading, isWorkingOnToolchain: true))
     }
 
     #Preview("Support: ready") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.ready,
-            initialCandidates: [ToolchainPreviewFixtures.stable]
-        )
+        supportPane(.init(resolution: ToolchainPreviewFixtures.ready, candidates: [ToolchainPreviewFixtures.stable]))
+    }
+
+    #Preview("Support: Cruftless selection") {
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.userSelected,
+            candidates: [ToolchainPreviewFixtures.stable, ToolchainPreviewFixtures.beta]
+        ))
     }
 
     #Preview("Support: ambiguous") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.ambiguous,
-            initialCandidates: [ToolchainPreviewFixtures.stable, ToolchainPreviewFixtures.beta]
-        )
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.ambiguous,
+            candidates: [ToolchainPreviewFixtures.stable, ToolchainPreviewFixtures.beta]
+        ))
     }
 
     #Preview("Support: unavailable") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.unavailable
-        )
+        supportPane(.init(resolution: ToolchainPreviewFixtures.unavailable))
     }
 
     #Preview("Support: invalid selection") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: .unavailable(.invalidSelection)
+        supportPane(.init(resolution: .unavailable(.invalidSelection)))
+    }
+
+    #Preview("Support: cleanup running") {
+        supportPane(
+            .init(
+                resolution: ToolchainPreviewFixtures.userSelected,
+                candidates: [ToolchainPreviewFixtures.stable, ToolchainPreviewFixtures.beta]
+            ),
+            model: .previewDeletionRunning()
         )
     }
 
     #Preview("Support: report preview") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.ready,
-            initialReportText: "Cruftless Diagnostic Report\nSchema: 1\nSimulator toolchain: available\n",
-            initialReportMessage: "Preview ready. Nothing has been copied or saved."
-        )
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.ready,
+            reportText: ToolchainPreviewFixtures.reportText,
+            notice: .prepared
+        ))
+    }
+
+    #Preview("Support: report copied") {
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.ready,
+            reportText: ToolchainPreviewFixtures.reportText,
+            notice: .copied
+        ))
+    }
+
+    #Preview("Support: stale report") {
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.userSelected,
+            reportText: ToolchainPreviewFixtures.reportText,
+            notice: .prepared,
+            reportIsStale: true
+        ))
+    }
+
+    #Preview("Support: preparing report") {
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.ready,
+            reportText: ToolchainPreviewFixtures.reportText,
+            notice: .prepared,
+            isPreparingReport: true
+        ))
     }
 
     #Preview("Support: truncated report") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.ready,
-            initialReportText: "Cruftless Diagnostic Report\nSDK issues truncated: yes\n",
-            initialReportMessage: "Preview ready. Nothing has been copied or saved."
-        )
+        supportPane(.init(
+            resolution: ToolchainPreviewFixtures.ready,
+            reportText: "Cruftless Diagnostic Report\nSDK issues truncated: yes\n",
+            notice: .prepared
+        ))
     }
 
     #Preview("Support: report failure") {
-        SupportSettingsPane(
-            resolver: SimulatorToolchainResolver(),
-            discoversCandidatesOnAppear: false,
-            initialResolution: ToolchainPreviewFixtures.unavailable,
-            initialReportMessage: "Could not save the report to that location."
-        )
+        supportPane(.init(resolution: ToolchainPreviewFixtures.unavailable, notice: .saveFailed))
     }
 #endif

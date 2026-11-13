@@ -62,6 +62,14 @@ public enum SimulatorToolchainResolution: Sendable, Equatable {
         guard case let .unavailable(failure) = self else { return nil }
         return failure
     }
+
+    /// Whether dropping Cruftless's own Xcode choice would change this resolution.
+    public var systemSelectionWouldChange: Bool {
+        switch self {
+        case let .ready(_, source, _): source == .userSelected
+        case .unavailable: true
+        }
+    }
 }
 
 /// Resolves only validated Xcode installations and coalesces concurrent probes.
@@ -108,7 +116,7 @@ public actor SimulatorToolchainResolver {
         self.selectedDirectory = selectedDirectory ?? { await Self.readSelectedDirectory() }
         self.validator = validator ?? { await Self.validate(candidate: $0) }
         self.persistsSelection = persistsSelection
-        self.explicitChoice = persistsSelection
+        explicitChoice = persistsSelection
             ? UserDefaults.standard.string(forKey: Self.preferenceKey).map { URL(fileURLWithPath: $0, isDirectory: true) }
             : nil
     }
@@ -272,5 +280,4 @@ public actor SimulatorToolchainResolver {
         }
         return .ready(toolchain, source: .discovered, generation: UUID())
     }
-
 }
