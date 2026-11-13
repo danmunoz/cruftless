@@ -58,7 +58,8 @@ public struct RuntimesDetailView: View {
                     sizeBytes: runtime.sizeIsKnown ? runtime.sizeBytes : nil,
                     action: runtime.canPlanDelete
                         ? RowAction("Delete") { planDelete(runtime) }
-                        : nil
+                        : nil,
+                    allowsTallCaption: true
                 ) {
                     caption(for: runtime)
                 }

@@ -7,10 +7,19 @@ struct RowAction {
     let label: String
     let accessibilityLabel: String
     let isDestructive: Bool
+    /// Replaces the label while set, and keeps the hover controls shown.
+    let confirmation: String?
     let handler: () -> Void
 
-    init(_ label: String, isDestructive: Bool = false, accessibilityLabel: String? = nil, handler: @escaping () -> Void) {
+    init(
+        _ label: String,
+        isDestructive: Bool = false,
+        accessibilityLabel: String? = nil,
+        confirmation: String? = nil,
+        handler: @escaping () -> Void
+    ) {
         self.label = label
+        self.confirmation = confirmation
         self.accessibilityLabel = accessibilityLabel ?? label
         self.isDestructive = isDestructive
         self.handler = handler
@@ -36,13 +45,27 @@ struct PopoverRow<Caption: View>: View {
     /// A row whose content could not be read.
     var isUnavailable: Bool = false
     var isOpening: Bool = false
+    /// Lets the row grow past the fixed height for a multi-line caption.
+    var allowsTallCaption: Bool = false
     var onSelect: (() -> Void)?
     @ViewBuilder var caption: Caption
 
     @State private var isHovered = false
+    @FocusState private var isFocused: Bool
+    #if DEBUG
+        @State private var previewFocused = false
+    #endif
 
     private var isInteractive: Bool {
         onSelect != nil || action != nil || rescan != nil
+    }
+
+    private var isFocusVisible: Bool {
+        #if DEBUG
+            return isFocused || previewFocused
+        #else
+            return isFocused
+        #endif
     }
 
     private var contentOpacity: Double {
@@ -50,6 +73,60 @@ struct PopoverRow<Caption: View>: View {
     }
 
     var body: some View {
+        HStack(spacing: PopoverMetrics.rowSpacing) {
+            leadingContent
+                .selectsRow(onSelect)
+
+            trailingSlot
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
+                .animation(.snappy(duration: 0.16), value: showsHoverControls)
+
+            chevronColumn
+                .selectsRow(onSelect)
+        }
+        .padding(.horizontal, PopoverMetrics.rowInset)
+        .padding(.vertical, 2)
+        .frame(height: allowsTallCaption ? nil : PopoverMetrics.rowHeight)
+        .frame(minHeight: allowsTallCaption ? PopoverMetrics.rowHeight : nil)
+        .background { selectionSurface }
+        .contentShape(.rect(cornerRadius: PopoverMetrics.rowCornerRadius))
+        .animation(.snappy(duration: 0.16), value: isHovered)
+        .onHover { isHovered = $0 }
+        .focusable(onSelect != nil)
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .onKeyPress(keys: [.return, .space]) { _ in
+            guard let onSelect else { return .ignored }
+            onSelect()
+            return .handled
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(accessibilityHint)
+        .accessibilityAddTraits(onSelect != nil ? .isButton : [])
+        .accessibilityActions {
+            if let rescan {
+                Button("Rescan", action: rescan)
+            }
+            if let action {
+                Button(action.accessibilityLabel, action: action.handler)
+            }
+        }
+        .contextMenu {
+            if let onSelect, showsChevron {
+                Button("Show Details", action: onSelect)
+            }
+            if let rescan {
+                Button("Rescan", action: rescan)
+            }
+            if let action {
+                Button(action.accessibilityLabel, role: action.isDestructive ? .destructive : nil, action: action.handler)
+            }
+        }
+    }
+
+    /// Icon, title and caption, plus the space up to the trailing slot.
+    private var leadingContent: some View {
         HStack(spacing: PopoverMetrics.rowSpacing) {
             if let icon {
                 RowIconView(icon: icon, fileURL: iconFileURL)
@@ -79,65 +156,43 @@ struct PopoverRow<Caption: View>: View {
             .opacity(contentOpacity)
 
             Spacer(minLength: 0)
+        }
+    }
 
-            trailingSlot
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(2)
-
-            HStack(spacing: 5) {
-                if isOpening {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    if isReadOnly {
-                        Image(systemName: "lock")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    if showsChevron {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                    }
+    private var chevronColumn: some View {
+        HStack(spacing: 5) {
+            if isOpening {
+                ProgressView().controlSize(.mini)
+            } else {
+                if isReadOnly {
+                    Image(systemName: "lock")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .frame(minWidth: PopoverMetrics.chevronColumn, alignment: .trailing)
-            .opacity(contentOpacity)
         }
-        .padding(.horizontal, PopoverMetrics.rowInset)
-        .padding(.vertical, 2)
-        .frame(minHeight: PopoverMetrics.rowHeight)
-        .background {
-            RoundedRectangle(cornerRadius: PopoverMetrics.rowCornerRadius, style: .continuous)
-                .fill(.quaternary.opacity(isHovered && isInteractive ? 1 : 0))
-        }
-        .contentShape(.rect(cornerRadius: PopoverMetrics.rowCornerRadius))
-        .animation(.snappy(duration: 0.16), value: isHovered)
-        .onHover { isHovered = $0 }
-        .onTapGesture {
-            onSelect?()
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(accessibilityHint)
-        .accessibilityAddTraits(onSelect != nil ? .isButton : [])
-        .accessibilityActions {
-            if let rescan {
-                Button("Rescan", action: rescan)
+        .frame(minWidth: PopoverMetrics.chevronColumn, alignment: .trailing)
+        .opacity(contentOpacity)
+    }
+
+    /// Highlight behind the content, and the tap target for the gaps between its parts.
+    private var selectionSurface: some View {
+        let shape = RoundedRectangle(cornerRadius: PopoverMetrics.rowCornerRadius, style: .continuous)
+        return shape
+            .fill(.quaternary.opacity((isHovered && isInteractive) || isFocusVisible ? 1 : 0))
+            .overlay {
+                shape.strokeBorder(Color.accentColor, lineWidth: 1.5)
+                    .opacity(isFocusVisible ? 1 : 0)
             }
-            if let action {
-                Button(action.accessibilityLabel, action: action.handler)
+            .contentShape(shape)
+            .onTapGesture {
+                onSelect?()
             }
-        }
-        .contextMenu {
-            if let onSelect, showsChevron {
-                Button("Show Details", action: onSelect)
-            }
-            if let rescan {
-                Button("Rescan", action: rescan)
-            }
-            if let action {
-                Button(action.accessibilityLabel, role: action.isDestructive ? .destructive : nil, action: action.handler)
-            }
-        }
     }
 
     private var accessibilityHint: String {
@@ -149,7 +204,7 @@ struct PopoverRow<Caption: View>: View {
     }
 
     private var showsHoverControls: Bool {
-        isHovered && (action != nil || rescan != nil)
+        (isHovered || action?.confirmation != nil) && (action != nil || rescan != nil)
     }
 
     @ViewBuilder
@@ -159,49 +214,45 @@ struct PopoverRow<Caption: View>: View {
                 .controlSize(.small)
                 .scaleEffect(0.7)
                 .frame(minWidth: PopoverMetrics.sizeColumn, alignment: .trailing)
+        } else if showsHoverControls {
+            hoverControls
+                .transition(.opacity)
         } else {
-            sizeOrActionSlot
-        }
-    }
-
-    private var sizeOrActionSlot: some View {
-        ZStack(alignment: .trailing) {
             Text(sizeBytes.map { ByteFormatter.format($0) } ?? "-")
                 .font(.system(size: 13))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
-                .opacity(showsHoverControls ? 0 : 1)
                 .opacity(contentOpacity)
+                .frame(minWidth: PopoverMetrics.sizeColumn, alignment: .trailing)
+                .selectsRow(onSelect)
+                .transition(.opacity)
+        }
+    }
 
-            HStack(spacing: 6) {
-                if let rescan {
-                    Button(action: rescan) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .medium))
-                            .frame(width: 20, height: 20)
-                    }
-                    .buttonStyle(.glass)
-                    .clipShape(.circle)
-                    .help("Rescan \(title)")
-                    .accessibilityLabel("Rescan \(title)")
-                    .opacity(showsHoverControls ? 1 : 0)
-                    .allowsHitTesting(showsHoverControls)
-                    .accessibilityHidden(!showsHoverControls)
-                }
-
-                if let action {
-                    Button(action.label, action: action.handler)
-                        .accessibilityLabel(action.accessibilityLabel)
-                        .help(action.accessibilityLabel)
-                        .buttonStyle(.glass)
-                        .controlSize(.small)
+    private var hoverControls: some View {
+        HStack(spacing: 6) {
+            if let rescan {
+                Button(action: rescan) {
+                    Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(action.isDestructive ? Color.red : .primary)
-                        .fixedSize()
-                        .opacity(showsHoverControls ? 1 : 0)
-                        .allowsHitTesting(showsHoverControls)
-                        .accessibilityHidden(!showsHoverControls)
+                        .frame(width: 20, height: 20)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
                 }
+                .buttonStyle(.plain)
+                .help("Rescan \(title)")
+                .accessibilityLabel("Rescan \(title)")
+            }
+
+            if let action {
+                Button(action.confirmation ?? action.label, action: action.handler)
+                    .accessibilityLabel(action.accessibilityLabel)
+                    .help(action.accessibilityLabel)
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(action.isDestructive ? Color.red : .primary)
+                    .fixedSize()
             }
         }
         .frame(minWidth: PopoverMetrics.sizeColumn, alignment: .trailing)
@@ -211,6 +262,12 @@ struct PopoverRow<Caption: View>: View {
         func previewHover(_ hovered: Bool) -> Self {
             var row = self
             row._isHovered = State(initialValue: hovered)
+            return row
+        }
+
+        func previewFocus(_ focused: Bool) -> Self {
+            var row = self
+            row._previewFocused = State(initialValue: focused)
             return row
         }
     #endif
@@ -297,7 +354,8 @@ struct RowIconView: View {
     }
 
     private func resolveFileIconIfNeeded() async {
-        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
+        guard case let .image(name) = icon, NSImage(named: name) == nil,
+              let fileURL, FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else {
             fileIcon = nil
             return
         }
@@ -313,5 +371,12 @@ struct RowFlagMarker: View {
         Image(systemName: "exclamationmark.triangle.fill")
             .font(.system(size: 10))
             .foregroundStyle(tint)
+    }
+}
+
+private extension View {
+    /// Opens the row on a click; applied only to parts that hold no buttons, so one click fires one action.
+    func selectsRow(_ onSelect: (() -> Void)?) -> some View {
+        contentShape(.rect).onTapGesture { onSelect?() }
     }
 }

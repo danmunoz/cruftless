@@ -153,7 +153,8 @@ public struct SimulatorsDetailView: View {
                     isDestructive: true,
                     accessibilityLabel: device.deviceSet.kind == .xctest ? "Delete Test Simulator" : nil
                 ) { plan(.delete, for: device) }
-                : nil
+                : nil,
+            allowsTallCaption: true
         ) {
             deviceStatusCaption(device, status: "Can't boot")
         }
@@ -173,6 +174,7 @@ public struct SimulatorsDetailView: View {
                     for: device
                 ) } : nil)
                 : eraseAction(for: device),
+            allowsTallCaption: true,
             onSelect: canExpand ? { toggle(device) } : nil,
             caption: { deviceCaption(device) }
         )

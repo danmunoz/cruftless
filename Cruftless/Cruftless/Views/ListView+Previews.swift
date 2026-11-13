@@ -44,6 +44,16 @@ import SwiftUI
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("List: Nothing to reclaim") {
+        ListView(model: .previewNothingToReclaim(), onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("List: Plan refusal notice") {
+        ListView(model: .previewPlanRefusal(), onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("List: Scanning") {
         ListView(model: .previewScanning(), onOpenSettings: {})
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)

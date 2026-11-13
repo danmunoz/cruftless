@@ -76,6 +76,10 @@ public final class AppModel {
     var cleanupSessions: [String: CleanupSelectionSession] = [:]
 
     public internal(set) var preparingLocationId: String?
+    /// The location whose whole-location plan is being prepared.
+    public internal(set) var planningLocationId: String?
+    /// The `planFailure` text that came from refusing a restored row, cleared when a scan lands.
+    var restoredRefusalMessage: String?
 
     /// The in-flight cold fetch, so a second click supersedes the first and closing the popover cancels it.
     var prepareTask: Task<Void, Never>?
@@ -218,7 +222,7 @@ public final class AppModel {
     }
 
     public func plan(_ build: (PlanningContext) throws -> DeletionPlan) {
-        plan(build, onSuccess: openReview(for:), onFailure: reportPlanFailure)
+        plan(build, onSuccess: openReview(for:), onFailure: { _ in })
     }
 
     func plan(
@@ -304,14 +308,14 @@ public final class AppModel {
             session.stage = .result
             pushing {
                 if case .selectionReview = navigationPath.last { navigationPath.removeLast() }
-                navigationPath.append(.selectionResult(session.location))
+                push(.selectionResult(session.location))
             }
         } else {
             pushing {
                 if case .review = navigationPath.last {
                     navigationPath.removeLast()
                 }
-                navigationPath.append(.result(result))
+                push(.result(result))
             }
         }
     }

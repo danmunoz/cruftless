@@ -17,6 +17,22 @@
             return model
         }
 
+        static func previewNothingToReclaim() -> AppModel {
+            let model = AppModel()
+            model.inventory = Inventory(
+                entries: [],
+                capacity: PreviewFixtures.sampleCapacity,
+                scannedAt: .now.addingTimeInterval(-360)
+            )
+            return model
+        }
+
+        static func previewPlanRefusal() -> AppModel {
+            let model = previewPopulated()
+            model.planFailure = "Archives hold dSYMs for shipped builds. Delete them one at a time from the Archives screen."
+            return model
+        }
+
         static func previewDrillDown(
             _ contents: DrillDownContent,
             for locationId: String

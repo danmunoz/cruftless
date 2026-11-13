@@ -113,7 +113,9 @@ extension AppModel {
     func refuseActionOnRestoredInventory() {
         let measured = restoredInventoryDate.map { "from \($0.formatted(.relative(presentation: .named)))" }
             ?? "from the last session"
-        reportPlanFailure("These sizes are \(measured). Measuring now: try again in a moment.")
+        let message = "These sizes are \(measured). Measuring now: try again in a moment."
+        reportPlanFailure(message)
+        restoredRefusalMessage = message
 
         startInitialScanIfNeeded(source: .popover)
         if activeScan == nil {

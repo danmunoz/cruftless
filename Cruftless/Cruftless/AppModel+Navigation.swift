@@ -25,7 +25,7 @@ public extension AppModel {
     func openSelection(for location: TrackedLocation) {
         guard !isDeleting else { return }
         _ = selectionSession(for: location)
-        pushing { navigationPath.append(.selection(location)) }
+        pushing { push(.selection(location)) }
     }
 
     func popoverDidDisappear() {
@@ -39,10 +39,11 @@ public extension AppModel {
 
     /// Pushes a drill-down, but never into an empty screen.
     func openDetail(for location: TrackedLocation) {
+        guard preparingLocationId != location.id else { return }
         cancelPreparation()
 
         if !location.hasDrillDown {
-            pushing { navigationPath.append(.detail(location)) }
+            pushing { push(.detail(location)) }
             return
         }
 
@@ -50,7 +51,7 @@ public extension AppModel {
             prepare(location)
             return
         }
-        pushing { navigationPath.append(.detail(location)) }
+        pushing { push(.detail(location)) }
     }
 
     func openGradleCacheRiskWarning(for child: ChildEntry, in location: TrackedLocation) {
@@ -61,7 +62,7 @@ public extension AppModel {
             return
         }
         planFailure = nil
-        pushing { navigationPath.append(.gradleCacheRisk(location: location, child: child)) }
+        pushing { push(.gradleCacheRisk(location: location, child: child)) }
     }
 
     /// Fetches a drill-down the scan has not reached yet, then pushes.
@@ -83,7 +84,7 @@ public extension AppModel {
             }
 
             adopt(contents, for: location.id)
-            pushing { navigationPath.append(.detail(location)) }
+            pushing { push(.detail(location)) }
         }
     }
 
@@ -166,7 +167,7 @@ public extension AppModel {
         // Hides the estimate when capacity is unavailable.
         let capacity = VolumeCapacity.query()
         reviewFreeSpaceBytes = capacity.totalBytes > 0 ? capacity.freeBytes : nil
-        pushing { navigationPath.append(.review(plan)) }
+        pushing { push(.review(plan)) }
     }
 
     func pop() {
@@ -183,6 +184,12 @@ public extension AppModel {
         reviewFreeSpaceBytes = nil
         deletionProgress = nil
         deletionRun = nil
+    }
+
+    /// Appends a route unless it is already on top, so a double activation pushes once.
+    internal func push(_ route: AppRoute) {
+        guard navigationPath.last != route else { return }
+        navigationPath.append(route)
     }
 
     /// Every mutation of `navigationPath` goes through here.

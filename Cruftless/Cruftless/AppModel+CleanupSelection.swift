@@ -142,7 +142,7 @@ extension AppModel {
             }
             session.stage = .gradleRisk(child)
             session.notice = nil
-            pushing { navigationPath.append(.selectionRisk(location: session.location, child: child)) }
+            pushing { push(.selectionRisk(location: session.location, child: child)) }
             return
         }
 
@@ -173,7 +173,7 @@ extension AppModel {
             self.checkRunningApps()
             session.stage = .review
             session.notice = nil
-            pushing { navigationPath.append(.selectionReview(session.location)) }
+            pushing { push(.selectionReview(session.location)) }
         } onFailure: { message in
             session.stage = .selection
             session.notice = message
@@ -284,7 +284,7 @@ extension AppModel {
             session.reviewFreeSpaceBytes = capacity.totalBytes > 0 ? capacity.freeBytes : nil
             session.stage = .review
             session.notice = nil
-            pushing { navigationPath.append(.selectionReview(session.location)) }
+            pushing { push(.selectionReview(session.location)) }
         } onFailure: { message in
             session.notice = message
         }

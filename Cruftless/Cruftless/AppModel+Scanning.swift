@@ -119,12 +119,20 @@ extension AppModel {
         case let .completed(newInventory):
             inventory = newInventory
             scannedLocationIds.formUnion(tally.landedIds)
+            clearRestoredRefusal()
             isAutomaticScanPaused = false
             persistInventory()
         case let .failed(locationId, reason):
             tally.scannedIds.insert(locationId)
             tally.failures[locationId] = reason
         }
+    }
+
+    /// Drops the "measuring now" notice once a scan has landed.
+    private func clearRestoredRefusal() {
+        guard let message = restoredRefusalMessage else { return }
+        if planFailure == message { planFailure = nil }
+        restoredRefusalMessage = nil
     }
 
     private func updateProgress(for event: ScanEvent) {
