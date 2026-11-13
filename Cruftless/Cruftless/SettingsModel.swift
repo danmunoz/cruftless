@@ -2,7 +2,6 @@ import CruftlessCore
 import Foundation
 import Observation
 import ServiceManagement
-import UserNotifications
 
 public enum PlatformSectionOrder: String, CaseIterable, Hashable, Identifiable, Sendable {
     case appleFirst
@@ -71,14 +70,17 @@ public final class SettingsModel {
     private let defaults: UserDefaults
     public let protectedPathsStore: ProtectedPathsStore
     public let policyGenerationAuthority: PolicyGenerationAuthority
+    private let reminderScheduler: ScanReminderScheduler
     private var reminderTask: Task<Void, Never>?
 
     public init(
         defaults: UserDefaults = .standard,
         protectedPathsStore: ProtectedPathsStore = .shared,
-        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority()
+        policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority(),
+        reminderCenter: any ScanReminderCenter = UserNotificationReminderCenter()
     ) {
         self.defaults = defaults
+        reminderScheduler = ScanReminderScheduler(center: reminderCenter)
         self.protectedPathsStore = protectedPathsStore
         self.policyGenerationAuthority = policyGenerationAuthority
         launchAtLoginStatus = SMAppService.mainApp.status
@@ -176,8 +178,8 @@ public final class SettingsModel {
         if enabled {
             startReminderScheduling()
         } else {
-            UNUserNotificationCenter.current()
-                .removePendingNotificationRequests(withIdentifiers: [Self.reminderIdentifier])
+            defaults.removeObject(forKey: Keys.scanReminderSchedule)
+            reminderScheduler.disarm()
         }
     }
 
@@ -185,51 +187,39 @@ public final class SettingsModel {
         reminderTask?.cancel()
         let generation = platformGeneration
         reminderTask = Task { [weak self] in
-            await self?.scheduleReminder(generation: generation)
+            await self?.armReminder(generation: generation)
         }
     }
 
-    private func scheduleReminder(generation: UInt64) async {
-        let center = UNUserNotificationCenter.current()
-
-        let granted: Bool
-        do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
-        } catch {
-            failScanReminder("Cruftless could not request permission to send notifications.")
+    private func armReminder(generation: UInt64) async {
+        let outcome = await reminderScheduler.arm(
+            body: ScanReminderScheduler.body(for: platformSelection.platforms),
+            storedSchedule: storedReminderSchedule
+        )
+        guard scanReminderEnabled else {
+            reminderScheduler.disarm()
             return
         }
-        guard !Task.isCancelled, generation == platformGeneration else { return }
+        guard !Task.isCancelled else { return }
 
-        guard granted else {
-            failScanReminder(
-                "Notifications are turned off for Cruftless. Allow them in System Settings › Notifications."
-            )
+        if let message = outcome.failureMessage {
+            failScanReminder(message)
             return
         }
-
-        guard !Task.isCancelled, generation == platformGeneration else { return }
-
-        let content = UNMutableNotificationContent()
-        content.title = "Review developer disk bloat"
-        content.body = reminderBody
-        content.sound = .default
-
-        do {
-            try await center.add(
-                UNNotificationRequest(
-                    identifier: Self.reminderIdentifier,
-                    content: content,
-                    trigger: UNTimeIntervalNotificationTrigger(
-                        timeInterval: Self.reminderInterval,
-                        repeats: true
-                    )
-                )
-            )
-            if generation != platformGeneration { startReminderScheduling() }
-        } catch {
-            failScanReminder("Cruftless could not schedule the weekly reminder.")
+        if case let .scheduled(schedule) = outcome {
+            storeReminderSchedule(schedule)
         }
+        if generation != platformGeneration { startReminderScheduling() }
+    }
+
+    private var storedReminderSchedule: ScanReminderSchedule? {
+        defaults.data(forKey: Keys.scanReminderSchedule)
+            .flatMap { try? JSONDecoder().decode(ScanReminderSchedule.self, from: $0) }
+    }
+
+    private func storeReminderSchedule(_ schedule: ScanReminderSchedule) {
+        guard let data = try? JSONEncoder().encode(schedule) else { return }
+        defaults.set(data, forKey: Keys.scanReminderSchedule)
     }
 
     private func failScanReminder(_ message: String) {
@@ -282,23 +272,11 @@ public final class SettingsModel {
 
     // MARK: - Helpers
 
-    private static let reminderIdentifier = "cruftless.scan-reminder"
-    private static let reminderInterval: TimeInterval = 7 * 24 * 60 * 60
-
-    private var reminderBody: String {
-        let selected = platformSelection.platforms
-        if selected == Set(DevelopmentPlatform.allCases) {
-            return "Open Cruftless to review Apple and Android development storage."
-        }
-        return selected.contains(.android)
-            ? "Open Cruftless to review Android development storage."
-            : "Open Cruftless to review Apple development storage."
-    }
-
     private enum Keys {
         static let scanReminderEnabled = "scanReminderEnabled"
         static let selectedPlatforms = "selectedPlatforms"
         static let platformSectionOrder = "platformSectionOrder"
+        static let scanReminderSchedule = "scanReminderSchedule"
     }
 }
 
