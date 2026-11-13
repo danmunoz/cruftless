@@ -41,6 +41,14 @@
         }
 
         @MainActor
+        static var loginItemNotFound: SettingsModel {
+            .preview(
+                launchAtLoginStatus: .notFound,
+                launchAtLoginError: LaunchAtLoginPolicy.notFoundMessage(isInApplicationsFolder: true)
+            )
+        }
+
+        @MainActor
         static var errors: SettingsModel {
             .preview(
                 launchAtLoginError: launchAtLoginFailure,

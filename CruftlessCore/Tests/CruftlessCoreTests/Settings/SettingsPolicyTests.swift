@@ -16,10 +16,18 @@ struct LaunchAtLoginPolicyTests {
         #expect(LaunchAtLoginPolicy.message(requested: true, status: .enabled) == nil)
     }
 
-    @Test("A missing login item names the fix")
-    func notFound() {
-        let message = LaunchAtLoginPolicy.message(requested: true, status: .notFound)
-        #expect(message?.contains("Applications") == true)
+    @Test("A registration left unfound outside Applications names the move")
+    func notFoundOutsideApplications() {
+        let message = LaunchAtLoginPolicy.message(requested: true, status: .notFound, isInApplicationsFolder: false)
+        #expect(message?.contains("Move Cruftless to Applications") == true)
+    }
+
+    @Test("A registration left unfound inside Applications never asks for a move")
+    func notFoundInsideApplications() {
+        let message = LaunchAtLoginPolicy.message(requested: true, status: .notFound, isInApplicationsFolder: true)
+        #expect(message?.contains("Move Cruftless") == false)
+        #expect(message?.contains("Login Items") == true)
+        #expect(LaunchAtLoginPolicy.offersLoginItemsSettings(status: .notFound, hasFailure: true))
     }
 
     @Test("A thrown failure is surfaced when the status says nothing more specific")
@@ -52,22 +60,29 @@ struct LaunchAtLoginStatusTests {
         #expect(LaunchAtLoginPolicy.needsApproval(.requiresApproval))
     }
 
-    @Test("A missing login item is explained from status alone")
-    func notFoundIsExplained() {
-        #expect(LaunchAtLoginPolicy.statusMessage(for: .notFound)?.contains("Applications") == true)
-        #expect(!LaunchAtLoginPolicy.needsApproval(.notFound))
-    }
-
-    @Test("Healthy states need no explanation", arguments: [SMAppService.Status.enabled, .notRegistered])
-    func healthyStatesAreSilent(status: SMAppService.Status) {
+    @Test(
+        "States seen before any toggle attempt need no explanation",
+        arguments: [SMAppService.Status.enabled, .notRegistered, .notFound]
+    )
+    func untouchedStatesAreSilent(status: SMAppService.Status) {
         #expect(LaunchAtLoginPolicy.statusMessage(for: status) == nil)
         #expect(!LaunchAtLoginPolicy.needsApproval(status))
+        #expect(!LaunchAtLoginPolicy.offersLoginItemsSettings(status: status, hasFailure: false))
+    }
+
+    @Test("An installed copy is recognised in either Applications folder")
+    func applicationsFolderDetection() {
+        let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+        let check = { LaunchAtLoginPolicy.isInApplicationsFolder(URL(fileURLWithPath: $0), home: home) }
+        #expect(check("/Applications/Cruftless.app"))
+        #expect(check("/Users/someone/Applications/Cruftless.app"))
+        #expect(!check("/Users/someone/Downloads/Cruftless.app"))
+        #expect(!check("/ApplicationsExtra/Cruftless.app"))
     }
 
     @Test("A write that lands in a status with its own explanation adds no second message")
     func writeFailureDefersToStatus() {
         #expect(LaunchAtLoginPolicy.failureMessage(requested: true, status: .requiresApproval) == nil)
-        #expect(LaunchAtLoginPolicy.failureMessage(requested: true, status: .notFound, failure: "boom") == nil)
     }
 
     @Test("A write failure the status cannot explain is still reported")

@@ -22,7 +22,7 @@ public struct GeneralSettingsPane: View {
                 if let notice = settings.launchAtLoginNotice {
                     SettingsNoticeRow(message: notice)
                 }
-                if settings.launchAtLoginNeedsApproval {
+                if settings.launchAtLoginOffersSystemSettings {
                     Button("Open Login Items", action: settings.openLoginItemsSettings)
                 }
             } header: {
@@ -217,6 +217,11 @@ private struct ProtectedPathRow: View {
 
     #Preview("General Settings: Login approval pending") {
         GeneralSettingsPane(settings: SettingsPreviewFixtures.pendingApproval)
+            .frame(width: SettingsMetrics.paneWidth)
+    }
+
+    #Preview("General Settings: Login item not found") {
+        GeneralSettingsPane(settings: SettingsPreviewFixtures.loginItemNotFound)
             .frame(width: SettingsMetrics.paneWidth)
     }
 
