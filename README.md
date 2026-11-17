@@ -111,8 +111,8 @@ review step. Cruftless cannot verify that Gradle has stopped using those files.
 ## About the numbers
 
 Cruftless measures allocated disk usage, including filesystem metadata, and
-deduplicates hardlinks by volume and inode. APFS does not expose a public API
-for identifying clone-shared extents, so totals involving clones are an upper
+deduplicates hardlinks by volume and inode. Blocks shared between APFS clones
+are counted in full for now, so totals involving clones are an upper
 bound. The app keeps purgeable space separate because macOS already includes it
 in the reported free-space figure.
 
