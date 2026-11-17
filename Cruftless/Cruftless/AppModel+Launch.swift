@@ -20,6 +20,7 @@ extension AppModel {
     func startAtLaunch() {
         restoreSavedInventory()
         startMonitoring(for: activeCatalog)
+        guard !isWelcomePending else { return }
 
         launchScanTask = Task { [weak self] in
             try? await Task.sleep(for: Self.launchScanDelay)
@@ -35,10 +36,24 @@ extension AppModel {
         startInitialScanIfNeeded(source: .popover)
     }
 
+    // MARK: - First run
+
+    /// Whether an earlier session left a scan behind, which marks someone who has used the app before.
+    var hasSavedInventory: Bool {
+        inventoryStore.load() != nil
+    }
+
+    /// Starts the first scan once the welcome window is finished or closed.
+    func welcomeDidFinish() {
+        guard isWelcomePending else { return }
+        isWelcomePending = false
+        startInitialScanIfNeeded(source: .popover)
+    }
+
     // MARK: - The first scan of the session
 
     func startInitialScanIfNeeded(source: InitialScanSource) {
-        guard !hasStartedInitialScan else { return }
+        guard !hasStartedInitialScan, !isWelcomePending else { return }
 
         if source == .launchTimer, ProcessInfo.processInfo.isLowPowerModeEnabled {
             isAutomaticScanPaused = true

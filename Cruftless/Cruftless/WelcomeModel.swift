@@ -1,0 +1,146 @@
+import CruftlessCore
+import Foundation
+import Observation
+
+/// Drives the first-run welcome window.
+@MainActor
+@Observable
+public final class WelcomeModel {
+    /// True until the welcome is finished or its window is closed.
+    public private(set) var isPending: Bool
+    public private(set) var step: WelcomeStep = .location
+    /// What was found on this Mac, nil until the check returns.
+    public private(set) var detected: DetectedPlatforms?
+    public private(set) var hasAccessNeeds = false
+    public let settings: SettingsModel
+
+    /// Runs once, when the welcome is finished or its window is closed.
+    public var onFinish: (() -> Void)?
+
+    private let defaults: UserDefaults
+    private let detect: @Sendable () async -> DetectedPlatforms
+    private let findAccessNeeds: @Sendable ([TrackedLocation]) async -> Bool
+    /// False when the welcome is forced for inspection, so it changes no saved setting.
+    private let persistsChoices: Bool
+    private var hasPrepared = false
+
+    public var steps: [WelcomeStep] {
+        WelcomePolicy.steps(hasAccessNeeds: hasAccessNeeds)
+    }
+
+    public var isFirstStep: Bool {
+        WelcomePolicy.step(before: step, in: steps) == nil
+    }
+
+    public var isLastStep: Bool {
+        WelcomePolicy.step(after: step, in: steps) == nil
+    }
+
+    public init(
+        settings: SettingsModel,
+        hasSavedInventory: Bool,
+        defaults: UserDefaults = .standard,
+        detect: @escaping @Sendable () async -> DetectedPlatforms = { await PlatformDetection.detectCurrent() },
+        findAccessNeeds: @escaping @Sendable ([TrackedLocation]) async -> Bool = { catalog in
+            await !AccessPreflight.needs(catalog: catalog).isEmpty
+        }
+    ) {
+        self.settings = settings
+        self.defaults = defaults
+        self.detect = detect
+        self.findAccessNeeds = findAccessNeeds
+
+        var isForced = false
+        #if DEBUG
+            isForced = defaults.bool(forKey: DebugKeys.forceWelcome)
+        #endif
+        persistsChoices = !isForced
+        isPending = isForced || WelcomePolicy.shouldShow(
+            isCompleted: defaults.bool(forKey: WelcomePolicy.completedKey),
+            hasSavedInventory: hasSavedInventory
+        )
+        #if DEBUG
+            if isForced, let raw = defaults.string(forKey: DebugKeys.step), let forcedStep = WelcomeStep(rawValue: raw) {
+                step = forcedStep
+                hasAccessNeeds = forcedStep == .access
+            }
+        #endif
+    }
+
+    /// Detects platforms, preselects them, and finds out whether the access step is needed.
+    public func prepare() async {
+        guard !hasPrepared else { return }
+        hasPrepared = true
+
+        let found = await detect()
+        detected = found
+        if persistsChoices {
+            preselect(found.selection)
+        }
+
+        let needsAccess = await findAccessNeeds(settings.activeCatalog.locations)
+        hasAccessNeeds = hasAccessNeeds || needsAccess
+        step = WelcomePolicy.resolved(step, in: steps)
+    }
+
+    public func advance() {
+        guard let next = WelcomePolicy.step(after: step, in: steps) else { return }
+        step = next
+    }
+
+    public func back() {
+        guard let previous = WelcomePolicy.step(before: step, in: steps) else { return }
+        step = previous
+    }
+
+    /// Records that the welcome was seen and hands over to the app.
+    public func finish() {
+        guard isPending else { return }
+        isPending = false
+        if persistsChoices {
+            defaults.set(true, forKey: WelcomePolicy.completedKey)
+        }
+        onFinish?()
+    }
+
+    /// Enables before disabling, so the selection never passes through empty.
+    private func preselect(_ selection: PlatformSelection) {
+        for platform in DevelopmentPlatform.allCases where selection.platforms.contains(platform) {
+            settings.setPlatformEnabled(platform, true)
+        }
+        for platform in DevelopmentPlatform.allCases where !selection.platforms.contains(platform) {
+            settings.setPlatformEnabled(platform, false)
+        }
+    }
+}
+
+#if DEBUG
+    extension WelcomeModel {
+        /// Launch arguments that show the welcome on a Mac that has already finished it.
+        enum DebugKeys {
+            static let forceWelcome = "cruftless.debug.forceWelcome"
+            static let step = "cruftless.debug.welcomeStep"
+        }
+
+        static func preview(
+            step: WelcomeStep = .location,
+            hasAccessNeeds: Bool = false,
+            detected: DetectedPlatforms? = DetectedPlatforms(hasApple: true, hasAndroid: false),
+            settings: SettingsModel = .preview(platforms: [.apple])
+        ) -> WelcomeModel {
+            let suiteName = "Cruftless.WelcomePreview.\(UUID().uuidString)"
+            let model = WelcomeModel(
+                settings: settings,
+                hasSavedInventory: false,
+                defaults: UserDefaults(suiteName: suiteName)!,
+                detect: { detected ?? DetectedPlatforms(hasApple: false, hasAndroid: false) },
+                findAccessNeeds: { _ in hasAccessNeeds }
+            )
+            model.hasPrepared = true
+            model.detected = detected
+            model.hasAccessNeeds = hasAccessNeeds
+            model.step = WelcomePolicy.resolved(step, in: model.steps)
+            return model
+        }
+    }
+#endif

@@ -48,6 +48,7 @@ extension AppModel {
             await scanEngine.invalidate(generation: catalog.generation)
         }
         startMonitoring(for: catalog)
+        guard !isWelcomePending else { return }
         refreshScan()
     }
 
