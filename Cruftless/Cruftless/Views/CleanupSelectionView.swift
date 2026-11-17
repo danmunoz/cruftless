@@ -272,6 +272,12 @@ private struct SelectionFooter: View {
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("Selection: orphaned projects preselected") {
+        let model = CleanupSelectionPreviewFixtures.orphanedProjectsModel()
+        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("Selection: selected files") {
         let model = CleanupSelectionPreviewFixtures.model(selectedIDs: [CleanupSelectionPreviewFixtures.childItems[0].id])
         CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)

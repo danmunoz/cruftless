@@ -97,7 +97,10 @@ public enum DrillDownProvider: Sendable {
             let sizeResult = sizesForRoot[childPath] ?? DirectoryWalker.walk(url: childURL, inodeSet: inodeSet)
             let staleness = calculateStaleness(url: childURL, source: location.stalenessSource, statMtime: statBuf.st_mtimespec)
 
-            let consequence = defaultConsequence(for: location, name: name)
+            let workspace = location.id == LocationCatalog.derivedData.id && (statBuf.st_mode & S_IFMT) == S_IFDIR
+                ? DerivedDataWorkspaceReader.classify(folder: childURL)
+                : nil
+            let consequence = workspace.flatMap(orphanedConsequence(for:)) ?? defaultConsequence(for: location, name: name)
 
             children.append(
                 ChildEntry(
@@ -108,7 +111,8 @@ public enum DrillDownProvider: Sendable {
                     reclaimableBytes: sizeResult.allocatedBytes,
                     staleness: staleness,
                     tier: location.tier,
-                    consequence: consequence
+                    consequence: consequence,
+                    workspace: workspace
                 )
             )
         }
@@ -249,6 +253,13 @@ public enum DrillDownProvider: Sendable {
             }
         }
         return maxMtime
+    }
+
+    /// Review copy for a Derived Data folder whose project is gone.
+    public static func orphanedConsequence(for workspace: DerivedDataWorkspace) -> String? {
+        guard case let .orphaned(path) = workspace else { return nil }
+        return "Its project, \(Naming.abbreviatingHome(in: path)), no longer exists. "
+            + "Xcode recreates this folder only if that project is built again."
     }
 
     private static func defaultConsequence(for location: TrackedLocation, name _: String) -> String {

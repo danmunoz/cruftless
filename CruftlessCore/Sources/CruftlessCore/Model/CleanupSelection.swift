@@ -59,6 +59,11 @@ public struct CleanupSelection: Sendable, Equatable {
         selectedIDs = [id]
     }
 
+    /// Replaces the selection with the selectable rows among `ids`, as a suggestion does.
+    public mutating func replace(with ids: Set<String>, among items: [CleanupSelectionItem]) {
+        selectedIDs = Set(items.filter { $0.isSelectable && ids.contains($0.id) }.map(\.id))
+    }
+
     public mutating func clear() {
         selectedIDs.removeAll()
     }

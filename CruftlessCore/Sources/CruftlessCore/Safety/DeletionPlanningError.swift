@@ -36,6 +36,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case deletionInProgress
     /// The platform selection or catalog changed while the plan was being prepared.
     case inventoryChanged(title: String)
+    /// A Derived Data folder listed as orphaned has a project again, or its project can no longer be checked.
+    case orphanedProjectChanged(name: String)
 
     public var errorDescription: String? {
         switch self {
@@ -79,6 +81,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "A cleanup is already running. Wait for it to finish before starting another."
         case let .inventoryChanged(title):
             "\(title) changed while it was being prepared. Try again."
+        case let .orphanedProjectChanged(name):
+            "\(name)'s project is no longer confirmed missing. Rescan Derived Data and try again."
         }
     }
 

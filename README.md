@@ -55,7 +55,7 @@ by Apple.
 | Device Support | Delete; Xcode recreates it when the device reconnects. |
 | Simulator devices | Clear known caches, erase a device, or delete it through `simctl`. |
 | Simulator runtimes | Delete through `simctl`; unusable runtimes are supported. |
-| Derived Data | Delete by project or clear the location; Xcode rebuilds it. |
+| Derived Data | Delete by project or clear the location; Xcode rebuilds it. Each folder shows its project, and folders whose project was deleted or moved are suggested for review. |
 | Previews cache | Delete; Xcode Previews regenerates it. |
 | Toolchains | Delete installed toolchains; the active toolchain gets an explicit warning. |
 | SwiftPM cache | Delete; packages are downloaded again when they resolve. |
@@ -188,6 +188,9 @@ can help other people too.
 - **Device-identifier table:** generated from local CoreSimulator device
   profiles plus a baseline of historical models from
   [DeviceKit](https://github.com/devicekit/DeviceKit) (MIT).
+- **Orphaned Derived Data detection:** the idea of reading each folder's
+  recorded workspace path comes from [plonge](https://github.com/mattt/plonge)
+  (MIT); no code is shared.
 
 ## License
 

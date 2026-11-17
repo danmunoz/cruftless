@@ -1,5 +1,6 @@
 #if DEBUG
     import CruftlessCore
+    import CruftlessFixtures
     import Foundation
 
     @MainActor
@@ -63,6 +64,15 @@
             model.scannedLocationIds = [location.id]
             model.hasStartedInitialScan = true
             return model
+        }
+
+        /// Derived Data after the orphaned-projects suggestion: every orphaned folder checked, live ones left alone.
+        static func orphanedProjectsModel() -> AppModel {
+            let children = PreviewFixtures.derivedDataChildren
+            return model(
+                contents: .children(children),
+                selectedIDs: Set(children.filter(\.isOrphanedProject).map(\.id))
+            )
         }
 
         static func mixedSimulatorModel() -> AppModel {

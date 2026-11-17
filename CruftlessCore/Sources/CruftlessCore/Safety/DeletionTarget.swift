@@ -4,6 +4,8 @@ import Foundation
 public enum DeletionPrecondition: Sendable, Hashable {
     /// The simulator that owns this path must still be shut down.
     case simulatorShutdown(devicePlist: URL, deviceName: String)
+    /// The Derived Data folder must still record this workspace, and it must still be missing.
+    case derivedDataProjectMissing(folder: URL, workspacePath: String, name: String)
 }
 
 /// Represents a distinct target to be deleted or mutated.

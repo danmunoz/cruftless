@@ -8,6 +8,8 @@ public struct ChildEntry: Sendable, Hashable, Identifiable {
     public let staleness: StalenessInfo
     public let tier: Tier
     public let consequence: String
+    /// The project a Derived Data folder was built from; `nil` for every other location.
+    public let workspace: DerivedDataWorkspace?
 
     public var isFlagged: Bool {
         tier.isFlagged
@@ -20,7 +22,8 @@ public struct ChildEntry: Sendable, Hashable, Identifiable {
         reclaimableBytes: Int64,
         staleness: StalenessInfo,
         tier: Tier,
-        consequence: String
+        consequence: String,
+        workspace: DerivedDataWorkspace? = nil
     ) {
         self.id = id
         self.name = name
@@ -29,5 +32,10 @@ public struct ChildEntry: Sendable, Hashable, Identifiable {
         self.staleness = staleness
         self.tier = tier
         self.consequence = consequence
+        self.workspace = workspace
+    }
+
+    public var isOrphanedProject: Bool {
+        workspace?.isOrphaned ?? false
     }
 }

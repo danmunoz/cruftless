@@ -62,6 +62,16 @@ public struct DetailView: View {
         hasRows && !batchableChildren.isEmpty && location.tier.isDeletable && !location.mutationPolicy.isReadOnly
     }
 
+    private var isDerivedData: Bool {
+        location.id == LocationCatalog.derivedData.id
+    }
+
+    /// Derived Data folders whose project is gone, offered as one selection.
+    private var orphanedProjects: OrphanedProjectsSuggestion? {
+        guard isDerivedData, !location.mutationPolicy.isReadOnly else { return nil }
+        return OrphanedProjectsSuggestion(children: children, protectedPaths: model.settings.protectedPathPolicy)
+    }
+
     private var hasNotes: Bool {
         contents?.inventoryIssue != nil
             || !(contents?.androidSDKDiagnostics.isEmpty ?? true)
@@ -97,6 +107,13 @@ public struct DetailView: View {
 
             if let planFailure = model.planFailure {
                 NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
+            }
+
+            if let orphanedProjects {
+                OrphanedProjectsCard(suggestion: orphanedProjects, isDisabled: model.isDeleting) {
+                    model.openSelection(for: location, preselecting: orphanedProjects.childIDs)
+                }
+                .padding(.bottom, 6)
             }
 
             ForEach(children) { child in
@@ -163,7 +180,11 @@ public struct DetailView: View {
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
             action: rowAction(for: child, gradleCacheRoots: cacheRoots),
             isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry && !isAndroidDevice(child)
-        )
+        ) {
+            if isDerivedData {
+                DerivedDataWorkspaceCaption(workspace: child.workspace)
+            }
+        }
         .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
@@ -249,6 +270,28 @@ public struct DetailView: View {
             location: LocationCatalog.derivedData,
             model: .previewDrillDown(
                 .children(PreviewFixtures.sampleChildren),
+                for: LocationCatalog.derivedData.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Detail: Derived Data (orphaned projects)") {
+        DetailView(
+            location: LocationCatalog.derivedData,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.derivedDataChildren),
+                for: LocationCatalog.derivedData.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Detail: Derived Data (no orphans)") {
+        DetailView(
+            location: LocationCatalog.derivedData,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.derivedDataChildren.filter { !$0.isOrphanedProject }),
                 for: LocationCatalog.derivedData.id
             )
         )

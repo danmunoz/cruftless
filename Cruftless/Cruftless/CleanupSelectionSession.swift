@@ -181,7 +181,9 @@ extension CleanupSelectionSession {
             )
             let selectable = reason == nil
             let path = child.url.path(percentEncoded: false)
-            let subtitle = eligibleGradle ? "Recognized cache · one entry per attempt · \(path)" : path
+            let subtitle = eligibleGradle
+                ? "Recognized cache · one entry per attempt · \(path)"
+                : child.workspace?.selectionSubtitle ?? path
             return CleanupSelectionRow(
                 selectionItem: CleanupSelectionItem(
                     id: child.id,

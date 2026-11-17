@@ -190,5 +190,49 @@
                 consequence: "Xcode recreates this on the next build."
             )
         ]
+
+        /// Derived Data folders covering every workspace state: live, orphaned, on an unmounted volume, and none recorded.
+        public static let derivedDataChildren: [ChildEntry] = {
+            let home = NSHomeDirectory()
+            let derivedData = "\(home)/Library/Developer/Xcode/DerivedData"
+            func folder(
+                _ name: String,
+                bytes: Int64,
+                workspace: DerivedDataWorkspace
+            ) -> ChildEntry {
+                ChildEntry(
+                    id: "derivedData-\(derivedData)/\(name)",
+                    name: name,
+                    url: URL(fileURLWithPath: "\(derivedData)/\(name)", isDirectory: true),
+                    reclaimableBytes: bytes,
+                    staleness: StalenessInfo(lastUsedDate: nil),
+                    tier: .regen,
+                    consequence: DrillDownProvider.orphanedConsequence(for: workspace)
+                        ?? "Xcode recreates this on the next build.",
+                    workspace: workspace
+                )
+            }
+            let goneApp = "\(home)/Repos/OldClient/OldClient.xcworkspace"
+            let goneTool = "\(home)/Desktop/Scratch/Scratch.xcodeproj"
+            return [
+                folder(
+                    "SuperApp-eszycidpyopumzgdpamntyyawoix",
+                    bytes: 4_500_000_000,
+                    workspace: .live("\(home)/Repos/SuperApp/SuperApp.xcodeproj")
+                ),
+                folder(
+                    "OldClient-zhsdkaaauramvgnxaqhyoprhlhvh",
+                    bytes: 3_100_000_000,
+                    workspace: .orphaned(goneApp)
+                ),
+                folder("ModuleCache.noindex", bytes: 2_800_000_000, workspace: .unknown),
+                folder("External-bfdkdchyswhkygeibytsseptivmp", bytes: 1_700_000_000, workspace: .unknown),
+                folder(
+                    "Scratch-ccphmxhqvqagpfbfykgmsknhhwmr",
+                    bytes: 640_000_000,
+                    workspace: .orphaned(goneTool)
+                )
+            ]
+        }()
     }
 #endif

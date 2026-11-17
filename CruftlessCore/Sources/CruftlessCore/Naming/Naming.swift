@@ -84,6 +84,15 @@ public enum Naming: Sendable {
         return strippingProjectHash(from: name)
     }
 
+    /// Shortens a path inside the home folder to its `~/` form.
+    public static func abbreviatingHome(in path: String, home: String = NSHomeDirectory()) -> String {
+        let trimmedHome = home.hasSuffix("/") ? String(home.dropLast()) : home
+        guard !trimmedHome.isEmpty, trimmedHome != "/" else { return path }
+        if path == trimmedHome { return "~" }
+        guard path.hasPrefix(trimmedHome + "/") else { return path }
+        return "~" + path.dropFirst(trimmedHome.count)
+    }
+
     private static func strippingProjectHash(from name: String) -> String {
         guard name.count > derivedDataHashLength + 1 else { return name }
 
