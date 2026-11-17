@@ -14,6 +14,11 @@ public struct BlockedAccess: Sendable, Hashable, Codable {
         self.state = state
         self.reason = reason
     }
+
+    /// Short copy for a row: "Needs access to Downloads".
+    public var summary: String {
+        state == .notAllowed ? "macOS does not allow reading \(area.displayName)" : "Needs access to \(area.displayName)"
+    }
 }
 
 /// Why a location, or part of it, was not measured.

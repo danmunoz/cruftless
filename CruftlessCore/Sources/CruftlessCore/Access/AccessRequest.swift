@@ -7,11 +7,37 @@ public enum AccessRequestOutcome: Sendable, Hashable {
     case denied
     /// The open failed for a reason other than permission, so macOS asked nothing; the ledger is left unchanged.
     case unavailable(errno: Int32)
+
+    /// Whether macOS answered, so the area is now recorded as asked.
+    public var isAnswered: Bool {
+        switch self {
+        case .allowed, .denied: true
+        case .unavailable: false
+        }
+    }
+
+    /// What to tell the user when the request changed nothing; `nil` once macOS has answered.
+    public func message(for area: ProtectedArea) -> String? {
+        guard case let .unavailable(code) = self else { return nil }
+        let reason = String(cString: strerror(code)).lowercased()
+        return "Cruftless could not open \(area.displayName) (\(reason)), so macOS did not ask. Nothing changed."
+    }
 }
 
-public enum AccessRequestError: Error, Sendable, Hashable {
+public enum AccessRequestError: Error, Sendable, Hashable, LocalizedError {
     /// The path given does not lie in the area being asked about.
     case pathOutsideArea
+    /// Another request is still waiting for macOS to answer.
+    case requestInFlight
+
+    public var errorDescription: String? {
+        switch self {
+        case .pathOutsideArea:
+            "Cruftless has nothing in this place to ask about."
+        case .requestInFlight:
+            "macOS is still waiting for an answer to the previous request. Answer that alert first."
+        }
+    }
 }
 
 /// The only code allowed to open inside an area macOS has not asked about yet; one area per call.
@@ -33,22 +59,20 @@ public struct AccessRequest: Sendable {
         return try request(area: need.area, path: path)
     }
 
-    /// Marks `area` asked, then opens the root of `area` that holds `path`.
+    /// Opens the root of `area` that holds `path`, and marks `area` asked only once macOS has answered.
     public func request(area: ProtectedArea, path: String) throws -> AccessRequestOutcome {
         guard let match = gate.classifier.areaRoot(forPath: path), match.area == area else {
             throw AccessRequestError.pathOutsideArea
         }
-        gate.ledger.markAsked(area)
-        let result = opener(match.root)
-        switch result {
-        case 0:
-            return .allowed
-        case EPERM, EACCES:
-            return .denied
-        default:
-            gate.ledger.clearAsked(area)
-            return .unavailable(errno: result)
+        let outcome: AccessRequestOutcome = switch opener(match.root) {
+        case 0: .allowed
+        case EPERM, EACCES: .denied
+        case let code: .unavailable(errno: code)
         }
+        if outcome.isAnswered {
+            gate.ledger.markAsked(area)
+        }
+        return outcome
     }
 
     /// Opens a directory read-only and closes it straight away.

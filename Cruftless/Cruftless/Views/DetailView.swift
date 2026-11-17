@@ -29,6 +29,11 @@ public struct DetailView: View {
         contents?.children ?? []
     }
 
+    /// Roots the access gate kept the scan out of, listed read-only after the measured rows.
+    private var blockedRoots: [BlockedAccess] {
+        model.inventory?.entries.first { $0.id == location.id }?.accessNeed?.blocked ?? []
+    }
+
     private var total: Int64 {
         children.reduce(0) { $0 + $1.reclaimableBytes }
     }
@@ -85,7 +90,7 @@ public struct DetailView: View {
                 loadingTitle: "Reading \(location.title)…",
                 error: contents?.failureReason,
                 errorTitle: "Couldn't read \(location.title)",
-                isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
+                isEmpty: children.isEmpty && blockedRoots.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
                 emptySymbol: "folder",
                 emptyTitle: "Nothing here",
                 emptyMessage: "This location has no items Cruftless can list.",
@@ -118,6 +123,10 @@ public struct DetailView: View {
 
             ForEach(children) { child in
                 childRow(child)
+            }
+
+            ForEach(blockedRoots, id: \.path) { blocked in
+                BlockedAccessRow(blocked: blocked)
             }
         }
         .padding(.horizontal, 6)
@@ -316,6 +325,18 @@ public struct DetailView: View {
             model: .previewDrillDown(
                 .children([.flaggedArchive]),
                 for: LocationCatalog.archives.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Detail: Xcode installs with a copy not measured") {
+        DetailView(
+            location: LocationCatalog.xcodeInstalls,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.xcodeInstallChildren),
+                for: LocationCatalog.xcodeInstalls.id,
+                entries: PreviewFixtures.accessNeedEntries
             )
         )
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)

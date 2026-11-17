@@ -17,6 +17,7 @@ public struct CategoryRowView: View {
     public let onAction: () -> Void
     /// Re-measures this location.
     public let onRescan: (() -> Void)?
+    @Environment(\.openAccessSettings) private var openAccessSettings
 
     public init(
         entry: InventoryEntry,
@@ -42,6 +43,9 @@ public struct CategoryRowView: View {
 
     /// A drill-down row carries both: the row opens Detail, the capsule clears the whole location. A flagged location has no capsule.
     private var action: RowAction? {
+        if entry.isUnavailable, let need = entry.accessNeed {
+            return accessAction(for: need)
+        }
         let isDyldCacheCommand = entry.location.id == LocationCatalog.simulatorDyldCache.id
         // Inert while it is being re-measured, like the skeleton rows of a first scan.
         guard !entry.isUnavailable, !isMeasuring, tier != .irreversible,
@@ -53,6 +57,16 @@ public struct CategoryRowView: View {
             isDestructive: tier.isFlagged,
             confirmation: actionConfirmation,
             handler: onAction
+        )
+    }
+
+    /// Opens Settings on its Access tab, where the area can be allowed.
+    private func accessAction(for need: LocationAccessNeed) -> RowAction? {
+        guard let openAccessSettings, !isMeasuring else { return nil }
+        return RowAction(
+            need.isNotAllowed ? "Review Access" : "Allow Access",
+            accessibilityLabel: "Open Access settings for \(entry.location.title)",
+            handler: openAccessSettings.callAsFunction
         )
     }
 
@@ -173,6 +187,17 @@ public struct CategoryRowView: View {
                 CategoryRowView(entry: entry, onSelect: {}, onAction: {}, onRescan: {})
             }
         }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Rows: needs access, with the Access action") {
+        VStack(spacing: 2) {
+            ForEach(PreviewFixtures.accessNeedEntries.filter(\.isUnavailable)) { entry in
+                CategoryRowView(entry: entry, onSelect: {}, onAction: {}, onRescan: {})
+            }
+        }
+        .environment(\.openAccessSettings, OpenAccessSettingsAction {})
         .padding(8)
         .frame(width: PopoverMetrics.width)
     }

@@ -21,6 +21,15 @@ public enum ProtectedArea: String, Sendable, Hashable, Codable, CaseIterable {
         case .networkVolume: "a network volume"
         }
     }
+
+    /// The name as a heading: "External Drive" rather than "an external drive".
+    public var title: String {
+        switch self {
+        case .removableVolume: "External Drive"
+        case .networkVolume: "Network Volume"
+        default: displayName
+        }
+    }
 }
 
 /// Whether macOS has already shown its alert for an area.

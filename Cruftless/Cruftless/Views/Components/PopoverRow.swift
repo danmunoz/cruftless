@@ -53,6 +53,8 @@ struct PopoverRow<Caption: View>: View {
     var titleColor: Color = .primary
     var titleTag: RowTitleTag?
     var sizeBytes: Int64?
+    /// Shown in the size column when `sizeBytes` is nil.
+    var sizePlaceholder: String = "-"
     /// Tint for the inline ⚠ marker that follows the title.
     var flagTint: Color?
     var action: RowAction?
@@ -243,7 +245,7 @@ struct PopoverRow<Caption: View>: View {
             hoverControls
                 .transition(.opacity)
         } else {
-            Text(sizeBytes.map { ByteFormatter.format($0) } ?? "-")
+            Text(sizeBytes.map { ByteFormatter.format($0) } ?? sizePlaceholder)
                 .font(.system(size: 13))
                 .monospacedDigit()
                 .foregroundStyle(.primary)

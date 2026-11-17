@@ -44,6 +44,9 @@ public final class SettingsModel {
 
     public var onPlatformSelectionChanged: ((ActiveCatalog) -> Void)?
 
+    /// The tab the Settings window switches to next; it clears the request once it has.
+    public var requestedSettingsSection: SettingsSection?
+
     /// Bumped on every write attempt, and read by `isLaunchAtLoginEnabled` so the getter re-evaluates each time.
     private var launchAtLoginRevision = 0
 

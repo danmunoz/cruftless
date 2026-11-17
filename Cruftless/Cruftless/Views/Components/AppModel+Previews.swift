@@ -33,12 +33,21 @@
             return model
         }
 
+        /// `entries` replace the populated rows with the same location id.
         static func previewDrillDown(
             _ contents: DrillDownContent,
-            for locationId: String
+            for locationId: String,
+            entries: [InventoryEntry] = []
         ) -> AppModel {
             let model = previewPopulated()
             model.drillDowns[locationId] = contents
+            if !entries.isEmpty {
+                let replaced = Set(entries.map(\.id))
+                model.inventory = Inventory(
+                    entries: PreviewFixtures.sampleEntries.filter { !replaced.contains($0.id) } + entries,
+                    capacity: PreviewFixtures.sampleCapacity
+                )
+            }
             return model
         }
 

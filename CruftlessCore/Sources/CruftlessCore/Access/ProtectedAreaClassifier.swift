@@ -25,11 +25,13 @@ public struct ProtectedAreaClassifier: Sendable {
         ("Library/CloudStorage", .fileProvider)
     ]
 
+    private let home: String
     private let homeSpellings: [String]
     private let inspectVolume: VolumeInspector
 
     public init(home: URL, inspectVolume: @escaping VolumeInspector = ProtectedAreaClassifier.statfsVolume) {
         let raw = home.path(percentEncoded: false)
+        self.home = PathNormalizer.lexical(raw)
         homeSpellings = Array(Set([PathNormalizer.lexical(raw), PathNormalizer.normalize(raw)].map { $0.lowercased() }))
         self.inspectVolume = inspectVolume
     }
@@ -60,6 +62,12 @@ public struct ProtectedAreaClassifier: Sendable {
             if let match = volumeArea(for: spelling) { return match }
         }
         return nil
+    }
+
+    /// The folder whose first open raises a home area's alert; `nil` for volumes, which have no fixed root.
+    public func defaultRoot(for area: ProtectedArea) -> String? {
+        guard let relativePath = Self.homeAreas.first(where: { $0.area == area })?.relativePath else { return nil }
+        return (home as NSString).appendingPathComponent(relativePath)
     }
 
     private func homeArea(for spelling: String) -> (area: ProtectedArea, root: String)? {

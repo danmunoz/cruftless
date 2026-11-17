@@ -74,7 +74,7 @@ struct AccessGateTests {
         #expect(gated.all.count == 3)
     }
 
-    @Test("A request marks the area asked before its one open, then maps the opener's result")
+    @Test("A request opens once, maps the result, and marks the area asked only after macOS answers")
     func requestOutcomes() throws {
         let fixture = try AccessFixture()
         defer { fixture.remove() }
@@ -91,7 +91,7 @@ struct AccessGateTests {
 
         #expect(try request.request(area: .documents, path: path) == .allowed)
         #expect(opened.withLock { $0 } == [fixture.home.appendingPathComponent("Documents").path(percentEncoded: false)])
-        #expect(askedDuringOpen.withLock { $0 } == true)
+        #expect(askedDuringOpen.withLock { $0 } == false)
         #expect(fixture.ledger.hasAsked(.documents))
 
         result.withLock { $0 = EPERM }
