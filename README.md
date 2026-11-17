@@ -13,6 +13,11 @@ Cruftless is available through Homebrew:
 brew install --cask danmunoz/tap/cruftless
 ```
 
+Or download the DMG from
+[GitHub Releases](https://github.com/danmunoz/cruftless/releases), open it, and
+drag Cruftless to Applications. Settings › About links back to Releases when a
+newer version is out.
+
 It requires macOS 26 or later. Releases are Developer ID–signed and notarized
 by Apple.
 
