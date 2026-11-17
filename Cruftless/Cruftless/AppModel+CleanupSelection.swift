@@ -203,6 +203,7 @@ extension AppModel {
             return
         }
 
+        recordReviewCompleted()
         isDeleting = true
         settings.isDeletionExecuting = true
         session.stage = .executing

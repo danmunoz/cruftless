@@ -10,6 +10,27 @@ import SwiftUI
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("List: First-contact strip") {
+        let model = AppModel.previewPopulated()
+        model.firstContact = .preview()
+        return ListView(model: model, onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("List: First-contact strip while scanning") {
+        let model = AppModel.previewScanning()
+        model.firstContact = .preview()
+        return ListView(model: model, onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("List: First-contact strip retired") {
+        let model = AppModel.previewPopulated()
+        model.firstContact = .preview(isRetired: true)
+        return ListView(model: model, onOpenSettings: {})
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("List: Android inventory only") {
         let model = AppModel(settings: .preview(platforms: [.android]))
         model.inventory = Inventory(
