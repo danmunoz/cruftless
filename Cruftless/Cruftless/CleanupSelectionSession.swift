@@ -23,6 +23,7 @@ struct CleanupSelectionRow: Identifiable, Hashable {
     let actionLabel: String?
     let groupTitle: String?
     let action: CleanupSelectionAction
+    var titleTag: RowTitleTag?
 
     var id: String {
         selectionItem.id
@@ -30,6 +31,10 @@ struct CleanupSelectionRow: Identifiable, Hashable {
 
     var disabledReason: String? {
         selectionItem.disabledReason
+    }
+
+    var accessibilityTitle: String {
+        titleTag.map { "\(title), \($0.text)" } ?? title
     }
 }
 
@@ -196,7 +201,8 @@ extension CleanupSelectionSession {
                 subtitle: subtitle,
                 actionLabel: DesignTokens.actionLabel(for: child.tier),
                 groupTitle: nil,
-                action: .child(child)
+                action: .child(child),
+                titleTag: child.isOrphanedProject ? .orphaned : nil
             )
         }
     }

@@ -176,6 +176,7 @@ public struct DetailView: View {
         return PopoverRow(
             icon: nil,
             title: displayName(for: child),
+            titleTag: isDerivedData && child.isOrphanedProject ? .orphaned : nil,
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
             action: rowAction(for: child, gradleCacheRoots: cacheRoots),

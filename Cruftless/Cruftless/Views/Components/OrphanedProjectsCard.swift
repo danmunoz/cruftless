@@ -41,25 +41,16 @@ struct OrphanedProjectsCard: View {
     }
 }
 
-/// A Derived Data row's caption: the project it was built from, marked when that project is gone.
+/// A Derived Data row's caption: the project it was built from.
 struct DerivedDataWorkspaceCaption: View {
     let workspace: DerivedDataWorkspace?
 
     var body: some View {
         if let path = workspace?.path {
-            HStack(spacing: 4) {
-                if workspace?.isOrphaned == true {
-                    Text("Orphaned")
-                        .foregroundStyle(.orange)
-                        .fixedSize()
-                    Text(verbatim: "·")
-                        .foregroundStyle(.tertiary)
-                }
-                Text(Naming.abbreviatingHome(in: path))
-                    .foregroundStyle(.secondary)
-                    .truncationMode(.middle)
-            }
-            .help(path)
+            Text(Naming.abbreviatingHome(in: path))
+                .foregroundStyle(.secondary)
+                .truncationMode(.middle)
+                .help(path)
         }
     }
 }
@@ -67,9 +58,7 @@ struct DerivedDataWorkspaceCaption: View {
 extension DerivedDataWorkspace {
     /// The Select Items subtitle for a Derived Data row, or `nil` when the folder records no project.
     var selectionSubtitle: String? {
-        guard let path else { return nil }
-        let shortened = Naming.abbreviatingHome(in: path)
-        return isOrphaned ? "Orphaned · \(shortened)" : shortened
+        path.map { Naming.abbreviatingHome(in: $0) }
     }
 }
 
