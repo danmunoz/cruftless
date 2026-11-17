@@ -62,6 +62,7 @@ enum DirectoryEntryReader {
 
     /// Calls `body` with each entry of the directory at `path`; returns false when the directory cannot be opened or read.
     static func forEachEntry(inDirectory path: String, names: EntryNames = .all, _ body: (WalkEntry) -> Void) -> Bool {
+        FileAccessAudit.record(.list, path)
         let descriptor = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard descriptor >= 0 else { return false }
         defer { close(descriptor) }

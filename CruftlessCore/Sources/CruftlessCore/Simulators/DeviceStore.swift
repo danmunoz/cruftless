@@ -24,7 +24,7 @@ public enum DeviceStore: Sendable {
         let devicesDirectory = deviceSet.root
         guard !isSymlink(devicesDirectory) else { return [] }
         let path = devicesDirectory.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-        guard let dir = opendir(path) else { return [] }
+        guard let dir = FileAccessAudit.openDirectory(path) else { return [] }
         defer { closedir(dir) }
 
         var devices: [SimDevice] = []

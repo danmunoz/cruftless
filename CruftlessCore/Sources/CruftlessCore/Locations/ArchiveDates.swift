@@ -37,7 +37,7 @@ public enum ArchiveDates: Sendable {
     /// Immediate, non-symlink children of `url`.
     private static func directChildren(of url: URL) -> [DirectChild] {
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-        guard let dir = opendir(path) else { return [] }
+        guard let dir = FileAccessAudit.openDirectory(path) else { return [] }
         defer { closedir(dir) }
 
         var results: [DirectChild] = []

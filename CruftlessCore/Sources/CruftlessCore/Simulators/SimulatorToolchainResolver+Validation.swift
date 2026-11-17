@@ -8,7 +8,9 @@ extension SimulatorToolchainResolver {
         let version: String?
     }
 
-    static func probe(candidate: URL) async -> SimulatorToolchainProbe {
+    static func probe(candidate: URL, gate: AccessGate = .shared) async -> SimulatorToolchainProbe {
+        // A blocked install is neither read nor handed to `xcrun`, whose reads count as this app's.
+        if case let .blocked(area) = gate.check(candidate) { return .blocked(area) }
         guard let metadata = await inspect(candidate: candidate) else { return .unusable }
         let app = metadata.appURL
         let developer = metadata.developerDirectory
@@ -95,6 +97,7 @@ extension SimulatorToolchainResolver {
     }
 
     package static func readInfoDictionary(at url: URL) -> [String: Any]? {
+        FileAccessAudit.record(.open, url.path)
         let descriptor = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
         guard descriptor >= 0 else { return nil }
         defer { close(descriptor) }

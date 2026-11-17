@@ -69,7 +69,7 @@ public enum DerivedDataWorkspaceReader: Sendable {
     /// The `WorkspacePath` recorded in a Derived Data folder's `info.plist`, binary or XML.
     public static func workspacePath(inFolder folder: URL) -> String? {
         let plistURL = folder.appendingPathComponent(infoPlistName, isDirectory: false)
-        guard let data = try? Data(contentsOf: plistURL),
+        guard let data = FileAccessAudit.data(contentsOf: plistURL),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let path = plist["WorkspacePath"] as? String,
               !path.isEmpty

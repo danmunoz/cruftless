@@ -11,16 +11,19 @@ public enum DrillDownProvider: Sendable {
 
     private static let archivesLocationId = "archives"
 
+    /// Lists the children of `roots`, or of the location's own roots, keeping only what the access gate clears.
     public static func loadChildren(
         for location: TrackedLocation,
-        knownSizes: [String: [String: SizeResult]] = [:]
+        roots: [URL]? = nil,
+        knownSizes: [String: [String: SizeResult]] = [:],
+        accessGate: AccessGate = .shared
     ) -> [ChildEntry] {
-        let roots = location.resolveRoots()
+        let roots = accessGate.partition(roots ?? location.resolveRoots(), for: location).clear
         if location.id == "androidSDK" {
             return androidSDKPackages(in: roots).children
         }
         if location.id == "androidAVDs" {
-            return androidAVDs(in: roots)
+            return androidAVDs(in: roots, accessGate: accessGate)
         }
         let inodeSet = InodeSet()
         var children: [ChildEntry] = []
@@ -60,7 +63,7 @@ public enum DrillDownProvider: Sendable {
         knownSizes sizesForRoot: [String: SizeResult]
     ) -> [ChildEntry] {
         let path = ProtectedPaths.normalize(root)
-        guard let dir = opendir(path) else { return [] }
+        guard let dir = FileAccessAudit.openDirectory(path) else { return [] }
         defer { closedir(dir) }
 
         var children: [ChildEntry] = []
@@ -153,7 +156,7 @@ public enum DrillDownProvider: Sendable {
         knownSizes sizesForRoot: [String: SizeResult]
     ) -> [ChildEntry] {
         let path = dateFolderPath
-        guard let dir = opendir(path) else { return [] }
+        guard let dir = FileAccessAudit.openDirectory(path) else { return [] }
         defer { closedir(dir) }
 
         var results: [ChildEntry] = []
@@ -217,7 +220,7 @@ public enum DrillDownProvider: Sendable {
 
     public static func readArchiveCreationDate(at archiveURL: URL) -> StalenessInfo {
         let infoPlistURL = archiveURL.appendingPathComponent("Info.plist")
-        if let data = try? Data(contentsOf: infoPlistURL),
+        if let data = FileAccessAudit.data(contentsOf: infoPlistURL),
            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
            let creationDate = plist["CreationDate"] as? Date {
             return StalenessInfo(lastUsedDate: creationDate)
@@ -233,7 +236,7 @@ public enum DrillDownProvider: Sendable {
 
     private static func newestChildMtime(at url: URL) -> Date? {
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-        guard let dir = opendir(path) else { return nil }
+        guard let dir = FileAccessAudit.openDirectory(path) else { return nil }
         defer { closedir(dir) }
 
         var maxMtime: Date?

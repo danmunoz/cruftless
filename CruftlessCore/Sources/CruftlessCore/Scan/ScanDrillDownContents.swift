@@ -15,6 +15,7 @@ struct DrillDownScanContext: Sendable {
     let runtimeListing: SimulatorRuntimeListing?
     let runtimesFailure: String?
     let deviceLister: RuntimeCatalogDeviceLister?
+    var accessGate: AccessGate = .shared
 }
 
 /// The half of a scan that produces what a drill-down will render, and the per-location walk that feeds it.
@@ -51,57 +52,76 @@ extension ScanEngine {
         }
     }
 
+    /// Walks only the roots the access gate cleared; a blocked root is reported, never opened.
     nonisolated static func scanFilesystemLocation(
         _ location: TrackedLocation,
-        roots: [URL],
+        gated: GatedRoots,
         inodeSet: InodeSet,
-        simulatorContext: SimulatorScanContext = SimulatorScanContext()
+        simulatorContext: SimulatorScanContext = SimulatorScanContext(),
+        accessGate: AccessGate = .shared
     ) -> LocationOutcome {
         ScanSignposts.shared.measure("ScanLocation") {
-            let readable = readableRoots(among: roots)
+            let readable = readableRoots(among: gated.clear)
+            let refused = refusedRoots(gated, readable: readable.roots, location: location)
 
             if readable.roots.isEmpty {
+                if let need = accessNeed(gated.blocked + refused, measuredRootCount: 0) {
+                    return needsAccessOutcome(location, need: need)
+                }
                 return emptyFilesystemOutcome(location, unreadableReason: readable.unreadableReason)
             }
 
-            let walked = walkRoots(
+            var walked = walkRoots(
                 location,
                 readable.roots,
                 inodeSet: inodeSet,
                 recordingDepth: DrillDownProvider.sizeRecordingDepth(for: location)
             )
-            let contents = drillDownContents(
-                for: location,
-                context: DrillDownScanContext(
-                    knownSizes: walked.breakdowns,
-                    roots: walked.rootSizes,
-                    runtimeListing: simulatorContext.listing,
-                    runtimesFailure: simulatorContext.failure,
-                    deviceLister: simulatorContext.deviceLister
-                )
-            )
-            let issues = [incompleteReason(for: location, walk: walked), contents?.inventoryIssue]
+            let denied = deniedRoots(gated, walk: &walked, location: location)
+            let measuredCount = readable.roots.count - denied.count
+            let need = accessNeed(gated.blocked + refused + denied, measuredRootCount: measuredCount)
+            if measuredCount == 0, let need {
+                return needsAccessOutcome(location, need: need)
+            }
+            let contents = drillDownContents(for: location, walked: walked, simulatorContext: simulatorContext, accessGate: accessGate)
+            let issues = [incompleteReason(for: location, walk: walked), contents?.inventoryIssue, need?.message]
                 .compactMap(\.self)
             return LocationOutcome(
                 locationId: location.id,
                 entry: .sized(
                     location: location,
                     reclaimableBytes: walked.totalAllocated,
-                    staleness: staleness(
-                        for: location,
-                        roots: readable.roots,
-                        newestMtime: walked.newestMtime
-                    ),
+                    staleness: staleness(for: location, roots: walked.rootSizes.map(\.url), newestMtime: walked.newestMtime),
                     roots: walked.rootSizes,
                     eligibleCleanupBytes: location.id == LocationCatalog.xctestDevices.id
                         ? eligibleTestDeviceBytes(contents, protectedPaths: simulatorContext.protectedPaths)
-                        : nil
+                        : nil,
+                    accessNeed: need
                 ),
                 failure: issues.isEmpty ? nil : issues.joined(separator: " "),
                 childBreakdowns: walked.breakdowns,
                 contents: contents
             )
         }
+    }
+
+    nonisolated private static func drillDownContents(
+        for location: TrackedLocation,
+        walked: RootsWalk,
+        simulatorContext: SimulatorScanContext,
+        accessGate: AccessGate
+    ) -> DrillDownContent? {
+        drillDownContents(
+            for: location,
+            context: DrillDownScanContext(
+                knownSizes: walked.breakdowns,
+                roots: walked.rootSizes,
+                runtimeListing: simulatorContext.listing,
+                runtimesFailure: simulatorContext.failure,
+                deviceLister: simulatorContext.deviceLister,
+                accessGate: accessGate
+            )
+        )
     }
 
     nonisolated static func eligibleTestDeviceBytes(_ contents: DrillDownContent?, protectedPaths: ProtectedPaths) -> Int64 {
@@ -146,7 +166,7 @@ extension ScanEngine {
 
         if location.id == "androidSDK" {
             let scan = DrillDownProvider.androidSDKPackages(
-                in: context.roots.map(\.url),
+                in: context.accessGate.clearRoots(context.roots.map(\.url)),
                 rootSizes: context.roots,
                 knownSizes: context.knownSizes
             )
@@ -166,16 +186,22 @@ extension ScanEngine {
 
         if location.id == "androidAVDs" {
             let children = DrillDownProvider.androidAVDs(
-                in: context.roots.map(\.url),
+                in: context.accessGate.clearRoots(context.roots.map(\.url)),
                 rootSizes: context.roots,
-                knownSizes: context.knownSizes
+                knownSizes: context.knownSizes,
+                accessGate: context.accessGate
             )
             if let issue = location.discoveryIssue() { return .childrenWithIssue(children, issue) }
             return .children(children)
         }
 
         guard location.id == LocationCatalog.simulatorDevices.id || location.id == LocationCatalog.xctestDevices.id else {
-            return .children(DrillDownProvider.loadChildren(for: location, knownSizes: context.knownSizes))
+            return .children(DrillDownProvider.loadChildren(
+                for: location,
+                roots: context.roots.map(\.url),
+                knownSizes: context.knownSizes,
+                accessGate: context.accessGate
+            ))
         }
 
         guard let runtimeListing = context.runtimeListing, let deviceLister = context.deviceLister else {

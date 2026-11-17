@@ -77,6 +77,10 @@ public struct CategoryRowView: View {
             if isMeasuring {
                 Text("Measuring…")
                     .foregroundStyle(.tertiary)
+            } else if entry.isUnavailable, let need = entry.accessNeed {
+                Text(need.summary)
+                    .foregroundStyle(.secondary)
+                    .help(need.message)
             } else if entry.isUnavailable {
                 Text("Unavailable: \(entry.unavailableReason ?? "cannot be read")")
                     .foregroundStyle(.secondary)
@@ -158,6 +162,16 @@ public struct CategoryRowView: View {
                 onAction: {},
                 onRescan: {}
             )
+        }
+        .padding(8)
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Rows: needs access, not allowed, partly measured") {
+        VStack(spacing: 2) {
+            ForEach(PreviewFixtures.accessNeedEntries) { entry in
+                CategoryRowView(entry: entry, onSelect: {}, onAction: {}, onRescan: {})
+            }
         }
         .padding(8)
         .frame(width: PopoverMetrics.width)

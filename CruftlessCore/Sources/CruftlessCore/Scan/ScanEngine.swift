@@ -25,6 +25,8 @@ public actor ScanEngine {
     private let signposts = ScanSignposts.shared
     private let runtimeLister: RuntimeCatalogLister
     private let deviceLister: RuntimeCatalogDeviceLister
+    /// Decides which roots may be opened; every walk and listing below goes through it.
+    let accessGate: AccessGate
 
     /// Ceiling on the `simctl` call that sizes the runtimes row.
     package static let simctlScanTimeout: Duration = .seconds(10)
@@ -33,8 +35,10 @@ public actor ScanEngine {
     public init(
         runtimeLister: RuntimeLister? = nil,
         deviceLister: DeviceLister? = nil,
-        runtimeCatalogLister: RuntimeCatalogLister? = nil
+        runtimeCatalogLister: RuntimeCatalogLister? = nil,
+        accessGate: AccessGate = .shared
     ) {
+        self.accessGate = accessGate
         let service = SimulatorService(
             simctlRunner: SimctlRunner(
                 executor: DefaultSimctlExecutor(timeout: Self.simctlScanTimeout)
@@ -138,11 +142,12 @@ extension ScanEngine {
                     self.cachedGradleCacheCleanableBytes = 0
                 }
 
-                // Resolved once, here, and carried into the walk.
-                let resolved = locations.map { (location: $0, roots: $0.resolveRoots()) }
+                // Resolved and gated once, here, and carried into the walk.
+                let gate = self.accessGate
+                let resolved = locations.map { (location: $0, roots: gate.partition($0.resolveRoots(), for: $0)) }
 
                 continuation.yield(.planned(
-                    resolved.filter { Self.willProduceRow($0.location, roots: $0.roots) }.map(\.location)
+                    resolved.filter { Self.willProduceRow($0.location, roots: $0.roots.all) }.map(\.location)
                 ))
 
                 let collectedEntries = await self.walkAndYield(
@@ -175,13 +180,13 @@ extension ScanEngine {
 
     /// Walks every resolved location and yields what each produced, in the order the walks land.
     private func walkAndYield(
-        _ resolved: [(location: TrackedLocation, roots: [URL])],
+        _ resolved: [(location: TrackedLocation, roots: GatedRoots)],
         inodes: InodeSet,
         generation: UInt64,
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> [InventoryEntry] {
         let lister = runtimeLister
-        let gradleRoots = resolved.first { $0.location.id == LocationCatalog.gradleCaches.id }?.roots ?? []
+        let gradleRoots = resolved.first { $0.location.id == LocationCatalog.gradleCaches.id }?.roots.clear ?? []
         let runtimesTask: Task<SimulatorRuntimeListing, any Error>? =
             resolved.contains(where: { Self.needsRuntimes($0.location) })
                 ? Task { try await lister() }
@@ -235,10 +240,11 @@ extension ScanEngine {
 
         // Read on the actor, before the hop: the closure below runs off it and must not touch stored state.
         let knownSizes = childSizeCache[location.id] ?? [:]
+        let gate = accessGate
 
         return await offActor {
             ScanSignposts.shared.measure("LazyDrillDown") {
-                DrillDownProvider.loadChildren(for: location, knownSizes: knownSizes)
+                DrillDownProvider.loadChildren(for: location, knownSizes: knownSizes, accessGate: gate)
             }
         }
     }
@@ -246,10 +252,11 @@ extension ScanEngine {
     /// Measures read-only Android roots and builds their coherent detail inventory.
     public func androidDrillDown(for location: TrackedLocation) async -> DrillDownContent? {
         guard location.platform == .android else { return nil }
-        let roots = location.resolveRoots()
+        let gated = accessGate.partition(location.resolveRoots(), for: location)
+        let gate = accessGate
         return await offActor {
             ScanSignposts.shared.measure("AndroidDrillDown") {
-                ScanEngine.scanFilesystemLocation(location, roots: roots, inodeSet: InodeSet()).contents
+                ScanEngine.scanFilesystemLocation(location, gated: gated, inodeSet: InodeSet(), accessGate: gate).contents
             }
         }
     }
@@ -257,7 +264,7 @@ extension ScanEngine {
     /// Scans one location and reports when measurement begins.
     private func scanSingleLocation(
         _ location: TrackedLocation,
-        roots: [URL],
+        roots: GatedRoots,
         walk: LocationWalk,
         into continuation: AsyncStream<ScanEvent>.Continuation
     ) async -> LocationOutcome {
@@ -278,6 +285,7 @@ extension ScanEngine {
                 : (list: nil, failure: nil)
             let deviceLister = deviceLister
             let gate = generationGate
+            let accessGate = accessGate
 
             return await offActor {
                 // A newer generation superseded this scan while the walk waited its turn.
@@ -287,9 +295,10 @@ extension ScanEngine {
                 continuation.yield(.locationStarted(locationId: location.id))
                 return Self.scanFilesystemLocation(
                     location,
-                    roots: roots,
+                    gated: roots,
                     inodeSet: inodeSet,
-                    simulatorContext: SimulatorScanContext(listing: runtimes.list, failure: runtimes.failure, deviceLister: deviceLister)
+                    simulatorContext: SimulatorScanContext(listing: runtimes.list, failure: runtimes.failure, deviceLister: deviceLister),
+                    accessGate: accessGate
                 )
             }
         }

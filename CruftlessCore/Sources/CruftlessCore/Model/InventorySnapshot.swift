@@ -3,12 +3,24 @@ import Foundation
 /// A scan's rows in a form that survives a relaunch.
 public struct InventorySnapshot: Codable, Sendable, Equatable {
     /// Bumped whenever the saved snapshot shape changes.
-    public static let schemaVersion = 4
+    public static let schemaVersion = 5
 
     /// What the row measured.
     public enum Kind: Codable, Sendable, Equatable {
-        case sized(bytes: Int64, eligibleCleanupBytes: Int64? = nil)
+        case sized(bytes: Int64, eligibleCleanupBytes: Int64? = nil, accessNeed: LocationAccessNeed? = nil)
         case unavailable(reason: String)
+        case needsAccess(LocationAccessNeed)
+
+        init(_ entry: InventoryEntry) {
+            switch entry {
+            case let .sized(_, bytes, _, _, _, need):
+                self = .sized(bytes: bytes, eligibleCleanupBytes: entry.eligibleCleanupBytes, accessNeed: need)
+            case let .unavailable(_, reason):
+                self = .unavailable(reason: reason)
+            case let .needsAccess(_, need):
+                self = .needsAccess(need)
+            }
+        }
     }
 
     public struct RootRow: Codable, Sendable, Equatable {
@@ -55,10 +67,7 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
         rows = inventory.entries.map { entry in
             Row(
                 locationId: entry.location.id,
-                kind: entry.unavailableReason.map(Kind.unavailable) ?? .sized(
-                    bytes: entry.reclaimableBytes,
-                    eligibleCleanupBytes: entry.eligibleCleanupBytes
-                ),
+                kind: Kind(entry),
                 lastUsedDate: entry.staleness.lastUsedDate,
                 roots: entry.roots.map {
                     RootRow(
@@ -84,7 +93,7 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
         let entries = rows.compactMap { row -> InventoryEntry? in
             guard let location = locationsById[row.locationId] else { return nil }
             switch row.kind {
-            case let .sized(bytes, eligibleBytes):
+            case let .sized(bytes, eligibleBytes, accessNeed):
                 return .sized(
                     location: location,
                     reclaimableBytes: bytes,
@@ -98,10 +107,13 @@ public struct InventorySnapshot: Codable, Sendable, Equatable {
                             layout: $0.layout
                         )
                     },
-                    eligibleCleanupBytes: version >= 4 ? eligibleBytes : nil
+                    eligibleCleanupBytes: version >= 4 ? eligibleBytes : nil,
+                    accessNeed: accessNeed
                 )
             case let .unavailable(reason):
                 return .unavailable(location: location, reason: reason)
+            case let .needsAccess(need):
+                return .needsAccess(location: location, need: need)
             }
         }
 

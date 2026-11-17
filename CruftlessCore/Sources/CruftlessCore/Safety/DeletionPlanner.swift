@@ -12,6 +12,10 @@ public enum DeletionPlanner {
         guard location.tier.isDeletable else {
             throw DeletionPlanningError.notDeletable(title: location.title)
         }
+        // A row that skipped protected roots is refused whole, never shrunk to the roots it could read.
+        if let need = entry.accessNeed {
+            throw DeletionPlanningError.needsAccess(title: location.title, need: need)
+        }
         if let reason = entry.unavailableReason {
             throw DeletionPlanningError.unavailable(title: location.title, reason: reason)
         }

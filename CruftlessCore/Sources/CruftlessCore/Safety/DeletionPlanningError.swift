@@ -38,6 +38,8 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
     case inventoryChanged(title: String)
     /// A Derived Data folder listed as orphaned has a project again, or its project can no longer be checked.
     case orphanedProjectChanged(name: String)
+    /// Some or all of the location lies in a protected area Cruftless has not read, so nothing there can be planned.
+    case needsAccess(title: String, need: LocationAccessNeed)
 
     public var errorDescription: String? {
         switch self {
@@ -83,6 +85,10 @@ public enum DeletionPlanningError: Error, Sendable, Equatable, LocalizedError {
             "\(title) changed while it was being prepared. Try again."
         case let .orphanedProjectChanged(name):
             "\(name)'s project is no longer confirmed missing. Rescan Derived Data and try again."
+        case let .needsAccess(title, need):
+            need.isNotAllowed
+                ? "\(title) can't be cleared: \(need.summary). Allow Cruftless in System Settings > Privacy & Security, then rescan."
+                : "\(title) can't be cleared until Cruftless has access to \(need.areaNames). Nothing there has been read."
         }
     }
 
