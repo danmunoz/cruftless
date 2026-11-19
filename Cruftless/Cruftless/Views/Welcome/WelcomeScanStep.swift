@@ -8,7 +8,13 @@ struct WelcomeScanStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            heading
+            HStack(alignment: .top, spacing: 16) {
+                heading
+                Spacer(minLength: 0)
+                MascotView(expression: mascotExpression, gaze: Self.towardResults)
+                    .frame(width: 72)
+                    .padding(.top, 8)
+            }
             if case .failed = summary.phase {
                 EmptyView()
             } else {
@@ -52,6 +58,17 @@ struct WelcomeScanStep: View {
 
     private var menuBarGlyph: Image {
         Image("MenuBarIcon").renderingMode(.template)
+    }
+
+    /// Down and left of the sheep, where the total and the rows are.
+    private static let towardResults = CGSize(width: -0.9, height: 0.8)
+
+    private var mascotExpression: MascotExpression {
+        switch summary.phase {
+        case .starting, .scanning: .neutral
+        case .finished: .happy
+        case .failed: .worried
+        }
     }
 
     private var total: some View {

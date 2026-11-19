@@ -459,7 +459,11 @@ so nothing in them can be read as the user's own data.
    screen's top right corner with the menu bar icon picked out in accent, the
    popover below it, and the app name. Then "Cruftless lives in your menu bar"
    with the real menu bar glyph inline in the sentence. Nothing is anchored to
-   the real status item, whose frame `MenuBarExtra` does not expose.
+   the real status item, whose frame `MenuBarExtra` does not expose. The sheep
+   stands above the app name, 92 pt wide. Every few seconds it looks up at the
+   menu bar icon, which answers with a small bounce, and while the pointer is
+   over the illustration its eyes follow the pointer. Following the pointer
+   holds the blinking and the glance, so the eyes never jump mid-follow.
 2. **Safety promise.** "Nothing is deleted without you" over
    `WelcomeReviewIllustration` (a sketch of the Review step) and three rows from
    `WelcomePolicy.safetyPromises`. Each promise carries its own symbol; the
@@ -486,6 +490,16 @@ so nothing in them can be read as the user's own data.
    the menu bar", and a place that was skipped or refused is named with the
    same "Allow Access" or "Review Access" action a blocked list row carries.
    The button reads "Close" while scanning and "Done" after. There is no Back.
+   The sheep sits right of the title, 72 pt wide: neutral and looking at the
+   numbers while scanning, happy when the scan is ready, worried when it failed.
+
+**The mascot** (`MascotView`). The sheep is on screen from the start and its
+body never moves: no entrance, no bounce. While neutral, vector eyes drawn over
+the art blink and follow a gaze; an expression change is a 0.2 s crossfade. With
+Reduce Motion the eyes are still. In dark appearance it carries a thin light
+keyline so its plum outline stays visible. It appears on welcome steps 1 and 5
+only: the safety, setup and access steps stay plain. `docs/mascot/BRIEF.md` has
+the character rules.
 
 Closing the window at any step counts as finishing. The copy for whether to
 show it, which steps exist, the safety lines, the platform notes and the scan
