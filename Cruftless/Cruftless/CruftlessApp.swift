@@ -50,7 +50,7 @@ struct CruftlessApp: App {
         .menuBarExtraStyle(.window)
 
         Window("Welcome to Cruftless", id: WelcomeWindow.id) {
-            WelcomeView(model: appDelegate.welcome, accessList: appDelegate.accessList)
+            WelcomeView(model: appDelegate.welcome, accessList: appDelegate.accessList, app: appDelegate.model)
         }
         .defaultLaunchBehavior(appDelegate.welcome.isPending ? .presented : .suppressed)
         .restorationBehavior(.disabled)

@@ -4,10 +4,13 @@ import Foundation
 public struct DetectedPlatforms: Sendable, Hashable {
     public let hasApple: Bool
     public let hasAndroid: Bool
+    /// How many Xcode copies Spotlight knows about.
+    public let xcodeInstallCount: Int
 
-    public init(hasApple: Bool, hasAndroid: Bool) {
+    public init(hasApple: Bool, hasAndroid: Bool, xcodeInstallCount: Int = 0) {
         self.hasApple = hasApple
         self.hasAndroid = hasAndroid
+        self.xcodeInstallCount = xcodeInstallCount
     }
 
     public func contains(_ platform: DevelopmentPlatform) -> Bool {
@@ -27,6 +30,10 @@ public struct DetectedPlatforms: Sendable, Hashable {
 
     /// What the welcome says under a platform's checkbox.
     public func note(for platform: DevelopmentPlatform) -> String {
+        if platform == .apple, xcodeInstallCount > 0 {
+            let installs = xcodeInstallCount == 1 ? "1 Xcode install" : "\(xcodeInstallCount) Xcode installs"
+            return "\(installs) found, plus simulators and Swift packages."
+        }
         let scope = switch platform {
         case .apple: "Xcode, simulators and Swift packages."
         case .android: "Android Studio, SDK, emulators and Gradle."
@@ -41,7 +48,8 @@ public enum PlatformDetection: Sendable {
     public static func detect(xcodeInstalls: [URL], hasXcodeUserData: Bool, androidRoots: [URL]) -> DetectedPlatforms {
         DetectedPlatforms(
             hasApple: !xcodeInstalls.isEmpty || hasXcodeUserData,
-            hasAndroid: !androidRoots.isEmpty
+            hasAndroid: !androidRoots.isEmpty,
+            xcodeInstallCount: xcodeInstalls.count
         )
     }
 

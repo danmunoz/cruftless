@@ -7,20 +7,27 @@ public enum WelcomeWindow {
     public static let id = "welcome"
     static let width: CGFloat = 520
     /// The content height; the hidden title bar adds its own band above it.
-    static let height: CGFloat = 460
+    static let height: CGFloat = 480
     static let gutter: CGFloat = 40
+    static let stepAnimation: Animation = .snappy(duration: 0.3)
 }
 
-/// The first-run welcome: where the app lives, the safety promise, access, and setup.
+/// The first-run welcome: where the app lives, the safety promise, what to scan, access, and the first scan.
 public struct WelcomeView: View {
     public let model: WelcomeModel
     /// The same list Settings shows under Access.
     public let accessList: AccessListModel
+    /// The app whose first scan the last step follows.
+    public let app: AppModel
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isMovingForward = true
 
-    public init(model: WelcomeModel, accessList: AccessListModel) {
+    public init(model: WelcomeModel, accessList: AccessListModel, app: AppModel) {
         self.model = model
         self.accessList = accessList
+        self.app = app
     }
 
     public var body: some View {
@@ -29,9 +36,12 @@ public struct WelcomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal, WelcomeWindow.gutter)
                 .padding(.top, 8)
+                .id(model.step)
+                .transition(stepTransition)
             footer
         }
         .frame(width: WelcomeWindow.width, height: WelcomeWindow.height)
+        .clipped()
         .task { await model.prepare() }
         .onAppear { NSApp.activate() }
         .onDisappear { model.finish() }
@@ -44,40 +54,84 @@ public struct WelcomeView: View {
             WelcomeLocationStep()
         case .safety:
             WelcomeSafetyStep()
-        case .access:
-            WelcomeAccessStep(accessList: accessList)
         case .setup:
             WelcomeSetupStep(settings: model.settings, detected: model.detected)
+                .task(id: model.settings.platformSelection) { await model.refreshAccessNeeds() }
+        case .access:
+            WelcomeAccessStep(accessList: accessList)
+        case .scan:
+            WelcomeScanStep(summary: scanSummary, onOpenAccess: openAccessSettings)
         }
     }
 
+    private var scanSummary: WelcomeScanSummary {
+        WelcomeScanSummary.make(
+            progress: app.scanProgress,
+            inventory: app.inventory,
+            isScanning: app.isScanning,
+            failure: app.scanFailure
+        )
+    }
+
+    /// A step slides in from the side it lies on; with Reduce Motion it fades.
+    private var stepTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: isMovingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: isMovingForward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
     private var footer: WelcomeFooter {
-        let goBack: (() -> Void)? = model.isFirstStep ? nil : { model.back() }
-        let title: LocalizedStringKey = model.isLastStep ? "Start Scanning" : "Continue"
+        let goBack: (() -> Void)? = model.isFirstStep ? nil : { move(forward: false) { model.back() } }
         return WelcomeFooter(
             steps: model.steps,
             current: model.step,
-            primaryTitle: title,
+            caption: model.step == .scan ? scanSummary.progressCaption : nil,
+            primaryTitle: primaryTitle,
+            isPrimaryProminent: model.step != .scan || scanSummary.isFinished,
+            isPrimaryDisabled: !model.canAdvance,
             onBack: goBack,
-            onPrimary: { primaryAction() }
+            onPrimary: primaryAction
         )
+    }
+
+    private var primaryTitle: LocalizedStringKey {
+        if model.step == .scan {
+            return scanSummary.phase == .scanning || scanSummary.phase == .starting ? "Close" : "Done"
+        }
+        return model.startsScanNext ? "Start Scanning" : "Continue"
     }
 
     private func primaryAction() {
         if model.isLastStep {
-            model.finish()
             dismissWindow(id: WelcomeWindow.id)
         } else {
-            model.advance()
+            move(forward: true) { model.advance() }
         }
+    }
+
+    /// Sets the direction first, so the outgoing step leaves by the matching edge.
+    private func move(forward: Bool, _ change: () -> Void) {
+        isMovingForward = forward
+        withAnimation(WelcomeWindow.stepAnimation, change)
+    }
+
+    private func openAccessSettings() {
+        app.requestAccessSettings()
+        openSettings()
+        NSApp.activate()
     }
 }
 
-/// Step dots on the left, Back and the primary action on the right.
+/// Step dots on the left, an optional caption, then Back and the primary action on the right.
 struct WelcomeFooter: View {
     let steps: [WelcomeStep]
     let current: WelcomeStep
+    var caption: String?
     let primaryTitle: LocalizedStringKey
+    var isPrimaryProminent = true
+    var isPrimaryDisabled = false
     let onBack: (() -> Void)?
     let onPrimary: () -> Void
 
@@ -85,88 +139,46 @@ struct WelcomeFooter: View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 ForEach(steps) { step in
-                    Circle()
+                    Capsule()
                         .fill(step == current ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
-                        .frame(width: 6, height: 6)
+                        .frame(width: step == current ? 16 : 6, height: 6)
                 }
             }
+            .animation(WelcomeWindow.stepAnimation, value: current)
             .accessibilityElement()
             .accessibilityLabel(positionLabel)
 
             Spacer()
 
+            if let caption {
+                WelcomeCaption(caption)
+                    .monospacedDigit()
+            }
             if let onBack {
                 Button("Back", action: onBack)
                     .buttonStyle(.glass)
             }
-            Button(primaryTitle, action: onPrimary)
-                .buttonStyle(.glassProminent)
+            primaryButton
                 .keyboardShortcut(.defaultAction)
+                .disabled(isPrimaryDisabled)
         }
         .controlSize(.large)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
     }
 
+    @ViewBuilder private var primaryButton: some View {
+        if isPrimaryProminent {
+            Button(primaryTitle, action: onPrimary)
+                .buttonStyle(.glassProminent)
+        } else {
+            Button(primaryTitle, action: onPrimary)
+                .buttonStyle(.glass)
+        }
+    }
+
     private var positionLabel: String {
         let position = (steps.firstIndex(of: current) ?? 0) + 1
         return "Step \(position) of \(steps.count)"
-    }
-}
-
-/// A step's title and the sentence under it.
-struct WelcomeHeading: View {
-    let title: LocalizedStringKey
-    let subtitle: Text?
-
-    init(_ title: LocalizedStringKey, subtitle: Text? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 22, weight: .semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            if let subtitle {
-                subtitle
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-/// A grouped box of rows.
-struct WelcomeCard<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(.separator, lineWidth: 0.5)
-        }
-    }
-}
-
-/// The 11 pt secondary line used under titles and at the foot of a step.
-struct WelcomeCaption: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }

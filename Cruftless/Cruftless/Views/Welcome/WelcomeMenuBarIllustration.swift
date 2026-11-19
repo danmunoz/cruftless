@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A sketch of the top right corner of the screen, with the Cruftless icon picked out in the menu bar.
+/// A sketch of the top right corner of the screen, with the Cruftless icon picked out in the menu bar and its popover below.
 struct WelcomeMenuBarIllustration: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 10) {
@@ -18,19 +18,32 @@ struct WelcomeMenuBarIllustration: View {
                 otherItem
                 otherItem
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 22)
             .frame(height: 30)
             .background(.regularMaterial)
 
             popoverSketch
-                .padding(.trailing, 44)
+                .padding(.trailing, 34)
         }
         .frame(maxWidth: .infinity, alignment: .topTrailing)
-        .frame(height: 150, alignment: .top)
+        .frame(height: 236, alignment: .top)
+        .overlay(alignment: .bottomLeading) { nameplate }
         .background(.quaternary)
         .clipShape(.rect(cornerRadius: 14))
         .accessibilityElement()
-        .accessibilityLabel("The Cruftless icon highlighted in the menu bar at the top right of the screen")
+        .accessibilityLabel("The Cruftless icon highlighted in the menu bar at the top right of the screen, with its window below")
+    }
+
+    private var nameplate: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Cruftless")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Xcode and Android cleanup")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.leading, 24)
+        .padding(.bottom, 20)
     }
 
     private var otherItem: some View {
@@ -40,22 +53,27 @@ struct WelcomeMenuBarIllustration: View {
     }
 
     private var popoverSketch: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            bar(width: 70, height: 12, style: AnyShapeStyle(.primary))
-            bar(width: 160, height: 4, style: AnyShapeStyle(Color.accentColor))
-            bar(width: 138, height: 7, style: AnyShapeStyle(.tertiary))
-            bar(width: 112, height: 7, style: AnyShapeStyle(.tertiary))
-            bar(width: 126, height: 7, style: AnyShapeStyle(.tertiary))
+        VStack(alignment: .leading, spacing: 11) {
+            WelcomeSketchBar(width: 92, height: 16, style: .init(.primary))
+            WelcomeSketchBar(width: 182, height: 5, style: .init(Color.accentColor))
+            sketchRow(96, 34)
+                .padding(.top, 4)
+            sketchRow(74, 28)
+            sketchRow(108, 34)
+            sketchRow(82, 24)
+            sketchRow(90, 30)
         }
-        .padding(14)
-        .frame(width: 190, height: 130, alignment: .topLeading)
-        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12))
+        .padding(16)
+        .frame(width: 214, height: 230, alignment: .topLeading)
+        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
     }
 
-    private func bar(width: CGFloat, height: CGFloat, style: AnyShapeStyle) -> some View {
-        RoundedRectangle(cornerRadius: height / 2)
-            .fill(style)
-            .frame(width: width, height: height)
+    private func sketchRow(_ name: CGFloat, _ size: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            WelcomeSketchBar(width: name)
+            Spacer(minLength: 0)
+            WelcomeSketchBar(width: size)
+        }
     }
 }

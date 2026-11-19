@@ -12,6 +12,8 @@ public final class WelcomeModel {
     /// What was found on this Mac, nil until the check returns.
     public private(set) var detected: DetectedPlatforms?
     public private(set) var hasAccessNeeds = false
+    /// True until the access check for the current platform selection has answered.
+    public private(set) var isCheckingAccess = true
     public let settings: SettingsModel
 
     /// Runs once, when the welcome is finished or its window is closed.
@@ -23,6 +25,9 @@ public final class WelcomeModel {
     /// False when the welcome is forced for inspection, so it changes no saved setting.
     private let persistsChoices: Bool
     private var hasPrepared = false
+    /// True when the access step is forced for inspection, whatever the check finds.
+    private var forcesAccessStep = false
+    private var accessCheckGeneration = 0
 
     public var steps: [WelcomeStep] {
         WelcomePolicy.steps(hasAccessNeeds: hasAccessNeeds)
@@ -34,6 +39,16 @@ public final class WelcomeModel {
 
     public var isLastStep: Bool {
         WelcomePolicy.step(after: step, in: steps) == nil
+    }
+
+    /// True when the primary action of the current step starts the first scan.
+    public var startsScanNext: Bool {
+        WelcomePolicy.startsScan(after: step, in: steps)
+    }
+
+    /// False on the platform step while the access check is out, so its label never changes under a click.
+    public var canAdvance: Bool {
+        !(step == .setup && isCheckingAccess)
     }
 
     public init(
@@ -62,7 +77,8 @@ public final class WelcomeModel {
         #if DEBUG
             if isForced, let raw = defaults.string(forKey: DebugKeys.step), let forcedStep = WelcomeStep(rawValue: raw) {
                 step = forcedStep
-                hasAccessNeeds = forcedStep == .access
+                forcesAccessStep = forcedStep == .access
+                hasAccessNeeds = forcesAccessStep
             }
         #endif
     }
@@ -78,13 +94,30 @@ public final class WelcomeModel {
             preselect(found.selection)
         }
 
+        await refreshAccessNeeds()
+        if step == .scan {
+            finish()
+        }
+    }
+
+    /// Re-runs the access check for the selected platforms; a newer call supersedes an older one.
+    public func refreshAccessNeeds() async {
+        accessCheckGeneration += 1
+        let generation = accessCheckGeneration
+        isCheckingAccess = true
         let needsAccess = await findAccessNeeds(settings.activeCatalog.locations)
-        hasAccessNeeds = hasAccessNeeds || needsAccess
+        guard generation == accessCheckGeneration else { return }
+        hasAccessNeeds = forcesAccessStep || needsAccess
+        isCheckingAccess = false
         step = WelcomePolicy.resolved(step, in: steps)
     }
 
+    /// Moves forward; entering the scan step is what starts the first scan.
     public func advance() {
-        guard let next = WelcomePolicy.step(after: step, in: steps) else { return }
+        guard canAdvance, let next = WelcomePolicy.step(after: step, in: steps) else { return }
+        if next == .scan {
+            finish()
+        }
         step = next
     }
 
@@ -93,7 +126,7 @@ public final class WelcomeModel {
         step = previous
     }
 
-    /// Records that the welcome was seen and hands over to the app.
+    /// Records that the welcome was seen and hands over to the app, which starts the first scan.
     public func finish() {
         guard isPending else { return }
         isPending = false
@@ -139,6 +172,8 @@ public final class WelcomeModel {
             model.hasPrepared = true
             model.detected = detected
             model.hasAccessNeeds = hasAccessNeeds
+            model.forcesAccessStep = hasAccessNeeds
+            model.isCheckingAccess = false
             model.step = WelcomePolicy.resolved(step, in: model.steps)
             return model
         }

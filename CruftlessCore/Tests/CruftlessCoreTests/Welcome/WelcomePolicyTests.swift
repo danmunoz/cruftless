@@ -12,10 +12,10 @@ struct WelcomePolicyTests {
         #expect(!WelcomePolicy.shouldShow(isCompleted: true, hasSavedInventory: true))
     }
 
-    @Test("The access step exists only when something needs access")
+    @Test("The access step exists only when something needs access, after the platform choice")
     func accessStepIsConditional() {
-        #expect(WelcomePolicy.steps(hasAccessNeeds: false) == [.location, .safety, .setup])
-        #expect(WelcomePolicy.steps(hasAccessNeeds: true) == [.location, .safety, .access, .setup])
+        #expect(WelcomePolicy.steps(hasAccessNeeds: false) == [.location, .safety, .setup, .scan])
+        #expect(WelcomePolicy.steps(hasAccessNeeds: true) == [.location, .safety, .setup, .access, .scan])
     }
 
     @Test("Stepping forward and back stops at the ends")
@@ -23,22 +23,46 @@ struct WelcomePolicyTests {
         let steps = WelcomePolicy.steps(hasAccessNeeds: false)
         #expect(WelcomePolicy.step(after: .location, in: steps) == .safety)
         #expect(WelcomePolicy.step(after: .safety, in: steps) == .setup)
-        #expect(WelcomePolicy.step(after: .setup, in: steps) == nil)
+        #expect(WelcomePolicy.step(after: .setup, in: steps) == .scan)
+        #expect(WelcomePolicy.step(after: .scan, in: steps) == nil)
         #expect(WelcomePolicy.step(before: .setup, in: steps) == .safety)
         #expect(WelcomePolicy.step(before: .location, in: steps) == nil)
     }
 
-    @Test("A step that leaves the list resolves to the last step")
+    @Test("The scan step has no way back")
+    func scanStepCannotGoBack() {
+        for hasAccessNeeds in [false, true] {
+            let steps = WelcomePolicy.steps(hasAccessNeeds: hasAccessNeeds)
+            #expect(WelcomePolicy.step(before: .scan, in: steps) == nil)
+        }
+    }
+
+    @Test("Only the step right before the scan starts it")
+    func startsScan() {
+        let plain = WelcomePolicy.steps(hasAccessNeeds: false)
+        #expect(WelcomePolicy.startsScan(after: .setup, in: plain))
+        #expect(!WelcomePolicy.startsScan(after: .safety, in: plain))
+
+        let withAccess = WelcomePolicy.steps(hasAccessNeeds: true)
+        #expect(!WelcomePolicy.startsScan(after: .setup, in: withAccess))
+        #expect(WelcomePolicy.startsScan(after: .access, in: withAccess))
+        #expect(!WelcomePolicy.startsScan(after: .scan, in: withAccess))
+    }
+
+    @Test("A step that leaves the list resolves to the step before it, never forward into the scan")
     func resolvesRemovedStep() {
         let steps = WelcomePolicy.steps(hasAccessNeeds: false)
         #expect(WelcomePolicy.resolved(.access, in: steps) == .setup)
         #expect(WelcomePolicy.resolved(.safety, in: steps) == .safety)
+        #expect(WelcomePolicy.resolved(.scan, in: steps) == .scan)
     }
 
-    @Test("The safety promise has three distinct lines")
+    @Test("The safety promise has three distinct lines, one of them the flagged warning")
     func safetyPromises() {
         #expect(WelcomePolicy.safetyPromises.count == 3)
         #expect(Set(WelcomePolicy.safetyPromises.map(\.id)).count == 3)
+        #expect(WelcomePolicy.safetyPromises.count(where: \.isWarning) == 1)
+        #expect(WelcomePolicy.safetyPromises.allSatisfy { !$0.symbol.isEmpty })
     }
 }
 
@@ -73,5 +97,14 @@ struct PlatformDetectionTests {
         let detected = DetectedPlatforms(hasApple: true, hasAndroid: false)
         #expect(detected.note(for: .apple).hasSuffix("Found on this Mac."))
         #expect(detected.note(for: .android).hasSuffix("Not found on this Mac."))
+    }
+
+    @Test("The Apple note counts the Xcode installs found")
+    func xcodeInstallCount() {
+        let other = URL(fileURLWithPath: "/Applications/Xcode-beta.app", isDirectory: true)
+        let one = PlatformDetection.detect(xcodeInstalls: [xcode], hasXcodeUserData: true, androidRoots: [])
+        let two = PlatformDetection.detect(xcodeInstalls: [xcode, other], hasXcodeUserData: false, androidRoots: [])
+        #expect(one.note(for: .apple).hasPrefix("1 Xcode install found"))
+        #expect(two.note(for: .apple).hasPrefix("2 Xcode installs found"))
     }
 }
