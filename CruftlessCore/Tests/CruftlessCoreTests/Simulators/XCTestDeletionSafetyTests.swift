@@ -24,6 +24,35 @@ struct XCTestDeletionSafetyTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.directory.path))
     }
 
+    @Test("Several shut-down test devices plan and execute as one reviewed batch")
+    func batchDeletesEveryTestDevice() async throws {
+        let first = try Fixture()
+        let second = try Fixture()
+        defer { first.remove()
+            second.remove()
+        }
+        let generation = UUID()
+        let plan = try DeletionPlanner.simulatorDevices(
+            [(first.device(generation: generation), 1), (second.device(generation: generation), 1)],
+            context: PlanningContext()
+        )
+        #expect(plan.count == 2)
+        #expect(plan.confirmLabel == "Delete Test Simulators")
+
+        let commands = BatchCommands(owners: [first.udid: first.directory, second.udid: second.directory])
+        let executor = DeletionExecutor(
+            simulatorExecutor: commands,
+            capacitySampler: { 100 },
+            settleSleep: {},
+            xctestConfirmationTimeout: .milliseconds(10)
+        )
+        let result = await executor.execute(plan)
+        #expect(result.allSucceeded)
+        #expect(Set(commands.log.commands) == ["xctest:\(first.udid)", "xctest:\(second.udid)"])
+        #expect(!FileManager.default.fileExists(atPath: first.directory.path))
+        #expect(!FileManager.default.fileExists(atPath: second.directory.path))
+    }
+
     @Test("Booted or unknown test devices cannot reach Review", arguments: [SimDeviceState.booted, .other])
     func planningRejectsNonShutdown(state: SimDeviceState) throws {
         let fixture = try Fixture()
@@ -154,9 +183,10 @@ struct XCTestDeletionSafetyTests {
             try data.write(to: directory.appendingPathComponent("device.plist"), options: .atomic)
         }
 
-        func device(state: SimDeviceState = .shutdown) -> SimDevice {
+        func device(state: SimDeviceState = .shutdown, generation: UUID = UUID()) -> SimDevice {
             SimDevice(udid: udid, name: "Cruftless disposable test", runtime: "runtime", state: state, lastUsedAt: nil,
-                      deviceDirectory: directory, toolchainGeneration: UUID(), runtimeAvailability: .available, deviceSet: .xctest())
+                      deviceDirectory: directory, toolchainGeneration: generation, runtimeAvailability: .available,
+                      deviceSet: .xctest())
         }
 
         func createOwnedDirectory(_ url: URL) throws {
@@ -202,6 +232,33 @@ struct XCTestDeletionSafetyTests {
             #expect(directory == deviceSet.root.appendingPathComponent(udid, isDirectory: true))
             log.record("xctest:\(udid)")
             if removesDevice { TestFileSystem.removeDirectoryRecursively(at: directory) }
+        }
+    }
+
+    /// Removes each fixture-owned device directory when `simctl` is asked to delete it.
+    private struct BatchCommands: SimulatorCommandExecuting {
+        let owners: [String: URL]
+        let log = CommandLog()
+        func shutdownSimulator(udid: String) async throws {
+            log.record("shutdown:\(udid)")
+        }
+
+        func eraseSimulator(udid: String) async throws {
+            log.record("erase:\(udid)")
+        }
+
+        func deleteSimulator(udid: String) async throws {
+            log.record("ordinary:\(udid)")
+        }
+
+        func deleteRuntime(identifier: String) async throws {
+            log.record("runtime:\(identifier)")
+        }
+
+        func deleteTestSimulator(udid: String, deviceSet: SimulatorDeviceSet) async throws {
+            #expect(deviceSet.kind == .xctest)
+            log.record("xctest:\(udid)")
+            if let directory = owners[udid] { TestFileSystem.removeDirectoryRecursively(at: directory) }
         }
     }
 }

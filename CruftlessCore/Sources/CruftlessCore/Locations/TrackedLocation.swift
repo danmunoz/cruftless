@@ -88,6 +88,16 @@ public struct TrackedLocation: Sendable, Hashable, Identifiable {
         mutationPolicy.isReadOnly && itemRemoval == .none
     }
 
+    /// True when `DeletionPlanner.wholeLocation` can plan this location: path-deleted, deletable and not flagged.
+    public var supportsWholeLocationClear: Bool {
+        mutationPolicy == .pathDeletion && tier.isDeletable && !tier.isFlagged
+    }
+
+    /// True when Select Items can stage more than one child of this location in one reviewed batch.
+    public var supportsBatchSelection: Bool {
+        hasDrillDown && !mutationPolicy.isReadOnly && itemRemoval == .none && tier.isDeletable
+    }
+
     /// The fallback consequence for a location with nothing more specific to say: what its tier already promises.
     public static func defaultConsequence(for tier: Tier) -> String {
         switch tier {

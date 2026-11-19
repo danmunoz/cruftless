@@ -64,7 +64,7 @@ private struct SelectionControls: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if session.location.id != LocationCatalog.gradleCaches.id {
+            if session.location.supportsBatchSelection {
                 Button("Select All") { model.selectEligibleCleanupRows(in: session) }
                     .disabled(!session.isReady || session.isRefreshing || model.isDeleting
                         || !session.rows.contains(where: \.selectionItem.isSelectable))

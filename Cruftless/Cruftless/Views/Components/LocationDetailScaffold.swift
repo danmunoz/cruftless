@@ -51,9 +51,9 @@ struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
         }
     #endif
 
-    /// Every location with a child listing offers Select Items, except Android Virtual Devices.
+    /// Select Items appears only where more than one child can be staged in one reviewed batch.
     private var offersSelection: Bool {
-        location.hasDrillDown && location.id != LocationCatalog.androidAVDs.id
+        location.supportsBatchSelection
     }
 
     var body: some View {

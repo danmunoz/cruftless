@@ -89,9 +89,11 @@ extension AppModel {
             return
         }
         guard session.isReady, !session.isRefreshing else { return }
-        let allowsMultiple = session.location.id != LocationCatalog.gradleCaches.id
-            && session.location.id != LocationCatalog.xctestDevices.id
-        session.selection.toggle(row.id, among: session.rows.map(\.selectionItem), allowsMultiple: allowsMultiple)
+        session.selection.toggle(
+            row.id,
+            among: session.rows.map(\.selectionItem),
+            allowsMultiple: session.location.supportsBatchSelection
+        )
         if session.resolution.invalidIDs.isEmpty {
             session.notice = nil
         }
@@ -99,8 +101,7 @@ extension AppModel {
 
     func selectEligibleCleanupRows(in session: CleanupSelectionSession, groupID: String? = nil) {
         guard !isDeleting, session.isReady, !session.isRefreshing,
-              session.location.id != LocationCatalog.gradleCaches.id,
-              session.location.id != LocationCatalog.xctestDevices.id
+              session.location.supportsBatchSelection
         else { return }
         session.selection.selectEligible(in: session.rows.map(\.selectionItem), groupID: groupID)
     }

@@ -48,9 +48,10 @@ public struct CategoryRowView: View {
         }
         let isDyldCacheCommand = entry.location.id == LocationCatalog.simulatorDyldCache.id
         // Inert while it is being re-measured, like the skeleton rows of a first scan.
-        guard !entry.isUnavailable, !isMeasuring, tier != .irreversible,
+        guard !entry.isUnavailable, !isMeasuring, tier != .irreversible, entry.reclaimableBytes > 0,
               !entry.location.mutationPolicy.isReadOnly || isDyldCacheCommand,
-              tier != .info || isDyldCacheCommand
+              tier != .info || isDyldCacheCommand,
+              !tier.isDeletable || entry.canClearWholeLocation
         else { return nil }
         return RowAction(
             DesignTokens.actionLabel(for: tier),
@@ -158,7 +159,7 @@ public struct CategoryRowView: View {
             previewRow(5) // Xcode installs, reveal
             previewRow(6) // dyld cache, read-only: padlock
             previewRow(10) // archives, flagged, no capsule, sub-GB size
-            previewRow(12) // products/logs, sub-GB size
+            previewRow(11) // products/logs, sub-GB size
             CategoryRowView(
                 entry: .sized(
                     location: LocationCatalog.ibSupport,

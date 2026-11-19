@@ -91,6 +91,11 @@ public enum InventoryEntry: Sendable, Hashable, Identifiable {
         }
     }
 
+    /// True when the row holds measured bytes and its location can be cleared as a whole.
+    public var canClearWholeLocation: Bool {
+        !isUnavailable && reclaimableBytes > 0 && location.supportsWholeLocationClear
+    }
+
     public var unavailableReason: String? {
         switch self {
         case .sized: nil
