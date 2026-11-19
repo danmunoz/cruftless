@@ -39,7 +39,6 @@ public enum RootResolver: Sendable {
             + toolchainsRoot(home: home)
             + swiftPMCacheRoot(home: home)
             + ibSupportRoot(home: home)
-            + codingAssistantRoot(home: home)
             + productsLogsDocCacheRoots(home: home)
             + simulatorDyldCacheRoot()
             + [
@@ -108,10 +107,6 @@ public enum RootResolver: Sendable {
         ibSupportRoot(home: homeURL)
     }
 
-    public static func codingAssistantRoot() -> [URL] {
-        codingAssistantRoot(home: homeURL)
-    }
-
     public static func productsLogsDocCacheRoots() -> [URL] {
         productsLogsDocCacheRoots(home: homeURL)
     }
@@ -153,10 +148,6 @@ public enum RootResolver: Sendable {
 
     static func ibSupportRoot(home: URL) -> [URL] {
         [home.appendingPathComponent("Library/Developer/Xcode/UserData/IB Support", isDirectory: true)]
-    }
-
-    static func codingAssistantRoot(home: URL) -> [URL] {
-        [home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant", isDirectory: true)]
     }
 
     static func productsLogsDocCacheRoots(home: URL) -> [URL] {

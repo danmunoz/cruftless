@@ -118,17 +118,6 @@ public enum LocationCatalog: Sendable {
         resolveDefaultRoots: { [RootResolver.defaultArchivesRoot()] }
     )
 
-    public static let codingAssistant = TrackedLocation(
-        id: "codingAssistant",
-        title: "Xcode coding assistant",
-        icon: .symbol("sparkles"),
-        tier: .judgment,
-        hasDrillDown: false,
-        stalenessSource: .topLevelMtime,
-        consequence: "Coding assistant sessions, agent history and MCP server settings are lost.",
-        resolveRoots: RootResolver.codingAssistantRoot
-    )
-
     public static let productsLogsDocCache = TrackedLocation(
         id: "productsLogsDocCache",
         title: "Build products & logs",
@@ -231,7 +220,6 @@ public enum LocationCatalog: Sendable {
         swiftPMCache,
         ibSupport,
         archives,
-        codingAssistant,
         productsLogsDocCache,
         xcodeInstalls,
         simulatorDyldCache,

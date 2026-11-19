@@ -88,9 +88,12 @@ struct LocationCatalogTests {
         #expect(scannedEntries.isEmpty)
     }
 
-    @Test("Xcode coding assistant is tiered as judgment, not regen")
-    func codingAssistantIsJudgmentTier() {
-        #expect(LocationCatalog.codingAssistant.tier == .judgment)
+    @Test("The Xcode coding assistant folder is not tracked")
+    func codingAssistantIsNotTracked() {
+        #expect(!LocationCatalog.all.contains { $0.id == "codingAssistant" })
+        let home = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+        let codingAssistant = home.appendingPathComponent("Library/Developer/Xcode/CodingAssistant", isDirectory: true)
+        #expect(!RootResolver.fixedTrackedRoots(home: home).contains(codingAssistant))
     }
 
     @Test("Staleness calculation: archiveCreationDate extracts Info.plist date")

@@ -66,7 +66,6 @@ by Apple.
 | SwiftPM cache | Delete; packages are downloaded again when they resolve. |
 | Interface Builder support | Delete; Interface Builder rebuilds it on demand. |
 | Archives | Delete individually with a warning; archives and dSYMs cannot be recovered. |
-| Xcode coding assistant | Delete with a warning about assistant data and settings. |
 | Build products and logs | Delete build output, logs, and caches; device logs do not regenerate. |
 | Xcode installs | Inspect and reveal in Finder; Cruftless does not delete the app. |
 | Simulator dyld cache | Inspect only; Cruftless provides a command for this root-owned data. |

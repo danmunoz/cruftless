@@ -78,12 +78,6 @@
                 roots: [RootSize(url: URL(fileURLWithPath: "/tmp/archives"), allocatedBytes: 186_000_000)]
             ),
             .sized(
-                location: LocationCatalog.codingAssistant,
-                reclaimableBytes: 79_000_000,
-                staleness: StalenessInfo(lastUsedDate: Calendar.current.date(byAdding: .day, value: -4, to: Date())),
-                roots: [RootSize(url: URL(fileURLWithPath: "/tmp/codingassistant"), allocatedBytes: 79_000_000)]
-            ),
-            .sized(
                 location: LocationCatalog.productsLogsDocCache,
                 reclaimableBytes: 45_000_000,
                 staleness: StalenessInfo(lastUsedDate: Calendar.current.date(byAdding: .day, value: -15, to: Date())),
