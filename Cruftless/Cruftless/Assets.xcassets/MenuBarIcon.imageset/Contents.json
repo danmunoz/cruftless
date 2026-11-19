@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "icons8-clean-16.png",
+      "filename" : "menu-bar-glyph.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "icons8-clean-32.png",
+      "filename" : "menu-bar-glyph@2x.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "icons8-clean-48.png",
+      "filename" : "menu-bar-glyph@3x.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

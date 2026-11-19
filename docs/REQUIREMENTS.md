@@ -319,7 +319,7 @@ accessibility work beyond SwiftUI's default VoiceOver and keyboard support.
 ## 14. Open items
 
 - Verify `Cruftless` is free: domain, App Store, Homebrew formula name
-- App icon (menu bar glyph is done — `MenuBarIcon.imageset`, an Icons8 "Clean" icon credited in `README.md`)
+- App icon and menu bar glyph: done, both the sheep mascot. `docs/mascot/build_icons.py` generates `AppIcon.appiconset` and `MenuBarIcon.imageset` from the mascot art; `docs/mascot/BRIEF.md` has the rules. The app icon is still built from a 1K render, so a vector redraw remains open.
 - Device-identifier table: sourced (`DeviceIdentifierTable.swift`, `scripts/generate-device-table.swift`, license-compatible — DevCleaner's is GPL-3). The generator reads the *generating machine's own* `CoreSimulator/Profiles/DeviceTypes` plus a DeviceKit MIT-licensed baseline for historical models, so regenerating it on a machine with fewer installed simulator platforms can drop entries — re-run it on a machine with a broad set of platforms installed.
 - **Deferred to v1.1 — keep-newest suggestion for Device Support**: per device model, keep the highest version + build and offer the rest as a one-click suggestion that still goes through review. (Ref machine has three iOS 27.0 betas for one model; two are pure waste.) Not implemented: no grouping logic exists in `DeletionPlanner`, and `DetailView` renders a flat child list with no suggestion card.
 

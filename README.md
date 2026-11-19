@@ -188,7 +188,6 @@ can help other people too.
 
 ## Acknowledgements
 
-- **Menu bar icon:** “Clean” by [Icons8](https://icons8.com).
 - **Device-identifier table:** generated from local CoreSimulator device
   profiles plus a baseline of historical models from
   [DeviceKit](https://github.com/devicekit/DeviceKit) (MIT).
