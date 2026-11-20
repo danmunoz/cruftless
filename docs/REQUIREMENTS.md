@@ -506,3 +506,44 @@ marked out of date, with Copy and Save disabled, when the toolchain summary
 changes afterwards; copy and save confirmations last two seconds. Report data is
 not uploaded or attached to the issue tracker automatically; the pane links to
 the issue tracker as "Open Issue Tracker".
+
+## 21. Uninstall — 2026-11-20
+
+A user can remove every trace Cruftless creates, by the route they installed it.
+Nothing outside the app's own footprint is touched, and nothing Cruftless
+already deleted comes back.
+
+**Footprint** (`AppFootprint`, the single list): `~/Library/Application
+Support/Cruftless` (saved scan, prepared Android tools),
+`~/Library/Caches/<bundle id>`, `~/Library/HTTPStorages/<bundle id>`,
+`~/Library/Saved Application State/<bundle id>.savedState`, the per-user
+`DARWIN_USER_CACHE_DIR/<bundle id>` (Metal caches), the preferences domain, the
+`SMAppService.mainApp` login item, scheduled and delivered scan reminders, and
+the privacy decisions macOS recorded for the bundle. Out of scope: crash
+reports macOS keeps, the notification-settings entry macOS keeps, diagnostic
+reports the user saved, and files the Android command-line tools write in the
+user's Android folders.
+
+**Homebrew route.** `brew uninstall --zap --cask cruftless`. The cask's `zap
+script` runs the app's headless `--uninstall-cleanup` mode before Homebrew
+removes the bundle (login item, reminders, `tccutil reset All`, access ledger,
+preferences domain), then `zap trash` removes the folders and plist. A copy that
+was never opened is not run, because it would raise a Gatekeeper prompt and it
+registered nothing; its privacy decisions are still reset. Settings › Support
+shows the command instead of a button for a cask install.
+
+**Direct-download route.** Settings › Support › "Remove Cruftless Data" opens a
+sheet listing every folder with its size and consequence, plus the
+registrations it undoes; that sheet is the review step. Confirming stops every
+scan, watch, timer and reminder for the rest of the process, undoes the
+registrations, and deletes the folders through `DeletionPlanner.appFootprint`
+and `DeletionExecutor` (each folder a `validateRoot` root; any refused folder
+refuses the whole plan, and the sheet shows why plus the manual path list). The
+result sheet's only exit is "Quit Cruftless", which shows the app in Finder
+(not for a translocated or read-only copy), clears the preferences domain, and
+exits in the same step. The app never deletes or trashes its own bundle.
+
+**Preferences file.** Clearing the domain is the guarantee; `cfprefsd` may
+write an empty plist back at an unpredictable time afterwards, including after
+an external delete, so a 42-byte empty file can remain. It holds no settings.
+

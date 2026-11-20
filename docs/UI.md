@@ -620,7 +620,7 @@ About is not a form and sizes to its intrinsic content.
   is read until allowed, and the rest of the app works without it. State is
   re-read on appear and on app activation. The popover's "Allow Access"
   capsule selects this tab through `SettingsModel.requestedSettingsSection`.
-- **Support**: one grouped `Form` with two sections.
+- **Support**: one grouped `Form` with three sections.
   - **Simulator Tools**: the current toolchain status (a ready Xcode with its
     version and source, an unavailable reason, or "Not checked. Refresh to
     inspect simulator tools."), a "Use Xcode" picker over the usable Xcodes, a
@@ -640,6 +640,14 @@ About is not a form and sizes to its intrinsic content.
     was prepared the preview dims, Copy and Save are disabled, and the notice
     reads "This report is out of date. Prepare it again." The footer states that
     only allowlisted version and status fields are included.
+  - **Uninstall**: for a Homebrew cask install, the
+    `brew uninstall --zap --cask cruftless` command with Copy; otherwise a
+    destructive "Remove Cruftless Data" button (no ellipsis: its sheet is the
+    review step). The sheet moves through measuring, review (each folder with
+    path, size and consequence, the registrations undone, and what stays),
+    removing, and a result listing each step with a check or a warning. The
+    result's only way out is "Quit Cruftless"; a refusal shows the reason and
+    the manual path list with "Close".
 - **About**: centered — 72 pt app icon, "Cruftless" (17 pt
   semibold), the version read from the built bundle via
   `CruftlessVersion.display()` — never a literal, and the line is omitted
@@ -814,5 +822,7 @@ four-way `if` chain; it ships its own `#Preview` for all four states.
 | `BlockedAccessRow` | Not asked and not allowed |
 | `GeneralSettingsPane` | Default, Errors (launch, reminder and protected-path `SettingsErrorRow`s at once), Protected paths, Login approval pending, Deletion running, Platform selection refused |
 | `SupportSettingsPane` | loading, ready, Cruftless selection, ambiguous, unavailable, invalid selection, cleanup running, report preview, report copied, stale report, preparing report, truncated report, report failure |
+| `UninstallSection` | direct download, Homebrew |
+| `UninstallSheet` | review, review with nothing on disk, preparing, refused, finished, finished with failures |
 | `AboutSettingsPane` | About Settings, and the update section: update available, up to date, checking, check error, development build (no release version), command copied, direct download, direct download with update available |
 | `MainView` | Popover (empty), Populated list, Detail pushed |

@@ -528,6 +528,27 @@ and `Views/Welcome/`. `AppModel.isWelcomePending` holds every automatic scan
 until `welcomeDidFinish()`, which `WelcomeModel.advance()` reaches on entering
 the scan step and `finish()` reaches when the window closes first.
 
+### 3.9 `Uninstall/` — removing the app's own footprint
+
+- **`AppFootprint`** lists every folder, file and identifier Cruftless writes
+  outside its bundle. `InventoryStore` and `AndroidCLITools` derive their
+  default folders from it, so a new store lands inside the footprint.
+- **`UninstallCleanup`** undoes the registrations with macOS in a fixed order,
+  every step reported and none aborting the rest: login item
+  (`LoginItemUnregistering`), reminders (`ReminderClearing`), privacy decisions
+  (`PrivacyGrantResetting`, `/usr/bin/tccutil` through `BoundedProcess`), and
+  the `AccessLedger`, which is cleared even when the reset fails.
+- **`DeletionPlanner.appFootprint`** plans each existing folder as a
+  `validateRoot` root with its own `PathGuard`; the executor revalidates it
+  through the path's allowlisted root like any catalog-less root target.
+
+The app side: `CruftlessMain` is the `@main` entry. With exactly
+`--uninstall-cleanup` it runs `HeadlessUninstall` (cleanup, preferences domain,
+`exit(0)`, 10 s watchdog) and never starts the UI; otherwise it calls
+`CruftlessApp.main()`. `UninstallModel` drives the Settings flow and
+`AppModel.haltForUninstall()` sets `isUninstalling`, which every scan entrance,
+FSEvents registration, `persistInventory` and reminder scheduling checks.
+
 ## 4. The app target
 
 ### 4.1 `AppModel` — one observable, main-actor state owner

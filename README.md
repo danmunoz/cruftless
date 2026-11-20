@@ -21,6 +21,27 @@ newer version is out.
 It requires macOS 26 or later. Releases are Developer ID–signed and notarized
 by Apple.
 
+### Uninstall
+
+- **Homebrew:** `brew uninstall --zap --cask cruftless` removes the app, its
+  data and settings, its login item, its scan reminders, and the privacy
+  permissions macOS recorded for it. Run `brew upgrade cruftless` first if your
+  copy predates uninstall support: Homebrew zaps with the cask it installed.
+- **DMG:** Settings › Support › Remove Cruftless Data shows what it will delete,
+  removes it, and quits. Then drag Cruftless to the Trash.
+- **By hand**, for a copy already deleted: turn off Launch at login in System
+  Settings › General › Login Items, then delete
+  `~/Library/Application Support/Cruftless`,
+  `~/Library/Caches/com.danmunoz.Cruftless`,
+  `~/Library/HTTPStorages/com.danmunoz.Cruftless`,
+  `~/Library/Preferences/com.danmunoz.Cruftless.plist`, and
+  `$(getconf DARWIN_USER_CACHE_DIR)com.danmunoz.Cruftless`.
+
+Uninstalling never brings back anything Cruftless deleted, and it does not touch
+the developer data Cruftless tracks. macOS may write an empty
+`com.danmunoz.Cruftless.plist` back a few seconds after it is removed; it holds
+no settings.
+
 <p align="center">
   <img src="Screenshots/overview.png" width="31%" alt="Cruftless overview showing reclaimable developer disk space">
   <img src="Screenshots/simulator-devices.png" width="31%" alt="Simulator device cleanup with per-device reclaimable storage">
