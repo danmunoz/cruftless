@@ -107,11 +107,12 @@ by hand in `danmunoz/homebrew-tap`:
 ```ruby
   uninstall quit: "com.danmunoz.Cruftless"
 
-  zap script: {
+  zap signal: [["TERM", "com.danmunoz.Cruftless"]],
+      script: {
         executable:   "/bin/sh",
         args:         [
           "-c",
-          <<~'SH',
+          <<~SH,
             <contents of scripts/release/cask-zap-cleanup.sh>
           SH
           "sh",
@@ -120,10 +121,9 @@ by hand in `danmunoz/homebrew-tap`:
         ],
         must_succeed: false,
       },
-      signal: [["TERM", "com.danmunoz.Cruftless"]],
-      trash: [
-        "~/Library/Application Support/Cruftless",
+      trash:  [
         "~/Library/Application Support/CrashReporter/Cruftless_*.plist",
+        "~/Library/Application Support/Cruftless",
         "~/Library/Caches/com.danmunoz.Cruftless",
         "~/Library/HTTPStorages/com.danmunoz.Cruftless",
         "~/Library/Preferences/com.danmunoz.Cruftless.plist",
@@ -140,6 +140,9 @@ by hand in `danmunoz/homebrew-tap`:
   on every `brew upgrade` and `brew reinstall` as well.
 - `uninstall quit:` also quits Cruftless on `brew upgrade`; Homebrew reopens it
   only when the quit succeeded.
+- The heredoc is unquoted, so the script must stay free of `#{` and
+  backslashes. Check the embedded copy against the file after any change by
+  loading the cask with `brew ruby` and diffing `zap.directives[:script][:args][1]`.
 - `bash scripts/release/tests/cask-zap-cleanup-test.sh` covers the wrapper.
 
 ## Failure policy
