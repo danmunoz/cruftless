@@ -12,6 +12,7 @@ public enum UpdateChannel: Sendable, Equatable {
 
     public static let releasesURL = URL(string: "https://github.com/danmunoz/cruftless/releases")!
     public static let homebrewUpgradeCommand = "brew upgrade cruftless"
+    public static let homebrewZapCommand = "brew uninstall --zap --cask cruftless"
 
     /// Detects a Homebrew cask install from Caskroom existence checks alone, never listing a directory.
     public static func detect(

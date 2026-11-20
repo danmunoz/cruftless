@@ -39,6 +39,13 @@ public final class AccessLedger: @unchecked Sendable {
         userDefaults.set(areas.map(\.rawValue).sorted(), forKey: key)
     }
 
+    /// Forgets every area, for privacy decisions that were reset.
+    public func clearAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        userDefaults.removeObject(forKey: key)
+    }
+
     private func storedAreas() -> Set<ProtectedArea> {
         Set((userDefaults.stringArray(forKey: key) ?? []).compactMap(ProtectedArea.init(rawValue:)))
     }

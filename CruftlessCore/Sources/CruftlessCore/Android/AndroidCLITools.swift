@@ -39,10 +39,8 @@ public actor AndroidCLITools {
         self.androidUserHome = androidUserHome ?? RootResolver.androidAVDRoots().first?.deletingLastPathComponent()
             ?? home.appendingPathComponent(".android", isDirectory: true)
         self.sdk = sdk ?? RootResolver.androidSDKRoots().first ?? home.appendingPathComponent("Library/Android/sdk", isDirectory: true)
-        let directory = installDirectory ?? home.appendingPathComponent(
-            "Library/Application Support/Cruftless/Android Tools",
-            isDirectory: true
-        )
+        let directory = installDirectory ?? AppFootprint(home: home, userCacheDirectory: nil).applicationSupport
+            .appendingPathComponent("Android Tools", isDirectory: true)
         self.installDirectory = directory
         self.candidates = candidates ?? [directory.appendingPathComponent("android-cli"),
                                          home.appendingPathComponent(".local/bin/android"),

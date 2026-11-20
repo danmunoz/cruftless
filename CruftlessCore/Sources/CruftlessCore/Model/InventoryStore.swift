@@ -6,11 +6,8 @@ public struct InventoryStore: Sendable {
 
     /// - Parameter directory: where `inventory.json` lives.
     public init(directory: URL? = nil) {
-        let resolved = directory ?? FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("Cruftless", isDirectory: true)
-        fileURL = resolved?.appendingPathComponent("inventory.json", isDirectory: false)
+        let resolved = directory ?? AppFootprint.live.applicationSupport
+        fileURL = resolved.appendingPathComponent("inventory.json", isDirectory: false)
     }
 
     public func load() -> InventorySnapshot? {

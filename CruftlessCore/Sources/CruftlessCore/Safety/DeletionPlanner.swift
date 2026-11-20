@@ -175,7 +175,7 @@ public enum DeletionPlanner {
     }
 
     /// Refuses a batch whose targets are not disjoint.
-    private static func rejectOverlaps(among targets: [DeletionTarget]) throws {
+    static func rejectOverlaps(among targets: [DeletionTarget]) throws {
         var seen: [String: String] = [:]
         for target in targets {
             guard let path = target.validatedPath?.path else { continue }
