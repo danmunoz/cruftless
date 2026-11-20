@@ -8,14 +8,8 @@ struct WelcomeLocationStep: View {
             WelcomeMenuBarIllustration()
             WelcomeHeading(
                 "Cruftless lives in your menu bar",
-                subtitle: Text(
-                    """
-                    There is no main window. Click \(WelcomeInlineGlyph.text) at the top of your screen \
-                    whenever you want to see what Xcode and Android tools have left on your disk.
-                    """
-                )
+                subtitle: Text("Click \(WelcomeInlineGlyph.text) to see what Xcode and Android tools left on your disk.")
             )
-            WelcomeCaption("A few short steps come first. Nothing is measured until you start the scan.")
         }
     }
 }
@@ -47,7 +41,7 @@ struct WelcomeSafetyStep: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, WelcomeCardMetrics.inset)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 10)
                     .accessibilityElement(children: .combine)
                 }
             }
@@ -66,7 +60,7 @@ struct WelcomeSetupStep: View {
         VStack(alignment: .leading, spacing: 12) {
             WelcomeHeading(
                 "Choose what to scan",
-                subtitle: Text("Cruftless preselected what it found on this Mac. You can change this later in Settings.")
+                subtitle: Text("Preselected from this Mac. You can change it in Settings.")
             )
             WelcomeSectionLabel("Platforms")
             WelcomeCard {
@@ -83,9 +77,7 @@ struct WelcomeSetupStep: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Launch at login")
                             .fontWeight(.semibold)
-                        WelcomeCaption(
-                            "Keeps Cruftless in the menu bar after a restart. Without it, you open Cruftless yourself after each restart."
-                        )
+                        WelcomeCaption("Keeps Cruftless in the menu bar after a restart.")
                     }
                     Spacer(minLength: 0)
                     Toggle("Launch at login", isOn: $settings.isLaunchAtLoginEnabled)

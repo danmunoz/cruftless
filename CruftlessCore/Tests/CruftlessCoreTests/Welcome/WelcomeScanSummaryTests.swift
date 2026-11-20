@@ -130,7 +130,7 @@ struct WelcomeScanSummaryTests {
         ]
         let finished = summary(inventory: Inventory(entries: entries, capacity: capacity))
 
-        #expect(finished.accessNote == "Archives location was not measured. Nothing there was read.")
+        #expect(finished.accessNote == "Not measured: Archives location.")
         #expect(finished.accessActionTitle == "Allow Access")
         #expect(finished.totalCaption == "cleanable in 1 of 2 locations")
         #expect(finished.rows.last?.detail == .note("Needs access to an external drive"))

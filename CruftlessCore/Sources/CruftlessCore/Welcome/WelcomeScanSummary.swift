@@ -152,7 +152,7 @@ public struct WelcomeScanSummary: Sendable, Hashable {
         let items = needs.flatMap(\.blocked).map(\.reason).filter { seen.insert($0).inserted }
         guard !items.isEmpty else { return nil }
         let names = ListFormatter.localizedString(byJoining: items)
-        return "\(names) \(items.count == 1 ? "was" : "were") not measured. Nothing there was read."
+        return "Not measured: \(names)."
     }
 
     /// Matches the action a blocked row carries in the list.

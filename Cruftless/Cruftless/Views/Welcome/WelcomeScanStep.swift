@@ -39,22 +39,21 @@ struct WelcomeScanStep: View {
         case .starting, .scanning:
             WelcomeHeading(
                 "Measuring your disk",
-                subtitle: Text("Measuring never deletes anything. You can close this window, and the scan carries on in the menu bar.")
+                subtitle: Text("You can close this window. The scan keeps going in the menu bar.")
             )
         case .finished:
             WelcomeHeading(
                 "Your first scan is ready",
                 subtitle: Text(
                     """
-                    Nothing has been deleted. Click \(WelcomeInlineGlyph.text) in the menu bar to review the results \
-                    and choose what to clear.
+                    Click \(WelcomeInlineGlyph.text) in the menu bar to choose what to clear.
                     """
                 )
             )
         case let .failed(reason):
             WelcomeHeading(
                 "The scan did not finish",
-                subtitle: Text("\(reason)\n\nClick \(WelcomeInlineGlyph.text) in the menu bar to try again. Nothing has been deleted.")
+                subtitle: Text("\(reason) Click \(WelcomeInlineGlyph.text) in the menu bar to try again.")
             )
         }
     }
@@ -111,7 +110,7 @@ struct WelcomeScanStep: View {
                     if !summary.isFinished {
                         ProgressView().controlSize(.small)
                     }
-                    Text(summary.isFinished ? "No tracked location is holding recoverable space." : "Starting the scan")
+                    Text(summary.isFinished ? "Nothing to clean up right now." : "Starting the scan")
                         .foregroundStyle(.secondary)
                 }
                 .frame(height: WelcomeScanRow.height)

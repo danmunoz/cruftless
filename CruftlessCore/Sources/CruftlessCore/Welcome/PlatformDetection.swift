@@ -32,13 +32,13 @@ public struct DetectedPlatforms: Sendable, Hashable {
     public func note(for platform: DevelopmentPlatform) -> String {
         if platform == .apple, xcodeInstallCount > 0 {
             let installs = xcodeInstallCount == 1 ? "1 Xcode install" : "\(xcodeInstallCount) Xcode installs"
-            return "\(installs) found, plus simulators and Swift packages."
+            return "\(installs), simulators and Swift packages."
         }
         let scope = switch platform {
         case .apple: "Xcode, simulators and Swift packages."
         case .android: "Android Studio, SDK, emulators and Gradle."
         }
-        return contains(platform) ? "\(scope) Found on this Mac." : "\(scope) Not found on this Mac."
+        return contains(platform) ? scope : "Not found on this Mac."
     }
 }
 

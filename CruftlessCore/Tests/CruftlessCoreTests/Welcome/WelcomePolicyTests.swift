@@ -95,8 +95,8 @@ struct PlatformDetectionTests {
     @Test("The note says whether the platform was found")
     func notes() {
         let detected = DetectedPlatforms(hasApple: true, hasAndroid: false)
-        #expect(detected.note(for: .apple).hasSuffix("Found on this Mac."))
-        #expect(detected.note(for: .android).hasSuffix("Not found on this Mac."))
+        #expect(detected.note(for: .apple) == "Xcode, simulators and Swift packages.")
+        #expect(detected.note(for: .android) == "Not found on this Mac.")
     }
 
     @Test("The Apple note counts the Xcode installs found")
@@ -104,7 +104,7 @@ struct PlatformDetectionTests {
         let other = URL(fileURLWithPath: "/Applications/Xcode-beta.app", isDirectory: true)
         let one = PlatformDetection.detect(xcodeInstalls: [xcode], hasXcodeUserData: true, androidRoots: [])
         let two = PlatformDetection.detect(xcodeInstalls: [xcode, other], hasXcodeUserData: false, androidRoots: [])
-        #expect(one.note(for: .apple).hasPrefix("1 Xcode install found"))
-        #expect(two.note(for: .apple).hasPrefix("2 Xcode installs found"))
+        #expect(one.note(for: .apple).hasPrefix("1 Xcode install,"))
+        #expect(two.note(for: .apple).hasPrefix("2 Xcode installs,"))
     }
 }

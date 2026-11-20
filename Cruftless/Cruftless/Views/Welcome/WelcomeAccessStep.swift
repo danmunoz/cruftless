@@ -10,12 +10,7 @@ struct WelcomeAccessStep: View {
         VStack(alignment: .leading, spacing: 12) {
             WelcomeHeading(
                 "Some places need your OK",
-                subtitle: Text(
-                    """
-                    Some of what Cruftless tracks is in places macOS protects. Cruftless will not look \
-                    inside until you allow it, and macOS asks once per place.
-                    """
-                )
+                subtitle: Text("Cruftless won't look inside these until you allow it.")
             )
             // Scrolls only when there are more places than fit.
             ViewThatFits(in: .vertical) {
@@ -23,7 +18,7 @@ struct WelcomeAccessStep: View {
                 ScrollView { list }
                     .scrollBounceBehavior(.basedOnSize)
             }
-            WelcomeCaption("You can skip any of them. Skipped items show as not measured, and you can allow them later in Settings.")
+            WelcomeCaption("Skip any you like. You can allow them later in Settings.")
                 .padding(.bottom, 4)
         }
         .onAppear { Task { await accessList.refresh() } }
@@ -37,12 +32,12 @@ struct WelcomeAccessStep: View {
             if !accessList.hasLoaded {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Checking where Cruftless needs access")
+                    Text("Checking protected places")
                         .foregroundStyle(.secondary)
                 }
                 .padding(14)
             } else if accessList.areas.isEmpty {
-                Label("Nothing Cruftless tracks is in a protected place", systemImage: "checkmark.shield")
+                Label("No protected places to allow", systemImage: "checkmark.shield")
                     .foregroundStyle(.secondary)
                     .padding(14)
             } else {
@@ -91,10 +86,10 @@ struct WelcomeAccessAreaRow: View {
 
             Group {
                 if summary.status == .notAllowed {
-                    WelcomeCaption("macOS will not ask again. Turn on Cruftless under Files and Folders.")
+                    WelcomeCaption("macOS won't ask again. Allow it in Files and Folders.")
                 }
                 if summary.reasons.isEmpty {
-                    WelcomeCaption("Nothing Cruftless tracks is here right now.")
+                    WelcomeCaption("Nothing tracked here right now.")
                 }
                 ForEach(summary.reasons, id: \.self) { reason in
                     reasonLine(reason)

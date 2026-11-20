@@ -474,6 +474,9 @@ Illustrations sit on a quaternary panel and show real names and icons from
 `LocationCatalog` (`WelcomeIllustrationRow`), so a new user recognises what
 the app works on. Sizes stay sketched bars, never sample numbers, so nothing in
 them can be read as the user's own data. Controls inside them are inert.
+Copy stays short: a subtitle is one line where it can be, a card row's detail
+is one line, and no sentence repeats the title or a reassurance another step
+already gives.
 
 1. **Where it lives** (the cover). `WelcomeMenuBarIllustration`, 236 pt tall: a
    menu bar with system status icons and a clock, the system arrow pointer
@@ -495,8 +498,8 @@ them can be read as the user's own data. Controls inside them are inert.
    with Derived Data going, Archives dimmed and flagged as "One at a time", and
    Review's own Cancel and red Delete Permanently buttons, small. Below it,
    three rows from `WelcomePolicy.safetyPromises`. Each promise carries its own
-   symbol; the flagged one uses the app's warning triangle in orange. The step
-   fills the 480 pt, so anything added here has to take space from elsewhere.
+   symbol; the flagged one uses the app's warning triangle in orange, and each
+   detail is one line.
 3. **What to scan.** "Choose what to scan": two checkboxes under "Platforms",
    each captioned by `DetectedPlatforms.note(for:)` (the Apple one counts the
    Xcode installs found), then a "Launch at login" switch under "Startup" with
