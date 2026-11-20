@@ -52,6 +52,9 @@ jobs:
       - name: Test release signature check
         run: bash scripts/release/tests/signature-check-test.sh
 
+      - name: Test cask zap cleanup
+        run: bash scripts/release/tests/cask-zap-cleanup-test.sh
+
       - name: Verify app release metadata
         run: |
           settings="$(xcodebuild -project Cruftless/Cruftless.xcodeproj -scheme Cruftless -configuration Release -showBuildSettings)"
