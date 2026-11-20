@@ -32,6 +32,7 @@ extension AppModel {
     /// Called every time the popover appears.
     func popoverDidAppear() {
         isNavigating = false
+        guard !isUninstalling else { return }
         checkRunningApps()
         startInitialScanIfNeeded(source: .popover)
     }
@@ -53,7 +54,7 @@ extension AppModel {
     // MARK: - The first scan of the session
 
     func startInitialScanIfNeeded(source: InitialScanSource) {
-        guard !hasStartedInitialScan, !isWelcomePending else { return }
+        guard !hasStartedInitialScan, !isWelcomePending, !isUninstalling else { return }
 
         if source == .launchTimer, ProcessInfo.processInfo.isLowPowerModeEnabled {
             isAutomaticScanPaused = true
@@ -91,6 +92,7 @@ extension AppModel {
 
     /// Replaces the FSEvents stream for the active scope.
     func startMonitoring(for catalog: ActiveCatalog) {
+        guard !isUninstalling else { return }
         Task {
             let roots = await Task.detached {
                 catalog.locations
@@ -98,7 +100,7 @@ extension AppModel {
                         location.resolveRoots().map { WatchedRoot(locationId: location.id, url: $0) }
                     }
             }.value
-            guard settings.platformGeneration == catalog.generation else { return }
+            guard settings.platformGeneration == catalog.generation, !isUninstalling else { return }
             invalidator?.replaceMonitoring(roots: roots, policyGeneration: catalog.generation)
         }
     }
@@ -120,7 +122,7 @@ extension AppModel {
 
     /// Writes the current inventory out after a scan completes.
     func persistInventory() {
-        guard let inventory else { return }
+        guard let inventory, !isUninstalling else { return }
         inventoryStore.save(InventorySnapshot(inventory))
     }
 

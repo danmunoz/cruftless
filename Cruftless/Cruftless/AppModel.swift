@@ -117,6 +117,8 @@ public final class AppModel {
     var hasStartedInitialScan = false
     /// True while the first-run welcome is on screen, which holds every automatic scan.
     var isWelcomePending = false
+    /// Set once a removal of the app's data starts; nothing scans, watches or saves afterwards.
+    var isUninstalling = false
     /// Location IDs measured during this session.
     var scannedLocationIds: Set<String> = []
 

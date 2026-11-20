@@ -54,6 +54,7 @@ extension AppModel {
 
     /// Runs the scan a scope calls for: everything, or just the locations a filesystem event touched.
     func startScan(_ requested: InvalidationScope, trigger: ScanTrigger) {
+        guard !isUninstalling else { return }
         let admission = scanScheduler.request(
             ScanRequest(scope: requested, trigger: trigger),
             at: .now,
@@ -65,6 +66,7 @@ extension AppModel {
 
     /// Starts whatever background work a finished deletion was holding back.
     func resumeDeferredScans() {
+        guard !isUninstalling else { return }
         follow(scanScheduler.resume(at: .now, catalog: activeCatalog.ids, conditions: scanConditions))
     }
 
@@ -94,7 +96,7 @@ extension AppModel {
             session.invalidate(message: "Refreshing this location…")
         }
 
-        guard case .start = admission else { return }
+        guard case .start = admission, !isUninstalling else { return }
         checkRunningApps()
         Task { await self.run(request.scope, catalog: catalog) }
     }

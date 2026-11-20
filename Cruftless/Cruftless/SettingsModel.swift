@@ -106,6 +106,7 @@ public final class SettingsModel {
     private let reminderScheduler: ScanReminderScheduler
     private let loginItemService: any LoginItemService
     private var reminderTask: Task<Void, Never>?
+    private var isUninstalling = false
 
     public init(
         defaults: UserDefaults = .standard,
@@ -188,6 +189,7 @@ public final class SettingsModel {
 
     private func startReminderScheduling() {
         reminderTask?.cancel()
+        guard !isUninstalling else { return }
         let generation = platformGeneration
         reminderTask = Task { [weak self] in
             await self?.armReminder(generation: generation)
@@ -282,6 +284,13 @@ public final class SettingsModel {
         protectedPathsStore.removePath(url)
         protectedPaths = protectedPathsStore.customPaths()
         onPlatformSelectionChanged?(activeCatalog)
+    }
+
+    /// Stops reminder scheduling for good, for a removal of the app's data.
+    public func haltForUninstall() {
+        isUninstalling = true
+        reminderTask?.cancel()
+        reminderTask = nil
     }
 
     private func advancePolicyGeneration(notify: Bool = true) {

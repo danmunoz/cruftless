@@ -16,6 +16,7 @@ extension View {
     enum DebugLaunch {
         static let openSettings = "cruftless.debug.openSettings"
         static let accessFixture = "cruftless.debug.accessFixture"
+        static let directDownload = "cruftless.debug.directDownload"
     }
 
     private struct DebugOpensSettings: ViewModifier {
