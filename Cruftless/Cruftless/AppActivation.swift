@@ -3,8 +3,9 @@ import AppKit
 /// Brings this agent app in front with the forced request, since macOS refuses its plain `NSApp.activate()`.
 @MainActor
 enum AppActivation {
-    /// Makes the app active whichever app is active now.
+    /// Shows the Dock icon and makes the app active whichever app is active now.
     static func activate() {
+        DockIconController.shared.showForPresentation()
         NSApp.activate(ignoringOtherApps: true)
     }
 

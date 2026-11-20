@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_: Notification) {
+        DockIconController.shared.start()
         if welcome.isPending {
             model.isWelcomePending = true
             welcome.onFinish = { [model] in model.welcomeDidFinish() }

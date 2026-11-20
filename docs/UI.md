@@ -32,6 +32,12 @@ activates the app and raises them, so a click on the menu bar icon never leaves
 them behind another app. With no window open, the popover activates nothing
 (`AppActivation`, `CLAUDE.md` Gotchas).
 
+**The Dock icon shows while the welcome or Settings is open.** The app is a
+menu bar app (`LSUIElement`) and switches to the regular activation policy
+while either window is on screen or minimized, which also brings the app menu,
+and back to accessory once both close (`DockIconController`, decided by
+`DockIconPolicy`). The popover alone never shows the icon.
+
 **Every screen is opaque to the one it slides over.** Screens paint no
 background of their own — the popover's vibrancy shows through and the bands are
 transparent by design — so a push draws both screens at once and every row reads
