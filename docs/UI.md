@@ -26,6 +26,12 @@ need `.last` and the parent, which `NavigationPath` cannot give). Pushes, pops,
 the slide between screens and the system back gesture are all the system's.
 `.navigationDestination(for: AppRoute.self)` builds each pushed screen.
 
+**The app's own windows open in front.** The welcome and Settings activate the
+app when they open, and opening the popover while either is on screen
+activates the app and raises them, so a click on the menu bar icon never leaves
+them behind another app. With no window open, the popover activates nothing
+(`AppActivation`, `CLAUDE.md` Gotchas).
+
 **Every screen is opaque to the one it slides over.** Screens paint no
 background of their own — the popover's vibrancy shows through and the bands are
 transparent by design — so a push draws both screens at once and every row reads

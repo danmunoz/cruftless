@@ -1,4 +1,3 @@
-import AppKit
 import CruftlessCore
 #if DEBUG
     import CruftlessFixtures
@@ -128,7 +127,7 @@ public struct MainView: View {
 
     private func openSettingsWindow() {
         openSettings()
-        NSApp.activate()
+        AppActivation.activate()
     }
 
     private func openAccessSettingsWindow() {

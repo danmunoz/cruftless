@@ -42,7 +42,10 @@ struct CruftlessApp: App {
     var body: some Scene {
         MenuBarExtra {
             MainView(model: model)
-                .onAppear { model.popoverDidAppear() }
+                .onAppear {
+                    AppActivation.bringOpenWindowsForward()
+                    model.popoverDidAppear()
+                }
         } label: {
             Image(nsImage: Self.menuBarIcon)
         }

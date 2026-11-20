@@ -1,4 +1,3 @@
-import AppKit
 import CruftlessCore
 import SwiftUI
 
@@ -43,7 +42,7 @@ public struct WelcomeView: View {
         .frame(width: WelcomeWindow.width, height: WelcomeWindow.height)
         .clipped()
         .task { await model.prepare() }
-        .onAppear { NSApp.activate() }
+        .onAppear { AppActivation.activate() }
         .onDisappear { model.finish() }
         .debugOpensSettings(model.settings)
     }
@@ -120,7 +119,7 @@ public struct WelcomeView: View {
     private func openAccessSettings() {
         app.requestAccessSettings()
         openSettings()
-        NSApp.activate()
+        AppActivation.activate()
     }
 }
 
