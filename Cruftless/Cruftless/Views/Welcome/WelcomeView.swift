@@ -162,8 +162,9 @@ struct WelcomeFooter: View {
                 .disabled(isPrimaryDisabled)
         }
         .controlSize(.large)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, WelcomeWindow.gutter)
+        .padding(.top, 12)
+        .padding(.bottom, 20)
     }
 
     @ViewBuilder private var primaryButton: some View {

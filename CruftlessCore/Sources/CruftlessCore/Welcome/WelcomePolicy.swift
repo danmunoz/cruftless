@@ -74,22 +74,22 @@ public enum WelcomePolicy: Sendable {
         return order[..<index].last(where: steps.contains) ?? steps.first ?? .location
     }
 
-    public static let safetySummary = "Scanning only measures. Deleting is permanent, so it always waits for you."
+    public static let safetySummary = "Scanning only measures. Deleting is permanent, so it waits for you."
 
     public static let safetyPromises: [SafetyPromise] = [
         SafetyPromise(
             title: "You review every delete",
-            detail: "One screen lists exactly what will go. Nothing goes until you confirm it.",
+            detail: "One screen lists exactly what will be deleted. Nothing is removed until you confirm.",
             symbol: "checklist"
         ),
         SafetyPromise(
             title: "Deletes are permanent",
-            detail: "They skip the Trash on purpose, so the space is actually freed.",
+            detail: "Files skip the Trash so the space is freed. That also means there is no undo.",
             symbol: "trash"
         ),
         SafetyPromise(
-            title: "Flagged items stay out of batches",
-            detail: "Archives and anything that cannot be rebuilt are only deleted one at a time.",
+            title: "Flagged items are never cleared in bulk",
+            detail: "Archives and anything that cannot be rebuilt are flagged, and deleted only one at a time.",
             symbol: "exclamationmark.triangle.fill",
             isWarning: true
         )

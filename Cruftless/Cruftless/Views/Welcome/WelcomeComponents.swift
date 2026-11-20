@@ -25,6 +25,18 @@ struct WelcomeHeading: View {
     }
 }
 
+/// The inset shared by every row in a card and the label above it.
+enum WelcomeCardMetrics {
+    static let inset: CGFloat = 14
+}
+
+/// The menu bar glyph set into a sentence, lowered to sit on the text baseline.
+enum WelcomeInlineGlyph {
+    static var text: Text {
+        Text(Image("MenuBarIcon").renderingMode(.template)).baselineOffset(-2)
+    }
+}
+
 /// A grouped box of rows.
 struct WelcomeCard<Content: View>: View {
     @ViewBuilder let content: Content
@@ -58,7 +70,7 @@ struct WelcomeCaption: View {
     }
 }
 
-/// The 11 pt label above a card.
+/// The 11 pt label above a card, in line with the card's rows and closer to its own card than the one before.
 struct WelcomeSectionLabel: View {
     let title: LocalizedStringKey
 
@@ -70,7 +82,8 @@ struct WelcomeSectionLabel: View {
         Text(title)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
-            .padding(.leading, 2)
+            .padding(.leading, WelcomeCardMetrics.inset)
+            .padding(.top, 6)
             .padding(.bottom, -4)
             .accessibilityAddTraits(.isHeader)
     }

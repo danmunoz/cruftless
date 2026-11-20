@@ -45,19 +45,18 @@ struct WelcomeScanStep: View {
             WelcomeHeading(
                 "Your first scan is ready",
                 subtitle: Text(
-                    "Nothing has been deleted. Click \(menuBarGlyph) in the menu bar to go through it and choose what to clear."
+                    """
+                    Nothing has been deleted. Click \(WelcomeInlineGlyph.text) in the menu bar to review the results \
+                    and choose what to clear.
+                    """
                 )
             )
         case let .failed(reason):
             WelcomeHeading(
                 "The scan did not finish",
-                subtitle: Text("\(reason)\n\nClick \(menuBarGlyph) in the menu bar to try again. Nothing has been deleted.")
+                subtitle: Text("\(reason)\n\nClick \(WelcomeInlineGlyph.text) in the menu bar to try again. Nothing has been deleted.")
             )
         }
-    }
-
-    private var menuBarGlyph: Image {
-        Image("MenuBarIcon").renderingMode(.template)
     }
 
     /// Down and left of the sheep, where the total and the rows are.
@@ -109,7 +108,9 @@ struct WelcomeScanStep: View {
         WelcomeCard {
             if summary.rows.isEmpty {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    if !summary.isFinished {
+                        ProgressView().controlSize(.small)
+                    }
                     Text(summary.isFinished ? "No tracked location is holding recoverable space." : "Starting the scan")
                         .foregroundStyle(.secondary)
                 }

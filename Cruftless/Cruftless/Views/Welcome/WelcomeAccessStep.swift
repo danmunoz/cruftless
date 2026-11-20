@@ -12,8 +12,8 @@ struct WelcomeAccessStep: View {
                 "Some places need your OK",
                 subtitle: Text(
                     """
-                    Cruftless found things it tracks in places macOS protects. It will not look inside \
-                    until you allow it, and macOS asks once per place.
+                    Some of what Cruftless tracks is in places macOS protects. Cruftless will not look \
+                    inside until you allow it, and macOS asks once per place.
                     """
                 )
             )
@@ -23,7 +23,7 @@ struct WelcomeAccessStep: View {
                 ScrollView { list }
                     .scrollBounceBehavior(.basedOnSize)
             }
-            WelcomeCaption("Skip any of them. Those items show as not measured, and you can allow them later in Settings.")
+            WelcomeCaption("You can skip any of them. Skipped items show as not measured, and you can allow them later in Settings.")
                 .padding(.bottom, 4)
         }
         .onAppear { Task { await accessList.refresh() } }

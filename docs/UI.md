@@ -462,27 +462,44 @@ hidden title bar, not resizable, presented at launch on a first run only
 the right. Steps slide in from the side they lie on
 (`WelcomeWindow.stepAnimation`), and fade instead under Reduce Motion. Titles
 are 22 pt semibold, body 13 pt secondary, captions 11 pt. From step 2 on the
-title sits at the same height on every step. Rows sit in `WelcomeCard`: a 12 pt
-rounded box on the control background with a 0.5 pt separator stroke.
-Illustrations are sketches of bars on a quaternary panel, never sample numbers,
-so nothing in them can be read as the user's own data.
+title sits at the same height on every step, so a step's content has to fit
+the 480 pt: one that overflows pushes its own title up and the footer down.
+Content, step dots and the primary button share one 40 pt side margin
+(`WelcomeWindow.gutter`). Rows sit in `WelcomeCard`: a 12 pt rounded box on the
+control background with a 0.5 pt separator stroke. Card rows and the section
+label above a card share a 14 pt inset (`WelcomeCardMetrics.inset`), and a
+divider between rows starts where the row's text does. The menu bar glyph set
+into a sentence is `WelcomeInlineGlyph.text`, lowered onto the text baseline.
+Illustrations sit on a quaternary panel and show real names and icons from
+`LocationCatalog` (`WelcomeIllustrationRow`), so a new user recognises what
+the app works on. Sizes stay sketched bars, never sample numbers, so nothing in
+them can be read as the user's own data. Controls inside them are inert.
 
-1. **Where it lives** (the cover). `WelcomeMenuBarIllustration`, 236 pt tall: the
-   screen's top right corner with the menu bar icon picked out in accent, the
-   popover below it, and the app name. Then "Cruftless lives in your menu bar"
-   with the real menu bar glyph inline in the sentence. Nothing is anchored to
-   the real status item, whose frame `MenuBarExtra` does not expose. The sheep
-   stands above the app name, 92 pt wide. Every few seconds it looks up at the
-   menu bar icon, which answers with a small bounce, and while the pointer is
-   over the illustration its eyes follow the pointer. Following the pointer
-   holds the blinking and the glance, so the eyes never jump mid-follow.
+1. **Where it lives** (the cover). `WelcomeMenuBarIllustration`, 236 pt tall: a
+   menu bar with system status icons and a clock, the system arrow pointer
+   clicking the Cruftless icon, and the popover opening centred under it with
+   five catalog rows (Derived Data, Simulator devices, Simulator runtimes,
+   Archives, Gradle caches). The icon takes the accent highlight while the
+   popover is open. The demo loops: open, close as the pointer drifts away,
+   pointer returns and clicks. Under Reduce Motion it holds the open frame, and
+   while the real pointer is over the illustration the demo pointer hides and
+   the popover stays open. Then "Cruftless lives in your menu bar" with the real
+   menu bar glyph inline in the sentence. Nothing is anchored to the real status
+   item, whose frame `MenuBarExtra` does not expose. The sheep stands bottom
+   left, 92 pt wide, and looks up at the icon as the pointer clicks it; while
+   the pointer is over the illustration its eyes follow the pointer. Following
+   the pointer holds the blinking and the glance, so the eyes never jump
+   mid-follow.
 2. **Safety promise.** "Nothing is deleted without you" over
-   `WelcomeReviewIllustration` (a sketch of the Review step) and three rows from
-   `WelcomePolicy.safetyPromises`. Each promise carries its own symbol; the
-   flagged one uses the app's warning triangle in orange.
+   `WelcomeReviewIllustration`: a 360 pt copy of Review headed "Review 1 item",
+   with Derived Data going, Archives dimmed and flagged as "One at a time", and
+   Review's own Cancel and red Delete Permanently buttons, small. Below it,
+   three rows from `WelcomePolicy.safetyPromises`. Each promise carries its own
+   symbol; the flagged one uses the app's warning triangle in orange. The step
+   fills the 480 pt, so anything added here has to take space from elsewhere.
 3. **What to scan.** "Choose what to scan": two checkboxes under "Platforms",
    each captioned by `DetectedPlatforms.note(for:)` (the Apple one counts the
-   Xcode installs found), then a "Launch at login" switch under "Menu bar" with
+   Xcode installs found), then a "Launch at login" switch under "Startup" with
    the same error, notice and "Open Login Items" control as the General pane.
    The access check re-runs whenever the selection changes, and the primary
    button is disabled until it answers, so its label ("Continue" or "Start

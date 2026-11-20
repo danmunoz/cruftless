@@ -12,6 +12,16 @@
         WelcomeView(model: .preview(step: .safety), accessList: .preview([]), app: AppModel())
     }
 
+    #Preview("Illustrations, light") {
+        VStack(spacing: 16) {
+            WelcomeMenuBarIllustration()
+            WelcomeReviewIllustration()
+        }
+        .padding(40)
+        .frame(width: WelcomeWindow.width)
+        .preferredColorScheme(.light)
+    }
+
     #Preview("3 Setup, Apple only") {
         WelcomeView(model: .preview(step: .setup), accessList: .preview([]), app: AppModel())
     }
