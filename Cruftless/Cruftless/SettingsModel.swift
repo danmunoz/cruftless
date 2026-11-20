@@ -1,4 +1,7 @@
 import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
 import Foundation
 import Observation
 import ServiceManagement
@@ -370,8 +373,7 @@ public extension SettingsModel {
             platforms: Set<DevelopmentPlatform> = Set(DevelopmentPlatform.allCases),
             platformSectionOrder: PlatformSectionOrder = .appleFirst
         ) -> SettingsModel {
-            let suiteName = "Cruftless.SettingsPreview.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
+            let defaults = ScratchDefaults(label: "cruftless-settings-preview").defaults
             let store = ProtectedPathsStore(userDefaults: defaults)
             for path in protectedPaths {
                 store.addPath(path)

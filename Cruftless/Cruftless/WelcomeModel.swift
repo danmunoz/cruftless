@@ -1,4 +1,7 @@
 import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
 import Foundation
 import Observation
 
@@ -161,11 +164,10 @@ public final class WelcomeModel {
             detected: DetectedPlatforms? = DetectedPlatforms(hasApple: true, hasAndroid: false),
             settings: SettingsModel = .preview(platforms: [.apple])
         ) -> WelcomeModel {
-            let suiteName = "Cruftless.WelcomePreview.\(UUID().uuidString)"
             let model = WelcomeModel(
                 settings: settings,
                 hasSavedInventory: false,
-                defaults: UserDefaults(suiteName: suiteName)!,
+                defaults: ScratchDefaults(label: "cruftless-welcome-preview").defaults,
                 detect: { detected ?? DetectedPlatforms(hasApple: false, hasAndroid: false) },
                 findAccessNeeds: { _ in hasAccessNeeds }
             )

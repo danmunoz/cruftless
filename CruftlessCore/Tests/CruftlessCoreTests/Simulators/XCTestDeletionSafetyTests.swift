@@ -1,4 +1,5 @@
 @testable import CruftlessCore
+import CruftlessFixtures
 import Darwin
 import Foundation
 import Testing
@@ -107,8 +108,9 @@ struct XCTestDeletionSafetyTests {
     func protectionChangedAfterAwait() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
-        let store = ProtectedPathsStore(userDefaults: defaults)
+        let scratch = ScratchDefaults()
+        defer { TestFileSystem.remove(scratch) }
+        let store = ProtectedPathsStore(userDefaults: scratch.defaults)
         let plan = try DeletionPlanner.xctestSimulatorDelete(for: fixture.device(), size: 1, context: PlanningContext())
         let commands = ScopedCommands(directory: fixture.directory)
         let executor = DeletionExecutor(simulatorExecutor: commands, protectedPathsStore: store, capacitySampler: {

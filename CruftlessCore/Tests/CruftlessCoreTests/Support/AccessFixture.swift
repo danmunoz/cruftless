@@ -1,4 +1,5 @@
 @testable import CruftlessCore
+import CruftlessFixtures
 import Foundation
 import Synchronization
 
@@ -8,7 +9,7 @@ struct AccessFixture {
     let defaults: UserDefaults
     let ledger: AccessLedger
     let gate: AccessGate
-    private let suiteName: String
+    private let scratch: ScratchDefaults
 
     init(volumes: @escaping ProtectedAreaClassifier.VolumeInspector = { _ in nil }) throws {
         // Under the real home but outside every real protected area, so Android's same-home and symlink-free root rules hold.
@@ -16,9 +17,8 @@ struct AccessFixture {
             .appendingPathComponent(".cruftless-access-test-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         home = URL(fileURLWithPath: PathNormalizer.normalize(base.path(percentEncoded: false)), isDirectory: true)
-        suiteName = "cruftless-access-tests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else { throw FixtureError() }
-        self.defaults = defaults
+        scratch = ScratchDefaults(label: "cruftless-access-tests")
+        defaults = scratch.defaults
         ledger = AccessLedger(userDefaults: defaults)
         gate = AccessGate(classifier: ProtectedAreaClassifier(home: home, inspectVolume: volumes), ledger: ledger)
     }
@@ -40,11 +40,9 @@ struct AccessFixture {
 
     func remove() {
         TestFileSystem.removeDirectoryRecursively(at: home)
-        defaults.removePersistentDomain(forName: suiteName)
+        TestFileSystem.remove(scratch)
     }
 }
-
-private struct FixtureError: Error {}
 
 /// Collects every open and listing the audit seam reports while it is alive.
 final class FileAccessRecorder: Sendable {

@@ -1,4 +1,5 @@
 @testable import CruftlessCore
+import CruftlessFixtures
 import Foundation
 import Testing
 
@@ -50,19 +51,19 @@ struct UninstallCleanupTests {
     }
 
     private struct LedgerFixture {
-        let suiteName = "cruftless.tests.\(UUID().uuidString)"
+        let scratch = ScratchDefaults()
         let defaults: UserDefaults
         let ledger: AccessLedger
 
         init() throws {
-            defaults = try #require(UserDefaults(suiteName: suiteName))
+            defaults = scratch.defaults
             ledger = AccessLedger(userDefaults: defaults)
             ledger.markAsked(.documents)
             ledger.markAsked(.desktop)
         }
 
         func remove() {
-            defaults.removePersistentDomain(forName: suiteName)
+            TestFileSystem.remove(scratch)
         }
     }
 
