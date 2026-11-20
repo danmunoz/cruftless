@@ -2,7 +2,7 @@ import CruftlessCore
 import UserNotifications
 
 /// Backs the scan reminder with the system notification daemon.
-public struct UserNotificationReminderCenter: ScanReminderCenter {
+public struct UserNotificationReminderCenter: ScanReminderCenter, ReminderClearing {
     public init() {}
 
     public func authorizationStatus() async -> ScanReminderAuthorization {
@@ -37,5 +37,13 @@ public struct UserNotificationReminderCenter: ScanReminderCenter {
 
     public func removeReminder(identifier: String) {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+    }
+
+    /// Removes every scheduled and delivered reminder; the closing read waits for the daemon to apply it.
+    public func removeAllReminders() async {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        _ = await center.pendingNotificationRequests()
     }
 }

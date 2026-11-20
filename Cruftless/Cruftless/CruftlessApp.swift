@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-@main
 struct CruftlessApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 

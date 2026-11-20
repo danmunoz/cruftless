@@ -1,3 +1,4 @@
+import CruftlessCore
 import ServiceManagement
 
 /// The login item registration, as far as Settings needs it.
@@ -27,5 +28,24 @@ public struct SystemLoginItemService: LoginItemService {
 
     public func openSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
+    }
+}
+
+/// Removes the `SMAppService.mainApp` registration, for a removal of the app.
+public struct SystemLoginItemUnregistrar: LoginItemUnregistering {
+    public init() {}
+
+    public func unregisterIfRegistered() async throws -> Bool {
+        let service = SMAppService.mainApp
+        switch service.status {
+        case .enabled, .requiresApproval:
+            try await service.unregister()
+            return true
+        case .notRegistered, .notFound:
+            return false
+        @unknown default:
+            try await service.unregister()
+            return true
+        }
     }
 }
