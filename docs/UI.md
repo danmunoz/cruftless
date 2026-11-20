@@ -494,9 +494,16 @@ already gives.
    the pointer holds the blinking and the glance, so the eyes never jump
    mid-follow.
 2. **Safety promise.** "Nothing is deleted without you" over
-   `WelcomeReviewIllustration`: a 360 pt copy of Review headed "Review 1 item",
-   with Derived Data going, Archives dimmed and flagged as "One at a time", and
-   Review's own Cancel and red Delete Permanently buttons, small. Below it,
+   `WelcomeReviewIllustration`: the shearing sheep (`WelcomeShearingSheep`,
+   120 pt) left of a 296 pt copy of Review headed "Review 1 item", with
+   Derived Data going, Archives dimmed and flagged as "One at a time", and
+   Review's own Cancel and red Delete Permanently buttons, small. A demo loops
+   about every 9 s: the system arrow moves onto Delete Permanently and clicks;
+   for 2.4 s the button holds a spinner, Derived Data's size bar drains and the
+   sheep is mid-shear with three wool tufts drifting off; then the sheep is
+   shorn, Derived Data and the button show a check, and the loop starts over.
+   Archives never changes, which is the third promise shown rather than told.
+   Under Reduce Motion it holds the first frame with no pointer. Below it,
    three rows from `WelcomePolicy.safetyPromises`. Each promise carries its own
    symbol; the flagged one uses the app's warning triangle in orange, and each
    detail is one line.
@@ -529,8 +536,10 @@ already gives.
 body never moves: no entrance, no bounce. While neutral, vector eyes drawn over
 the art blink and follow a gaze; an expression change is a 0.2 s crossfade. With
 Reduce Motion the eyes are still. In dark appearance it carries a thin light
-keyline so its plum outline stays visible. It appears on welcome steps 1 and 5
-only: the safety, setup and access steps stay plain. `docs/mascot/BRIEF.md` has
+keyline so its plum outline stays visible. It appears on welcome steps 1 and 5;
+the safety step uses the shearing frames instead (`MascotShearOvergrown`,
+`MascotShearMidway`, `MascotShearShorn`, registered on one canvas by the face so
+they crossfade in place), and the setup and access steps stay plain. `docs/mascot/BRIEF.md` has
 the character rules.
 
 Closing the window at any step counts as finishing. The copy for whether to

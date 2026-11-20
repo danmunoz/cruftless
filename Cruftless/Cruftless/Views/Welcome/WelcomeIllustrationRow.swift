@@ -9,6 +9,8 @@ struct WelcomeIllustrationRow: View {
     var note: String?
     var showsFlag = false
     var isDimmed = false
+    /// Replaces the size bar with a green check, for a row that has just been deleted.
+    var isDone = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -24,7 +26,12 @@ struct WelcomeIllustrationRow: View {
                 }
             }
             Spacer(minLength: 8)
-            if let note {
+            if isDone {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.green)
+                    .transition(.scale.combined(with: .opacity))
+            } else if let note {
                 Text(note)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
