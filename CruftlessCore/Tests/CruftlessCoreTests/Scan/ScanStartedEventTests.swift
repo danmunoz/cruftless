@@ -4,8 +4,6 @@ import Testing
 
 @Suite("ScanEngine started event")
 struct ScanStartedEventTests {
-    private static let filesPerRoot = 2000
-
     private static func makeBase() throws -> URL {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("cruftless-started-\(UUID().uuidString)", isDirectory: true)
@@ -65,42 +63,41 @@ struct ScanStartedEventTests {
         }
     }
 
-    @Test("Locations start one at a time, as the walk queue reaches them")
-    func startsAreSpreadAcrossTheScan() async throws {
+    @Test("A location starts only once the walk queue reaches its walk")
+    func startsWaitForTheWalkQueue() async throws {
         let base = try Self.makeBase()
         defer { TestFileSystem.removeDirectoryRecursively(at: base) }
-        let catalog = try Self.makeCatalog(
-            under: base,
-            names: ["alpha", "beta", "gamma"],
-            files: Self.filesPerRoot
-        )
+        let catalog = try Self.makeCatalog(under: base, names: ["alpha", "beta", "gamma"], files: 4)
 
-        let start = Date()
-        var startTimes: [TimeInterval] = []
-        var inFlight: Set<String> = []
-        var peakInFlight = 0
+        let hold = WalkQueueHold()
+        var heldEvents: [String] = []
+        var order: [String] = []
         for await event in await ScanEngine().scan(catalog: catalog) {
             switch event {
+            case .planned:
+                // Gives a start announced outside the walk queue time to show up while the queue is still held.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(200))
+                    hold.release()
+                }
             case let .locationStarted(locationId):
-                startTimes.append(Date().timeIntervalSince(start))
-                inFlight.insert(locationId)
-                peakInFlight = max(peakInFlight, inFlight.count)
+                if hold.isHeld { heldEvents.append("started \(locationId)") }
+                order.append("started \(locationId)")
             case let .locationScanned(entry):
-                inFlight.remove(entry.location.id)
+                if hold.isHeld { heldEvents.append("scanned \(entry.location.id)") }
+                order.append("scanned \(entry.location.id)")
             default:
                 break
             }
         }
+        hold.release()
 
-        #expect(startTimes.count == catalog.count)
-        let spread = (startTimes.last ?? 0) - (startTimes.first ?? 0)
-        #expect(
-            spread > 0.003,
-            "every location started within \(Int(spread * 1000))ms of the first: they are being announced in one burst"
-        )
-        #expect(
-            peakInFlight <= 2,
-            "\(peakInFlight) of \(catalog.count) locations were measuring at once; the walk queue is serial"
-        )
+        #expect(!hold.releasedByFailsafe, "the scan never planned, so the walk queue was never released")
+        #expect(heldEvents.isEmpty, "reported while the walk queue was held: \(heldEvents)")
+        for location in catalog {
+            let started = try #require(order.firstIndex(of: "started \(location.id)"), "\(location.id) never started")
+            let scanned = try #require(order.firstIndex(of: "scanned \(location.id)"), "\(location.id) never landed")
+            #expect(started < scanned, "\(location.id) landed before it started")
+        }
     }
 }

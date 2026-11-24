@@ -4,13 +4,11 @@ import Testing
 
 @Suite("Scan event delivery")
 struct ScanEventDeliveryTests {
-    private static let filesPerRoot = 2000
-
     private static func makeCatalog(under base: URL) throws -> [TrackedLocation] {
         try ["alpha", "beta", "gamma"].map { name in
             let root = base.appendingPathComponent(name, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            for index in 0 ..< filesPerRoot {
+            for index in 0 ..< 4 {
                 try Data(repeating: 0x41, count: 64).write(to: root.appendingPathComponent("f\(index)"))
             }
             return TrackedLocation(
@@ -25,27 +23,40 @@ struct ScanEventDeliveryTests {
         }
     }
 
-    @Test("Rows are delivered as they land, not in one burst at the end")
-    func rowsArriveIncrementally() async throws {
+    @Test("A row is delivered while another location is still being measured")
+    func rowsArriveBeforeTheScanEnds() async throws {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("cruftless-delivery-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         defer { TestFileSystem.removeDirectoryRecursively(at: base) }
-        let catalog = try Self.makeCatalog(under: base)
+        let walked = try Self.makeCatalog(under: base)
 
-        let start = Date()
-        var rowTimes: [TimeInterval] = []
-        for await event in await ScanEngine().scan(catalog: catalog) {
-            if case .locationScanned = event {
-                rowTimes.append(Date().timeIntervalSince(start))
+        // The runtimes row cannot land until the latch opens, and the latch opens only on the walked rows.
+        let runtimesPending = AsyncLatch()
+        let engine = ScanEngine(runtimeLister: {
+            await runtimesPending.wait()
+            return []
+        })
+        let catalog = walked + [LocationCatalog.simulatorRuntimes]
+
+        var walkedRows: Set<String> = []
+        var runtimesLanded = false
+        for await event in await engine.scan(catalog: catalog) {
+            guard case let .locationScanned(entry) = event else { continue }
+            if entry.location.id == LocationCatalog.simulatorRuntimes.id {
+                runtimesLanded = true
+            } else {
+                walkedRows.insert(entry.location.id)
+                if walkedRows.count == walked.count { runtimesPending.open() }
             }
         }
+        runtimesPending.open()
 
-        #expect(rowTimes.count == catalog.count)
-        let spread = (rowTimes.last ?? 0) - (rowTimes.first ?? 0)
+        #expect(walkedRows.count == walked.count)
+        #expect(runtimesLanded)
         #expect(
-            spread > 0.003,
-            "every row arrived within \(Int(spread * 1000))ms of the first: they are being delivered in one burst"
+            !runtimesPending.openedByFailsafe,
+            "the walked rows were held back until the pending location finished"
         )
     }
 }
