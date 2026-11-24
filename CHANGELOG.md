@@ -2,9 +2,32 @@
 
 ## [1.4.0]
 
-### Changes
+### Added
 
-- welcome window, protected-folder access, orphaned Derived Data and uninstall cleanup (#20) (58e391e)
+- A welcome window on first launch that picks platforms, asks for folder
+  access, and runs the first scan.
+- Tag orphaned Derived Data, whose project no longer exists, on the Derived
+  Data row.
+- Ask before reading Documents, Desktop, Downloads, iCloud Drive, or removable
+  volumes, and allow them from Settings.
+- Remove Cruftless's own data from Settings > Support, and clean up the login
+  item and settings on `brew uninstall --zap`.
+- New sheep app icon and menu bar glyph.
+- A laid-out installer DMG window.
+
+### Improved
+
+- Faster scans.
+- Group empty locations under an Empty header.
+- Offer Clear and Select Items only where they can succeed.
+- Show a spinner while a single item is deleted.
+- Bring the welcome and Settings windows to the front, with a Dock icon while
+  they are open.
+- Offer the Homebrew update command only for Homebrew installs.
+
+### Changed
+
+- Stop tracking the Xcode coding assistant folder.
 
 ## [1.3.1]
 
