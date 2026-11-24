@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.0]
+
+### Changes
+
+- welcome window, protected-folder access, orphaned Derived Data and uninstall cleanup (#20) (58e391e)
+
 ## [1.3.1]
 
 ### Fixed
