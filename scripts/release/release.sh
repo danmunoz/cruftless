@@ -141,17 +141,13 @@ notarize_app() {
 }
 
 package_dmg() {
-  local resolved_identity stage
+  local resolved_identity
   preflight
   require_marker "$output_dir" .app-notarized
   verify_notarized_app "$app"
   [[ ! -e "$dmg" ]] || die "DMG already exists: $dmg"
   resolved_identity="$(find_developer_id_identity "$identity")"
-  stage="$output_dir/dmg-staging"
-  mkdir "$stage"
-  ditto "$app" "$stage/$PRODUCT_NAME.app"
-  ln -s /Applications "$stage/Applications"
-  hdiutil create -volname "$PRODUCT_NAME" -srcfolder "$stage" -format UDZO "$dmg"
+  "$SCRIPT_DIR/dmg.sh" --app "$app" --output "$dmg"
   codesign --force --sign "$resolved_identity" --timestamp "$dmg"
   verify_signed_dmg "$dmg"
   : > "$output_dir/.dmg-signed"

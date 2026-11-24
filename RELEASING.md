@@ -42,6 +42,11 @@ Before starting, confirm that:
 - The Cruftless checkout is clean and on `main`, and its local `main` matches
   `origin/main`. The release commands verify this before proceeding.
 
+`package-dmg` lays out the installer window through Finder, so run it in a
+logged-in GUI session. The first run asks to let your terminal control Finder;
+allow it, or the command stops before creating the DMG. Eject any mounted
+`Cruftless` volume first.
+
 For the Homebrew step, have `curl`, Ruby, Git, and `gh` authenticated with
 permission to push and open a PR in `danmunoz/homebrew-tap`. Use a clean local
 tap checkout on `main` that matches `origin/main`. The tap PR's Cask CI runs
@@ -97,6 +102,27 @@ Cruftless/Version.xcconfig is the source of truth for MARKETING_VERSION and
 CURRENT_PROJECT_VERSION. The release-cut workflow increments the build number
 once when it creates the release PR. Do not add a DMG to the release branch;
 the verified artifact is attached to the draft GitHub Release.
+
+## Installer DMG
+
+`scripts/release/dmg.sh` builds the unsigned, compressed DMG that `package-dmg`
+signs: the app, an `Applications` link, a fixed icon layout over the
+background in `scripts/release/dmg/`, and the app icon as the volume icon. To
+preview it without signing, point it at any built `Cruftless.app`:
+
+```sh
+scripts/release/dmg.sh --app /path/to/Cruftless.app --output /tmp/Cruftless-preview.dmg
+```
+
+The background is generated, not drawn by hand. After changing
+`scripts/release/dmg/render-background.swift`, regenerate both PNGs and commit
+them with it:
+
+```sh
+swift scripts/release/dmg/render-background.swift scripts/release/dmg
+```
+
+The window size and icon centres are set in both files and must match.
 
 ## Homebrew cask uninstall stanzas
 
