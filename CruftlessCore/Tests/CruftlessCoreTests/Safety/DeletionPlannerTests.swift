@@ -234,10 +234,6 @@ struct DeletionPlannerTests {
                 + "and the build can't be re-exported."
         )
         #expect(
-            LocationCatalog.codingAssistant.consequence
-                == "Coding assistant sessions, agent history and MCP server settings are lost."
-        )
-        #expect(
             LocationCatalog.simulatorDevices.consequence
                 == "Erasing removes a simulator's installed apps and their data."
         )

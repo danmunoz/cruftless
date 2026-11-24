@@ -73,6 +73,7 @@ enum AndroidSDKMetadataReader {
         guard (metadata.st_mode & S_IFMT) != S_IFLNK else {
             return MetadataFile(status: .symlink, data: nil, bytes: nil)
         }
+        FileAccessAudit.record(.open, path)
         let descriptor = Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard descriptor >= 0 else { return MetadataFile(status: .unreadable, data: nil, bytes: nil) }
         defer { Darwin.close(descriptor) }

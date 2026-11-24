@@ -28,7 +28,7 @@ public struct ChildBreakdown: Sendable {
     }
 }
 
-/// Fast filesystem walker measuring APFS allocated space.
+/// Fast filesystem walker measuring APFS allocated space and the clone-aware space a delete would free.
 public enum DirectoryWalker: Sendable {
     /// Walks a file or directory tree, computing total allocated size and newest modification date.
     public static func walk(
@@ -38,14 +38,14 @@ public enum DirectoryWalker: Sendable {
     ) -> SizeResult {
         var accumulator = SizeAccumulator()
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path(percentEncoded: false)
-        var rootStat = stat()
-        guard lstat(path, &rootStat) == 0 else { return .zero }
+        guard let root = DirectoryEntryReader.entry(atPath: path) else { return .zero }
         walkInternal(
+            entry: root,
             path: path,
             inodeSet: inodeSet,
             accumulator: &accumulator,
             cutoff: cutoff,
-            rootDevice: UInt64(rootStat.st_dev)
+            rootDevice: root.device
         )
         return accumulator.result()
     }
@@ -56,90 +56,64 @@ public enum DirectoryWalker: Sendable {
         recordingDepth: Int = 1
     ) -> ChildBreakdown {
         let path = ProtectedPaths.normalize(url)
-
-        var rootStat = stat()
-        guard lstat(path, &rootStat) == 0 else { return .empty }
+        guard let root = DirectoryEntryReader.entry(atPath: path) else { return .empty }
 
         // A bundle is one thing, not a tree to be broken apart.
-        guard (rootStat.st_mode & S_IFMT) == S_IFDIR, !AtomicBundles.isAtomicBundle(url) else {
+        guard root.kind == .directory, !AtomicBundles.isAtomicBundle(url) else {
             let total = walk(url: url, inodeSet: inodeSet)
             return ChildBreakdown(total: total, sizes: [path: total])
         }
 
-        guard let dir = opendir(path) else { return .unreadableRoot(path: path) }
-        defer { closedir(dir) }
-
         var sizes: [String: SizeResult] = [:]
         var total = SizeAccumulator()
-
-        while let entry = readdir(dir) {
-            guard let name = Dirent.name(of: entry) else { continue }
-            if name == "." || name == ".." { continue }
-
-            let childPath = (path as NSString).appendingPathComponent(name)
-            total.add(
+        let readable = DirectoryEntryReader.forEachEntry(inDirectory: path) { child in
+            total.merge(
                 recordedWalk(
-                    path: childPath,
+                    (child, DirectoryEntryReader.childPath(path, child.name)),
                     depth: recordingDepth,
                     inodeSet: inodeSet,
-                    rootDevice: UInt64(rootStat.st_dev),
+                    rootDevice: root.device,
                     into: &sizes
                 )
             )
+        }
+        guard readable || !sizes.isEmpty else { return .unreadableRoot(path: path) }
+        if !readable {
+            total.addUnreadableDirectory(path: path)
         }
 
         return ChildBreakdown(total: total.result(), sizes: sizes)
     }
 
     private static func recordedWalk(
-        path: String,
+        _ target: (entry: WalkEntry, path: String),
         depth: Int,
         inodeSet: InodeSet,
-        rootDevice: UInt64,
+        rootDevice: Int32,
         into sizes: inout [String: SizeResult]
-    ) -> SizeResult {
-        var statBuf = stat()
-        guard lstat(path, &statBuf) == 0 else { return .zero }
-        guard UInt64(statBuf.st_dev) == rootDevice else {
-            var accumulator = SizeAccumulator()
-            if (statBuf.st_mode & S_IFMT) == S_IFDIR {
+    ) -> SizeAccumulator {
+        let (entry, path) = target
+        var accumulator = SizeAccumulator()
+        defer { sizes[path] = accumulator.result() }
+
+        guard !isForeignVolume(entry, rootDevice: rootDevice) else {
+            if entry.kind == .directory {
                 accumulator.addSkippedMount(path: path)
             }
-            let result = accumulator.result()
-            sizes[path] = result
-            return result
+            return accumulator
         }
-
-        let isDirectory = (statBuf.st_mode & S_IFMT) == S_IFDIR
-        let isBundle = AtomicBundles.isAtomicBundle(URL(fileURLWithPath: path))
 
         // A leaf as far as recording goes: one walk, one number.
-        guard depth > 1, isDirectory, !isBundle else {
-            var accumulator = SizeAccumulator()
-            walkInternal(path: path, inodeSet: inodeSet, accumulator: &accumulator, rootDevice: rootDevice)
-            let result = accumulator.result()
-            sizes[path] = result
-            return result
+        guard depth > 1, entry.kind == .directory, !AtomicBundles.isAtomicBundle(URL(fileURLWithPath: path)) else {
+            walkInternal(entry: entry, path: path, inodeSet: inodeSet, accumulator: &accumulator, rootDevice: rootDevice)
+            return accumulator
         }
 
-        guard let dir = opendir(path) else {
-            var accumulator = SizeAccumulator()
-            accumulator.addUnreadableDirectory(path: path)
-            let result = accumulator.result()
-            sizes[path] = result
-            return result
-        }
-        defer { closedir(dir) }
-
-        var total = SizeAccumulator()
-        while let entry = readdir(dir) {
-            guard let name = Dirent.name(of: entry) else { continue }
-            if name == "." || name == ".." { continue }
-
-            let childPath = (path as NSString).appendingPathComponent(name)
-            total.add(
+        // Recorded as well as its children: the level above is still a row wherever a location lists at that level.
+        let readable = DirectoryEntryReader.forEachEntry(inDirectory: path) { child in
+            accumulator.merge(
                 recordedWalk(
-                    path: childPath,
+                    (child, DirectoryEntryReader.childPath(path, child.name)),
                     depth: depth - 1,
                     inodeSet: inodeSet,
                     rootDevice: rootDevice,
@@ -147,73 +121,42 @@ public enum DirectoryWalker: Sendable {
                 )
             )
         }
-
-        // Recorded as well as its children: the level above is still a row wherever a location lists at that level.
-        let result = total.result()
-        sizes[path] = result
-        return result
+        if !readable {
+            accumulator.addUnreadableDirectory(path: path)
+        }
+        return accumulator
     }
 
     private static func walkInternal(
+        entry: WalkEntry,
         path: String,
         inodeSet: InodeSet,
         accumulator: inout SizeAccumulator,
         cutoff: Date? = nil,
-        rootDevice: UInt64
+        rootDevice: Int32
     ) {
-        var statBuf = stat()
-        guard lstat(path, &statBuf) == 0 else {
-            return
-        }
-        guard UInt64(statBuf.st_dev) == rootDevice else {
-            if (statBuf.st_mode & S_IFMT) == S_IFDIR {
-                accumulator.addSkippedMount(path: path)
-            }
+        if let cutoff, entry.creationDate > cutoff {
             return
         }
 
-        if let cutoff, birthDate(of: statBuf) > cutoff {
-            return
-        }
-
-        let mode = statBuf.st_mode & S_IFMT
-        let mtime = Date(
-            timeIntervalSince1970: TimeInterval(statBuf.st_mtimespec.tv_sec) +
-                TimeInterval(statBuf.st_mtimespec.tv_nsec) / 1_000_000_000.0
-        )
-
-        if mode == S_IFLNK {
-            let allocated = Int64(statBuf.st_blocks) * 512
-            accumulator.addFile(allocatedBytes: allocated, mtime: mtime)
-            return
-        }
-
-        if mode == S_IFREG {
+        switch entry.kind {
+        case .symlink:
+            accumulator.addFile(allocatedBytes: entry.allocatedBytes, mtime: entry.modificationDate)
+        case .regular:
             // Hardlink deduplication.
-            if statBuf.st_nlink > 1 {
-                let isNew = inodeSet.recordHardlinkIfFirstSeen(
-                    device: Int32(statBuf.st_dev),
-                    inode: UInt64(statBuf.st_ino)
-                )
-                if !isNew {
-                    // Hardlink already counted elsewhere.
-                    return
-                }
+            if entry.linkCount > 1, !inodeSet.recordHardlinkIfFirstSeen(device: entry.device, inode: entry.inode) {
+                return
             }
-
-            let allocated = Int64(statBuf.st_blocks) * 512
-            accumulator.addFile(allocatedBytes: allocated, mtime: mtime)
-            return
-        }
-
-        if mode == S_IFDIR {
-            walkChildren(
-                ofDirectory: path,
-                inodeSet: inodeSet,
-                accumulator: &accumulator,
-                cutoff: cutoff,
-                rootDevice: rootDevice
+            accumulator.addFile(
+                allocatedBytes: entry.allocatedBytes,
+                exclusiveBytes: entry.exclusiveBytes,
+                cloneFamily: entry.cloneFamily,
+                mtime: entry.modificationDate
             )
+        case .directory:
+            walkChildren(ofDirectory: path, inodeSet: inodeSet, accumulator: &accumulator, cutoff: cutoff, rootDevice: rootDevice)
+        case .other:
+            return
         }
     }
 
@@ -222,25 +165,39 @@ public enum DirectoryWalker: Sendable {
         inodeSet: InodeSet,
         accumulator: inout SizeAccumulator,
         cutoff: Date?,
-        rootDevice: UInt64
+        rootDevice: Int32
     ) {
-        // A directory the app cannot open is not an empty directory.
-        guard let dir = opendir(path) else {
-            accumulator.addUnreadableDirectory(path: path)
-            return
-        }
-        defer { closedir(dir) }
-
-        while let entry = readdir(dir) {
-            guard let name = Dirent.name(of: entry) else { continue }
-
-            if name == "." || name == ".." {
-                continue
+        // Subdirectories are walked after this directory is closed, so open descriptors and buffers stay one deep.
+        var subdirectories: [(entry: WalkEntry, path: String)] = []
+        let readable = DirectoryEntryReader.forEachEntry(inDirectory: path, names: .directoriesOnly) { child in
+            guard !isForeignVolume(child, rootDevice: rootDevice) else {
+                if child.kind == .directory {
+                    accumulator.addSkippedMount(path: DirectoryEntryReader.childPath(path, child.name))
+                }
+                return
             }
-
-            let childPath = (path as NSString).appendingPathComponent(name)
+            if child.kind == .directory {
+                subdirectories.append((child, DirectoryEntryReader.childPath(path, child.name)))
+            } else {
+                // A file never reads `path`; only a directory walks it.
+                walkInternal(
+                    entry: child,
+                    path: path,
+                    inodeSet: inodeSet,
+                    accumulator: &accumulator,
+                    cutoff: cutoff,
+                    rootDevice: rootDevice
+                )
+            }
+        }
+        // A directory the app cannot open is not an empty directory.
+        if !readable {
+            accumulator.addUnreadableDirectory(path: path)
+        }
+        for subdirectory in subdirectories {
             walkInternal(
-                path: childPath,
+                entry: subdirectory.entry,
+                path: subdirectory.path,
                 inodeSet: inodeSet,
                 accumulator: &accumulator,
                 cutoff: cutoff,
@@ -249,10 +206,7 @@ public enum DirectoryWalker: Sendable {
         }
     }
 
-    private static func birthDate(of statBuf: stat) -> Date {
-        Date(
-            timeIntervalSince1970: TimeInterval(statBuf.st_birthtimespec.tv_sec) +
-                TimeInterval(statBuf.st_birthtimespec.tv_nsec) / 1_000_000_000.0
-        )
+    private static func isForeignVolume(_ entry: WalkEntry, rootDevice: Int32) -> Bool {
+        entry.isMountPoint || entry.device != rootDevice
     }
 }

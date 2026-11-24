@@ -138,8 +138,25 @@ public struct ReviewView: View {
         }
     }
 
-    /// Overall position and a determinate bar while the plan executes.
+    /// Overall position and a determinate bar while a batch executes, or a spinner for a single item.
+    @ViewBuilder
     private func executionHeader(_ run: DeletionRunState) -> some View {
+        if run.total == 1 {
+            HStack(alignment: .center, spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Deleting")
+                    .font(.system(size: 22, weight: .semibold))
+                Text(ByteFormatter.format(plan.totalReclaimableBytes))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        } else {
+            batchExecutionHeader(run)
+        }
+    }
+
+    private func batchExecutionHeader(_ run: DeletionRunState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Deleting \(run.currentPosition) of \(run.total)")

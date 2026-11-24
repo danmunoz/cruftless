@@ -16,7 +16,6 @@ public enum DesignTokens {
             switch locationId {
             case LocationCatalog.swiftPMCache.id, LocationCatalog.simulatorRuntimes.id: "Needs re-download"
             case LocationCatalog.simulatorDevices.id: "Holds app data"
-            case LocationCatalog.codingAssistant.id: "Holds history"
             default: "Needs reinstall"
             }
         case .irreversible:

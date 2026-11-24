@@ -41,9 +41,10 @@ extension DrillDownProvider {
     static func androidAVDs(
         in roots: [URL],
         rootSizes: [RootSize] = [],
-        knownSizes: [String: [String: SizeResult]] = [:]
+        knownSizes: [String: [String: SizeResult]] = [:],
+        accessGate: AccessGate = .shared
     ) -> [ChildEntry] {
-        let devices = RootResolver.androidAVDInventory(roots: roots)
+        let devices = RootResolver.androidAVDInventory(roots: roots, gate: accessGate)
         let inodeSet = InodeSet()
         var measuredDirectories: Set<String> = []
         var children = devices.map { device in
@@ -213,7 +214,7 @@ private struct SDKPackageDiscovery {
             "ndk", "cmake", "cmdline-tools", "extras", "licenses", "skins", "fonts",
             ".downloadIntermediates", ".knownPackages", ".temp", "tools", "add-ons", "patcher"
         ]
-        guard let directory = opendir(ProtectedPaths.normalize(root)) else { return false }
+        guard let directory = FileAccessAudit.openDirectory(ProtectedPaths.normalize(root)) else { return false }
         defer { closedir(directory) }
         var entries = 0
         while let entry = readdir(directory) {
@@ -253,7 +254,7 @@ private struct SDKPackageDiscovery {
     }
 
     private mutating func childDirectories(of parent: URL, rootDevice: UInt64) -> [URL] {
-        guard let directory = opendir(ProtectedPaths.normalize(parent)) else { return [] }
+        guard let directory = FileAccessAudit.openDirectory(ProtectedPaths.normalize(parent)) else { return [] }
         defer { closedir(directory) }
         var result: [URL] = []
         while let entry = readdir(directory) {

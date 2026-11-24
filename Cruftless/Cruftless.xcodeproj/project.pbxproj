@@ -275,6 +275,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSFileProviderDomainUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSNetworkVolumesUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
@@ -303,6 +309,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSFileProviderDomainUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSNetworkVolumesUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "Cruftless measures the Xcode and Android files you keep here. Nothing is deleted without your review.";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;

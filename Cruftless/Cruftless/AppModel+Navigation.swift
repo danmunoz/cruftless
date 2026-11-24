@@ -28,6 +28,17 @@ public extension AppModel {
         pushing { push(.selection(location)) }
     }
 
+    /// Opens Select Items with a suggestion's rows already checked; Review and confirmation still follow.
+    func openSelection(for location: TrackedLocation, preselecting ids: Set<String>) {
+        guard !isDeleting else { return }
+        let session = selectionSession(for: location)
+        if session.stage == .selection, session.isReady, !session.isRefreshing {
+            session.selection.replace(with: ids, among: session.rows.map(\.selectionItem))
+            if session.resolution.invalidIDs.isEmpty { session.notice = nil }
+        }
+        pushing { push(.selection(location)) }
+    }
+
     func popoverDidDisappear() {
         cancelAndroidPreparation()
         cancelPreparation()

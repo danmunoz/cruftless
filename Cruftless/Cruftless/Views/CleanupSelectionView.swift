@@ -64,7 +64,7 @@ private struct SelectionControls: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if session.location.id != LocationCatalog.gradleCaches.id {
+            if session.location.supportsBatchSelection {
                 Button("Select All") { model.selectEligibleCleanupRows(in: session) }
                     .disabled(!session.isReady || session.isRefreshing || model.isDeleting
                         || !session.rows.contains(where: \.selectionItem.isSelectable))
@@ -164,10 +164,15 @@ private struct SelectionCheckboxRow: View {
         Toggle(isOn: Binding(get: { isSelected }, set: { _ in onToggle() })) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(row.title)
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(row.title)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let tag = row.titleTag {
+                            RowTitleTagView(tag: tag)
+                        }
+                    }
                     if let subtitle = row.subtitle, subtitle != row.disabledReason {
                         Text(subtitle)
                             .font(.system(size: 11))
@@ -199,7 +204,7 @@ private struct SelectionCheckboxRow: View {
         .padding(.vertical, 4)
         .help(row.disabledReason ?? row.subtitle ?? row.title)
         .accessibilityLabel(
-            "\(row.title), \(ByteFormatter.format(row.selectionItem.reclaimableBytes)), \(row.actionLabel ?? "Unavailable")"
+            "\(row.accessibilityTitle), \(ByteFormatter.format(row.selectionItem.reclaimableBytes)), \(row.actionLabel ?? "Unavailable")"
         )
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityIdentifier("cleanup.selection.row.\(row.id)")
@@ -269,6 +274,12 @@ private struct SelectionFooter: View {
     #Preview("Selection: disabled runtimes") {
         let model = CleanupSelectionPreviewFixtures.allDisabledModel()
         CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.simulatorRuntimes.id]!, isPreviewFixture: true)
+            .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Selection: orphaned projects preselected") {
+        let model = CleanupSelectionPreviewFixtures.orphanedProjectsModel()
+        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 

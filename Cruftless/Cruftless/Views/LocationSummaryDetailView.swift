@@ -147,8 +147,8 @@ struct LocationSummaryDetailView: View {
 }
 
 #if DEBUG
-    #Preview("Summary detail: coding assistant") {
-        LocationSummaryDetailView(location: LocationCatalog.codingAssistant, model: .previewPopulated(), backTitle: "Overview")
+    #Preview("Summary detail: SwiftPM cache") {
+        LocationSummaryDetailView(location: LocationCatalog.swiftPMCache, model: .previewPopulated(), backTitle: "Overview")
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 

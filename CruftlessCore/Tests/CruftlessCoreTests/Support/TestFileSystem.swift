@@ -1,3 +1,4 @@
+import CruftlessFixtures
 import Darwin
 import Foundation
 
@@ -9,6 +10,13 @@ enum TestFileSystem: Sendable {
 
     static func removeFile(at url: URL) {
         unlink(url.path(percentEncoded: false))
+    }
+
+    /// Clears a scratch suite and deletes its plist, which clearing alone leaves behind.
+    static func remove(_ scratch: ScratchDefaults) {
+        scratch.defaults.removePersistentDomain(forName: scratch.suiteName)
+        CFPreferencesAppSynchronize(scratch.suiteName as CFString)
+        unlink(scratch.fileURL.path(percentEncoded: false))
     }
 
     private static func removeRecursive(path: String) {

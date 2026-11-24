@@ -19,13 +19,13 @@ struct InventoryOrderingTests {
     @Test("Equal sizes keep catalog order, so rows never shuffle between rescans")
     func equalSizesKeepCatalogOrder() {
         let entries = [
-            sized(LocationCatalog.codingAssistant, bytes: 0),
+            sized(LocationCatalog.archives, bytes: 0),
             sized(LocationCatalog.derivedData, bytes: 0),
             sized(LocationCatalog.deviceSupport, bytes: 0)
         ]
         let ordered = inventory(entries).entries.map(\.id)
         #expect(ordered == [
-            LocationCatalog.deviceSupport.id, LocationCatalog.derivedData.id, LocationCatalog.codingAssistant.id
+            LocationCatalog.deviceSupport.id, LocationCatalog.derivedData.id, LocationCatalog.archives.id
         ])
     }
 

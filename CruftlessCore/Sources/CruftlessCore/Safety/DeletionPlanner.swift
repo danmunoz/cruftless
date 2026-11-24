@@ -12,6 +12,10 @@ public enum DeletionPlanner {
         guard location.tier.isDeletable else {
             throw DeletionPlanningError.notDeletable(title: location.title)
         }
+        // A row that skipped protected roots is refused whole, never shrunk to the roots it could read.
+        if let need = entry.accessNeed {
+            throw DeletionPlanningError.needsAccess(title: location.title, need: need)
+        }
         if let reason = entry.unavailableReason {
             throw DeletionPlanningError.unavailable(title: location.title, reason: reason)
         }
@@ -171,7 +175,7 @@ public enum DeletionPlanner {
     }
 
     /// Refuses a batch whose targets are not disjoint.
-    private static func rejectOverlaps(among targets: [DeletionTarget]) throws {
+    static func rejectOverlaps(among targets: [DeletionTarget]) throws {
         var seen: [String: String] = [:]
         for target in targets {
             guard let path = target.validatedPath?.path else { continue }
@@ -226,6 +230,7 @@ public enum DeletionPlanner {
         guard let fingerprint = Fingerprint.capture(at: child.url) else {
             throw DeletionPlanningError.missingOnDisk(name: child.name)
         }
+        let precondition = try orphanedProjectPrecondition(for: child)
         return .path(
             id: child.id,
             name: displayName ?? child.name,
@@ -238,7 +243,18 @@ public enum DeletionPlanner {
                 targetURL: child.url,
                 activeToolchainOverrideIdentifier: context.activeToolchainOverrideIdentifier
             ),
-            reclaimableBytes: child.reclaimableBytes
+            reclaimableBytes: child.reclaimableBytes,
+            precondition: precondition
         )
+    }
+
+    /// Re-reads an orphaned folder's record and keeps the claim checked again right before deletion.
+    private static func orphanedProjectPrecondition(for child: ChildEntry) throws -> DeletionPrecondition? {
+        guard case let .orphaned(workspacePath) = child.workspace else { return nil }
+        let name = Naming.derivedDataFolder(child.name)
+        guard DerivedDataWorkspaceReader.isStillOrphaned(folder: child.url, workspacePath: workspacePath) else {
+            throw DeletionPlanningError.orphanedProjectChanged(name: name)
+        }
+        return .derivedDataProjectMissing(folder: child.url, workspacePath: workspacePath, name: name)
     }
 }

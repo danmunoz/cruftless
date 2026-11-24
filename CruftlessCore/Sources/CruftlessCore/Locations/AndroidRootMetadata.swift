@@ -45,6 +45,7 @@ extension RootResolver {
     }
 
     static func boundedSDKMetadata(at url: URL, maximumBytes: Int) -> Data? {
+        FileAccessAudit.record(.open, url.path(percentEncoded: false))
         let descriptor = Darwin.open(url.path(percentEncoded: false), O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard descriptor >= 0 else { return nil }
         defer { Darwin.close(descriptor) }
@@ -99,7 +100,7 @@ extension RootResolver {
                 : "Gradle cache layout not verified"
         case "androidSDK":
             let expected = Set(["platforms", "build-tools", "platform-tools", "system-images", "ndk", "cmake", "licenses"])
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path(percentEncoded: false))) ?? []
+            let names = FileAccessAudit.contentsOfDirectory(atPath: root.path(percentEncoded: false)) ?? []
             return names.contains(where: expected.contains)
                 ? "Recognized Android SDK directory structure"
                 : "SDK layout not verified"
@@ -118,19 +119,20 @@ extension RootResolver {
         }
     }
 
-    public static func androidAVDInventory(roots: [URL]) -> [AndroidAVDInventoryItem] {
+    public static func androidAVDInventory(roots: [URL], gate: AccessGate = .shared) -> [AndroidAVDInventoryItem] {
         var items: [String: AndroidAVDInventoryItem] = [:]
         guard let registryRoot = roots.first,
-              let names = try? FileManager.default.contentsOfDirectory(atPath: registryRoot.path(percentEncoded: false))
+              let names = listAVDRegistry(registryRoot, gate: gate)
         else { return [] }
         for name in names.filter({ $0.hasSuffix(".ini") }).prefix(256) {
-            guard let item = androidAVDItem(named: name, in: registryRoot) else { continue }
+            guard let item = androidAVDItem(named: name, in: registryRoot, gate: gate) else { continue }
             items[ProtectedPaths.normalize(registryRoot.appendingPathComponent(name))] = item
         }
         return items.values.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
     static func boundedProperties(at url: URL) -> String? {
+        FileAccessAudit.record(.open, url.path(percentEncoded: false))
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: 64 * 1024 + 1), data.count <= 64 * 1024 else { return nil }
@@ -195,7 +197,7 @@ extension RootResolver {
         return "Default AVD home"
     }
 
-    private static func androidAVDItem(named name: String, in root: URL) -> AndroidAVDInventoryItem? {
+    private static func androidAVDItem(named name: String, in root: URL, gate: AccessGate) -> AndroidAVDInventoryItem? {
         guard let contents = boundedProperties(at: root.appendingPathComponent(name)) else { return nil }
         let values = propertyValues(contents)
         let absolute = values["path"].flatMap(absoluteAndroidPath)
@@ -205,8 +207,10 @@ extension RootResolver {
         }
         if let absolute, let relative,
            ProtectedPaths.normalize(absolute) != ProtectedPaths.normalize(relative) { return nil }
+        // A device whose data lies in a blocked area is left out; its root is reported as needing access instead.
         guard let directory = absolute ?? relative,
-              usableAndroidRoot(directory, home: homeURL) != nil
+              usableAndroidRoot(directory, home: homeURL) != nil,
+              gate.check(directory) == .clear
         else { return nil }
         let config = boundedProperties(at: directory.appendingPathComponent("config.ini")).map(propertyValues) ?? [:]
         let fallback = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent

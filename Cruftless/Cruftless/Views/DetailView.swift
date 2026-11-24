@@ -29,6 +29,11 @@ public struct DetailView: View {
         contents?.children ?? []
     }
 
+    /// Roots the access gate kept the scan out of, listed read-only after the measured rows.
+    private var blockedRoots: [BlockedAccess] {
+        model.inventory?.entries.first { $0.id == location.id }?.accessNeed?.blocked ?? []
+    }
+
     private var total: Int64 {
         children.reduce(0) { $0 + $1.reclaimableBytes }
     }
@@ -62,6 +67,16 @@ public struct DetailView: View {
         hasRows && !batchableChildren.isEmpty && location.tier.isDeletable && !location.mutationPolicy.isReadOnly
     }
 
+    private var isDerivedData: Bool {
+        location.id == LocationCatalog.derivedData.id
+    }
+
+    /// Derived Data folders whose project is gone, offered as one selection.
+    private var orphanedProjects: OrphanedProjectsSuggestion? {
+        guard isDerivedData, !location.mutationPolicy.isReadOnly else { return nil }
+        return OrphanedProjectsSuggestion(children: children, protectedPaths: model.settings.protectedPathPolicy)
+    }
+
     private var hasNotes: Bool {
         contents?.inventoryIssue != nil
             || !(contents?.androidSDKDiagnostics.isEmpty ?? true)
@@ -75,7 +90,7 @@ public struct DetailView: View {
                 loadingTitle: "Reading \(location.title)…",
                 error: contents?.failureReason,
                 errorTitle: "Couldn't read \(location.title)",
-                isEmpty: children.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
+                isEmpty: children.isEmpty && blockedRoots.isEmpty && (contents?.androidSDKDiagnostics.isEmpty ?? true),
                 emptySymbol: "folder",
                 emptyTitle: "Nothing here",
                 emptyMessage: "This location has no items Cruftless can list.",
@@ -99,8 +114,19 @@ public struct DetailView: View {
                 NoticeStrip(symbol: "hand.raised.fill", tint: .red, text: planFailure)
             }
 
+            if let orphanedProjects {
+                OrphanedProjectsCard(suggestion: orphanedProjects, isDisabled: model.isDeleting) {
+                    model.openSelection(for: location, preselecting: orphanedProjects.childIDs)
+                }
+                .padding(.bottom, 6)
+            }
+
             ForEach(children) { child in
                 childRow(child)
+            }
+
+            ForEach(blockedRoots, id: \.path) { blocked in
+                BlockedAccessRow(blocked: blocked)
             }
         }
         .padding(.horizontal, 6)
@@ -159,11 +185,16 @@ public struct DetailView: View {
         return PopoverRow(
             icon: nil,
             title: displayName(for: child),
+            titleTag: isDerivedData && child.isOrphanedProject ? .orphaned : nil,
             sizeBytes: child.reclaimableBytes,
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
             action: rowAction(for: child, gradleCacheRoots: cacheRoots),
             isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry && !isAndroidDevice(child)
-        )
+        ) {
+            if isDerivedData {
+                DerivedDataWorkspaceCaption(workspace: child.workspace)
+            }
+        }
         .help(location.platform == .android ? child.url.path(percentEncoded: false) : child.name)
     }
 
@@ -255,6 +286,28 @@ public struct DetailView: View {
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
+    #Preview("Detail: Derived Data (orphaned projects)") {
+        DetailView(
+            location: LocationCatalog.derivedData,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.derivedDataChildren),
+                for: LocationCatalog.derivedData.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Detail: Derived Data (no orphans)") {
+        DetailView(
+            location: LocationCatalog.derivedData,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.derivedDataChildren.filter { !$0.isOrphanedProject }),
+                for: LocationCatalog.derivedData.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
     #Preview("Detail: single item") {
         DetailView(
             location: LocationCatalog.derivedData,
@@ -272,6 +325,18 @@ public struct DetailView: View {
             model: .previewDrillDown(
                 .children([.flaggedArchive]),
                 for: LocationCatalog.archives.id
+            )
+        )
+        .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
+    }
+
+    #Preview("Detail: Xcode installs with a copy not measured") {
+        DetailView(
+            location: LocationCatalog.xcodeInstalls,
+            model: .previewDrillDown(
+                .children(PreviewFixtures.xcodeInstallChildren),
+                for: LocationCatalog.xcodeInstalls.id,
+                entries: PreviewFixtures.accessNeedEntries
             )
         )
         .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)

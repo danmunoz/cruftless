@@ -42,6 +42,11 @@ Before starting, confirm that:
 - The Cruftless checkout is clean and on `main`, and its local `main` matches
   `origin/main`. The release commands verify this before proceeding.
 
+`package-dmg` lays out the installer window through Finder, so run it in a
+logged-in GUI session. The first run asks to let your terminal control Finder;
+allow it, or the command stops before creating the DMG. Eject any mounted
+`Cruftless` volume first.
+
 For the Homebrew step, have `curl`, Ruby, Git, and `gh` authenticated with
 permission to push and open a PR in `danmunoz/homebrew-tap`. Use a clean local
 tap checkout on `main` that matches `origin/main`. The tap PR's Cask CI runs
@@ -97,6 +102,74 @@ Cruftless/Version.xcconfig is the source of truth for MARKETING_VERSION and
 CURRENT_PROJECT_VERSION. The release-cut workflow increments the build number
 once when it creates the release PR. Do not add a DMG to the release branch;
 the verified artifact is attached to the draft GitHub Release.
+
+## Installer DMG
+
+`scripts/release/dmg.sh` builds the unsigned, compressed DMG that `package-dmg`
+signs: the app, an `Applications` link, a fixed icon layout over the
+background in `scripts/release/dmg/`, and the app icon as the volume icon. To
+preview it without signing, point it at any built `Cruftless.app`:
+
+```sh
+scripts/release/dmg.sh --app /path/to/Cruftless.app --output /tmp/Cruftless-preview.dmg
+```
+
+The background is generated, not drawn by hand. After changing
+`scripts/release/dmg/render-background.swift`, regenerate both PNGs and commit
+them with it:
+
+```sh
+swift scripts/release/dmg/render-background.swift scripts/release/dmg
+```
+
+The window size and icon centres are set in both files and must match.
+
+## Homebrew cask uninstall stanzas
+
+The cask carries these stanzas in addition to `version`, `sha256`, `url` and
+`app`. `homebrew-pr.sh` only rewrites `version` and `sha256`, so they are kept
+by hand in `danmunoz/homebrew-tap`:
+
+```ruby
+  uninstall quit: "com.danmunoz.Cruftless"
+
+  zap signal: [["TERM", "com.danmunoz.Cruftless"]],
+      script: {
+        executable:   "/bin/sh",
+        args:         [
+          "-c",
+          <<~SH,
+            <contents of scripts/release/cask-zap-cleanup.sh>
+          SH
+          "sh",
+          "#{appdir}/Cruftless.app",
+          "com.danmunoz.Cruftless",
+        ],
+        must_succeed: false,
+      },
+      trash:  [
+        "~/Library/Application Support/CrashReporter/Cruftless_*.plist",
+        "~/Library/Application Support/Cruftless",
+        "~/Library/Caches/com.danmunoz.Cruftless",
+        "~/Library/HTTPStorages/com.danmunoz.Cruftless",
+        "~/Library/Preferences/com.danmunoz.Cruftless.plist",
+        "~/Library/Saved Application State/com.danmunoz.Cruftless.savedState",
+      ]
+```
+
+- Add the `zap script` in the same tap PR as the first release whose app
+  understands `--uninstall-cleanup`. An older app ignores the argument, starts
+  its menu bar UI, and the wrapper's watchdog kills it after 15 seconds.
+- Keep `trash` in step with `AppFootprint`. The per-user `/var/folders` cache is
+  not listed; macOS clears it.
+- Never put a login-item unregister in `uninstall`: Homebrew runs `uninstall`
+  on every `brew upgrade` and `brew reinstall` as well.
+- `uninstall quit:` also quits Cruftless on `brew upgrade`; Homebrew reopens it
+  only when the quit succeeded.
+- The heredoc is unquoted, so the script must stay free of `#{` and
+  backslashes. Check the embedded copy against the file after any change by
+  loading the cask with `brew ruby` and diffing `zap.directives[:script][:args][1]`.
+- `bash scripts/release/tests/cask-zap-cleanup-test.sh` covers the wrapper.
 
 ## Failure policy
 

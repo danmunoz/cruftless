@@ -1,0 +1,18 @@
+{
+  "images" : [
+    {
+      "filename" : "MascotShearMidway.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "MascotShearMidway@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

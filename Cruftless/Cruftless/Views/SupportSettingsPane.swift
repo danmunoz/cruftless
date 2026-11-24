@@ -28,6 +28,8 @@ struct SupportSettingsPane: View {
     @State private var preparedSummary: DiagnosticToolchainSummary?
     @State private var notice: DiagnosticReportNotice?
     @State private var noticeReset: Task<Void, Never>?
+    @State private var uninstall: UninstallModel
+    @State private var updateChannel = Self.detectedChannel()
     private let discoversCandidatesOnAppear: Bool
 
     init(
@@ -39,6 +41,7 @@ struct SupportSettingsPane: View {
         self.resolver = resolver
         self.discoversCandidatesOnAppear = discoversCandidatesOnAppear
         self.model = model
+        _uninstall = State(initialValue: UninstallModel(appModel: model))
         _resolution = State(initialValue: preview.resolution)
         _candidates = State(initialValue: preview.candidates)
         _selectedCandidateID = State(
@@ -51,6 +54,14 @@ struct SupportSettingsPane: View {
         let current = DiagnosticToolchainSummary(resolution: preview.resolution, candidates: preview.candidates)
         let outdated = DiagnosticToolchainSummary(status: .timedOut, source: nil, xcodeVersions: [])
         _preparedSummary = State(initialValue: preview.reportText == nil ? nil : (preview.reportIsStale ? outdated : current))
+    }
+
+    /// The install route, which a Debug launch argument can force to the direct-download one.
+    private static func detectedChannel() -> UpdateChannel {
+        #if DEBUG
+            if UserDefaults.standard.bool(forKey: DebugLaunch.directDownload) { return .directDownload }
+        #endif
+        return UpdateChannel.detect()
     }
 
     private var currentSummary: DiagnosticToolchainSummary {
@@ -96,9 +107,10 @@ struct SupportSettingsPane: View {
                 onCopy: copyPreviewedReport,
                 onSave: savePreviewedReport
             )
+            UninstallSection(channel: updateChannel, model: uninstall)
         }
         .formStyle(.grouped)
-        .settingsPaneSizing(estimate: 430, cap: 800)
+        .settingsPaneSizing(estimate: 560, cap: 900)
         .task { await loadInitialState() }
         .onDisappear { noticeReset?.cancel() }
     }

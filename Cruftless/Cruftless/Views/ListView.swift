@@ -112,15 +112,8 @@ public struct ListView: View {
         if let inventory, !inventory.entries.isEmpty {
             // A rescan keeps the rows it already has.
             entryList(inventory)
-        } else if model.isScanning, model.scanProgress.hasPlan {
-            scanningList
         } else if model.isScanning {
-            // Before the scan has said what it will cover there is no checklist to draw: a handful of frames, usually.
-            PopoverPlaceholder(
-                symbol: "magnifyingglass",
-                title: "Scanning…",
-                message: nil
-            )
+            scanningBody
         } else if let failure = model.scanFailure, inventory == nil {
             PopoverPlaceholder(
                 symbol: "exclamationmark.triangle",
@@ -173,14 +166,6 @@ public struct ListView: View {
         model.isScanning ? model.scanProgress.measuring : []
     }
 
-    private var scanningList: some View {
-        ScanningChecklistView(
-            progress: model.scanProgress,
-            onSelect: select,
-            onAction: { performAction(for: $0) }
-        )
-    }
-
     private func entryList(_ inventory: Inventory) -> some View {
         let measuring = measuringIds
         let visiblePlatforms = model.settings.platformSectionOrder.orderedPlatforms.filter { platform in
@@ -214,6 +199,10 @@ public struct ListView: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 VStack(spacing: 0) {
+                    if model.showsFirstContactStrip(on: .list) {
+                        firstContactNotice
+                    }
+
                     ForEach(model.preferenceIssues, id: \.self) { issue in
                         NoticeStrip(symbol: "gearshape.fill", tint: .orange, text: issue.message)
                     }
@@ -297,6 +286,41 @@ public struct ListView: View {
 }
 
 private extension ListView {
+    var scanningBody: some View {
+        VStack(spacing: 0) {
+            firstContactStrip(on: .scanning)
+            if model.scanProgress.hasPlan {
+                ScanningChecklistView(
+                    progress: model.scanProgress,
+                    onSelect: select,
+                    onAction: { performAction(for: $0) }
+                )
+            } else {
+                // Before the scan has said what it will cover there is no checklist to draw: a handful of frames, usually.
+                PopoverPlaceholder(symbol: "magnifyingglass", title: "Scanning…", message: nil)
+            }
+        }
+    }
+
+    var firstContactNotice: some View {
+        NoticeStrip(
+            symbol: "checkmark.shield.fill",
+            tint: .accentColor,
+            text: FirstContactStrip.message,
+            onDismiss: { withAnimation(.snappy(duration: 0.2)) { model.dismissFirstContactStrip() } }
+        )
+    }
+
+    /// The strip above a screen that has no notice stack of its own.
+    @ViewBuilder
+    func firstContactStrip(on screen: PopoverListScreen) -> some View {
+        if model.showsFirstContactStrip(on: screen) {
+            firstContactNotice
+                .padding(.horizontal, 6)
+                .padding(.top, 4)
+        }
+    }
+
     func confirmCopy(of locationId: String) {
         copiedResetTask?.cancel()
         copiedLocationId = locationId

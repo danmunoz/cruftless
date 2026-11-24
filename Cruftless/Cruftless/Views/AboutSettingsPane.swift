@@ -5,6 +5,7 @@ import SwiftUI
 public struct AboutSettingsPane: View {
     @State private var updateCheckState: AboutUpdateCheckState = .notChecked
     @State private var didCopyUpdateCommand = false
+    @State private var updateChannel = UpdateChannel.detect()
 
     public init() {}
 
@@ -13,6 +14,7 @@ public struct AboutSettingsPane: View {
             AboutIdentity()
             AboutLinks()
             AboutUpdateSection(
+                channel: updateChannel,
                 state: $updateCheckState,
                 didCopyCommand: $didCopyUpdateCommand,
                 checkForUpdates: checkForUpdates
@@ -124,6 +126,7 @@ private enum AboutUpdateCheckState: Equatable {
 }
 
 private struct AboutUpdateSection: View {
+    let channel: UpdateChannel
     @Binding var state: AboutUpdateCheckState
     @Binding var didCopyCommand: Bool
     let checkForUpdates: () -> Void
@@ -131,25 +134,30 @@ private struct AboutUpdateSection: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("Updates ship through Homebrew.")
+            Text(channel.summary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                Text(verbatim: Self.updateCommand)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-
-                Button(action: copyUpdateCommand) {
-                    Image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
-                        .imageScale(.small)
-                        .frame(minWidth: 20, minHeight: 20)
+            if let command = channel.upgradeCommand {
+                HStack(spacing: 8) {
+                    Text(verbatim: command)
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+
+                    Button { copy(command) } label: {
+                        Image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
+                            .imageScale(.small)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(didCopyCommand ? "Copied" : "Copy Homebrew update command")
+                    .accessibilityLabel(didCopyCommand ? "Copied Homebrew update command" : "Copy Homebrew update command")
                 }
-                .buttonStyle(.plain)
-                .help(didCopyCommand ? "Copied" : "Copy Homebrew update command")
-                .accessibilityLabel(didCopyCommand ? "Copied Homebrew update command" : "Copy Homebrew update command")
+            } else {
+                Link("GitHub Releases", destination: UpdateChannel.releasesURL)
+                    .font(.caption)
             }
 
             updateStatus
@@ -184,7 +192,9 @@ private struct AboutUpdateSection: View {
             VStack(spacing: 4) {
                 Text("Version \(release.version) is available.")
                 Link("View Release", destination: release.releaseURL)
-                Text("The Homebrew update may take a little while to appear.")
+                if let note = channel.availabilityNote {
+                    Text(note)
+                }
             }
         case .failed(.installedVersionUnavailable):
             Text("This build has no release version, so Cruftless can’t compare it with the latest release.")
@@ -193,10 +203,10 @@ private struct AboutUpdateSection: View {
         }
     }
 
-    private func copyUpdateCommand() {
+    private func copy(_ command: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        didCopyCommand = pasteboard.setString(Self.updateCommand, forType: .string)
+        didCopyCommand = pasteboard.setString(command, forType: .string)
         copyReset?.cancel()
         guard didCopyCommand else { return }
         copyReset = Task {
@@ -206,7 +216,6 @@ private struct AboutUpdateSection: View {
         }
     }
 
-    private static let updateCommand = "brew upgrade cruftless"
     private static let copyConfirmationLifetime: Duration = .seconds(2)
 }
 
@@ -218,6 +227,7 @@ private struct AboutUpdateSection: View {
 
     #Preview("Update Available") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.updateAvailable(AboutUpdatePreviewFixtures.release)),
             didCopyCommand: .constant(false),
             checkForUpdates: {}
@@ -228,6 +238,7 @@ private struct AboutUpdateSection: View {
 
     #Preview("Up to Date") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.upToDate),
             didCopyCommand: .constant(false),
             checkForUpdates: {}
@@ -238,6 +249,7 @@ private struct AboutUpdateSection: View {
 
     #Preview("Checking for Updates") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.checking),
             didCopyCommand: .constant(false),
             checkForUpdates: {}
@@ -248,6 +260,7 @@ private struct AboutUpdateSection: View {
 
     #Preview("Update Check Error") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.failed(.checkFailed)),
             didCopyCommand: .constant(false),
             checkForUpdates: {}
@@ -258,7 +271,30 @@ private struct AboutUpdateSection: View {
 
     #Preview("Development Build") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.failed(.installedVersionUnavailable)),
+            didCopyCommand: .constant(false),
+            checkForUpdates: {}
+        )
+        .frame(width: SettingsMetrics.paneWidth)
+        .padding()
+    }
+
+    #Preview("Direct Download") {
+        AboutUpdateSection(
+            channel: .directDownload,
+            state: .constant(.notChecked),
+            didCopyCommand: .constant(false),
+            checkForUpdates: {}
+        )
+        .frame(width: SettingsMetrics.paneWidth)
+        .padding()
+    }
+
+    #Preview("Direct Download, Update Available") {
+        AboutUpdateSection(
+            channel: .directDownload,
+            state: .constant(.updateAvailable(AboutUpdatePreviewFixtures.release)),
             didCopyCommand: .constant(false),
             checkForUpdates: {}
         )
@@ -268,6 +304,7 @@ private struct AboutUpdateSection: View {
 
     #Preview("Command Copied") {
         AboutUpdateSection(
+            channel: .homebrewCask,
             state: .constant(.notChecked),
             didCopyCommand: .constant(true),
             checkForUpdates: {}

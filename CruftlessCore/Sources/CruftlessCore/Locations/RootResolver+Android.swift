@@ -73,7 +73,10 @@ extension RootResolver {
     }
 
     public static func androidAVDIssue() -> String? {
-        let environment = ProcessInfo.processInfo.environment
+        androidAVDIssue(home: homeURL, environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func androidAVDIssue(home homeURL: URL, environment: [String: String], gate: AccessGate = .shared) -> String? {
         for key in ["ANDROID_AVD_HOME", "ANDROID_EMULATOR_HOME", "ANDROID_USER_HOME"] {
             guard let value = environment[key] else { continue }
             guard let path = absoluteAndroidPath(value) else {
@@ -85,7 +88,8 @@ extension RootResolver {
             }
             return androidAVDMetadataIssue(
                 root: androidAVDBaseRoot(home: homeURL, environment: environment),
-                home: homeURL
+                home: homeURL,
+                gate: gate
             )
         }
         let defaultRoot = homeURL.appendingPathComponent(".android/avd", isDirectory: true)
@@ -95,13 +99,14 @@ extension RootResolver {
         }
         return androidAVDMetadataIssue(
             root: androidAVDBaseRoot(home: homeURL, environment: environment),
-            home: homeURL
+            home: homeURL,
+            gate: gate
         )
     }
 
     static func androidStudioSystemRoots(home: URL, fileManager: FileManager = .default) -> [URL] {
         let parent = home.appendingPathComponent("Library/Caches/Google", isDirectory: true)
-        guard let names = try? fileManager.contentsOfDirectory(atPath: parent.path(percentEncoded: false)) else {
+        guard let names = FileAccessAudit.contentsOfDirectory(atPath: parent.path(percentEncoded: false), fileManager: fileManager) else {
             return []
         }
         let recognized = names.filter(isStudioDirectoryName).sorted()
@@ -116,15 +121,18 @@ extension RootResolver {
     static func androidStudioSystemIssue(home: URL, fileManager: FileManager = .default) -> String? {
         let cacheRoot = home.appendingPathComponent("Library/Caches/Google", isDirectory: true)
         if fileManager.fileExists(atPath: cacheRoot.path(percentEncoded: false)),
-           (try? fileManager.contentsOfDirectory(atPath: cacheRoot.path(percentEncoded: false))) == nil {
+           (FileAccessAudit.contentsOfDirectory(atPath: cacheRoot.path(percentEncoded: false), fileManager: fileManager)) == nil {
             return "Android Studio system files could not be listed. Its inventory may be incomplete."
         }
-        if let names = try? fileManager.contentsOfDirectory(atPath: cacheRoot.path(percentEncoded: false)),
+        if let names = FileAccessAudit.contentsOfDirectory(atPath: cacheRoot.path(percentEncoded: false), fileManager: fileManager),
            names.filter(isStudioDirectoryName).count > 32 {
             return "Too many Android Studio system directories to inspect completely. Its inventory may be incomplete."
         }
         let configRoot = home.appendingPathComponent("Library/Application Support/Google", isDirectory: true)
-        guard let names = try? fileManager.contentsOfDirectory(atPath: configRoot.path(percentEncoded: false)) else {
+        guard let names = FileAccessAudit.contentsOfDirectory(
+            atPath: configRoot.path(percentEncoded: false),
+            fileManager: fileManager
+        ) else {
             if fileManager.fileExists(atPath: configRoot.path(percentEncoded: false)) {
                 return "Android Studio configuration could not be listed. Its inventory may be incomplete."
             }
@@ -172,7 +180,10 @@ extension RootResolver {
 
     static func androidStudioConfiguredSystemPaths(home: URL, fileManager: FileManager = .default) -> [URL] {
         let configRoot = home.appendingPathComponent("Library/Application Support/Google", isDirectory: true)
-        guard let names = try? fileManager.contentsOfDirectory(atPath: configRoot.path(percentEncoded: false)) else {
+        guard let names = FileAccessAudit.contentsOfDirectory(
+            atPath: configRoot.path(percentEncoded: false),
+            fileManager: fileManager
+        ) else {
             return []
         }
         return names.filter(isStudioDirectoryName).sorted().prefix(32).flatMap { name in
@@ -221,10 +232,10 @@ extension RootResolver {
         return usableAndroidRoot(root, home: home).map { [$0] } ?? []
     }
 
-    static func androidAVDRoots(home: URL, environment: [String: String]) -> [URL] {
+    static func androidAVDRoots(home: URL, environment: [String: String], gate: AccessGate = .shared) -> [URL] {
         guard let avdRoot = androidAVDBaseRoot(home: home, environment: environment) else { return [] }
         let avdRootPath = ProtectedPaths.normalize(avdRoot)
-        let redirected = androidAVDRedirectPaths(home: home, environment: environment)
+        let redirected = androidAVDRedirectPaths(home: home, environment: environment, gate: gate)
             .compactMap { usableAndroidRoot($0, home: home) }
             .filter {
                 let path = ProtectedPaths.normalize($0)
@@ -253,10 +264,11 @@ extension RootResolver {
     static func androidAVDRedirectPaths(
         home: URL,
         environment: [String: String],
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        gate: AccessGate = .shared
     ) -> [URL] {
         guard let root = androidAVDBaseRoot(home: home, environment: environment),
-              let names = try? fileManager.contentsOfDirectory(atPath: root.path(percentEncoded: false))
+              let names = listAVDRegistry(root, fileManager: fileManager, gate: gate)
         else { return [] }
         let homeRoot = root.deletingLastPathComponent()
         let paths = names.filter { $0.hasSuffix(".ini") }.prefix(256).flatMap { name -> [URL] in
@@ -275,11 +287,12 @@ extension RootResolver {
     static func androidAVDMetadataIssue(
         root: URL?,
         home: URL? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        gate: AccessGate = .shared
     ) -> String? {
-        guard let root else { return nil }
-        let path = root.path(percentEncoded: false)
-        guard let names = try? fileManager.contentsOfDirectory(atPath: path) else {
+        // A registry behind an unasked protected area is reported as needing access, not as unreadable.
+        guard let root, gate.check(root) == .clear else { return nil }
+        guard let names = listAVDRegistry(root, fileManager: fileManager, gate: gate) else {
             return "The AVD directory could not be listed. Device coverage is incomplete."
         }
         if names.count > 256 {
@@ -323,16 +336,20 @@ extension RootResolver {
     static func hasUnresolvedAndroidRedirectMetadata(
         home: URL,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        gate: AccessGate = .shared
     ) -> Bool {
         hasUnresolvedStudioRedirect(home: home, fileManager: fileManager)
             || hasUnsupportedAndroidHomes(environment)
-            || hasUnresolvedAVDRedirect(home: home, environment: environment, fileManager: fileManager)
+            || hasUnresolvedAVDRedirect(home: home, environment: environment, fileManager: fileManager, gate: gate)
     }
 
     private static func hasUnresolvedStudioRedirect(home: URL, fileManager: FileManager) -> Bool {
         let configRoot = home.appendingPathComponent("Library/Application Support/Google", isDirectory: true)
-        guard let names = try? fileManager.contentsOfDirectory(atPath: configRoot.path(percentEncoded: false)) else {
+        guard let names = FileAccessAudit.contentsOfDirectory(
+            atPath: configRoot.path(percentEncoded: false),
+            fileManager: fileManager
+        ) else {
             return fileManager.fileExists(atPath: configRoot.path(percentEncoded: false))
         }
         guard names.count <= 32 else { return true }
@@ -360,10 +377,12 @@ extension RootResolver {
     private static func hasUnresolvedAVDRedirect(
         home: URL,
         environment: [String: String],
-        fileManager: FileManager
+        fileManager: FileManager,
+        gate: AccessGate
     ) -> Bool {
         guard let root = androidAVDBaseRoot(home: home, environment: environment) else { return false }
-        guard let names = try? fileManager.contentsOfDirectory(atPath: root.path(percentEncoded: false)),
+        // A registry the gate blocks counts as unresolved, which keeps the whole home protected from deletion.
+        guard let names = listAVDRegistry(root, fileManager: fileManager, gate: gate),
               names.count <= 256
         else { return true }
         return names.filter { $0.hasSuffix(".ini") }.contains { name in
@@ -373,6 +392,12 @@ extension RootResolver {
             let hasRelative = values["path.rel"].map { !$0.hasPrefix("/") && !$0.contains("\0") } == true
             return !hasAbsolute && !hasRelative
         }
+    }
+
+    /// Lists an AVD registry folder, or returns `nil` without opening it when the access gate blocks it.
+    static func listAVDRegistry(_ root: URL, fileManager: FileManager = .default, gate: AccessGate) -> [String]? {
+        guard gate.check(root) == .clear else { return nil }
+        return FileAccessAudit.contentsOfDirectory(atPath: root.path(percentEncoded: false), fileManager: fileManager)
     }
 
     static func absoluteAndroidPath(_ value: String?) -> URL? {

@@ -23,6 +23,7 @@ struct CleanupSelectionRow: Identifiable, Hashable {
     let actionLabel: String?
     let groupTitle: String?
     let action: CleanupSelectionAction
+    var titleTag: RowTitleTag?
 
     var id: String {
         selectionItem.id
@@ -30,6 +31,10 @@ struct CleanupSelectionRow: Identifiable, Hashable {
 
     var disabledReason: String? {
         selectionItem.disabledReason
+    }
+
+    var accessibilityTitle: String {
+        titleTag.map { "\(title), \($0.text)" } ?? title
     }
 }
 
@@ -181,7 +186,9 @@ extension CleanupSelectionSession {
             )
             let selectable = reason == nil
             let path = child.url.path(percentEncoded: false)
-            let subtitle = eligibleGradle ? "Recognized cache · one entry per attempt · \(path)" : path
+            let subtitle = eligibleGradle
+                ? "Recognized cache · one entry per attempt · \(path)"
+                : child.workspace?.selectionSubtitle ?? path
             return CleanupSelectionRow(
                 selectionItem: CleanupSelectionItem(
                     id: child.id,
@@ -194,7 +201,8 @@ extension CleanupSelectionSession {
                 subtitle: subtitle,
                 actionLabel: DesignTokens.actionLabel(for: child.tier),
                 groupTitle: nil,
-                action: .child(child)
+                action: .child(child),
+                titleTag: child.isOrphanedProject ? .orphaned : nil
             )
         }
     }

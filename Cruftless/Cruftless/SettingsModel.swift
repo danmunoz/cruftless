@@ -1,4 +1,7 @@
 import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
 import Foundation
 import Observation
 import ServiceManagement
@@ -43,6 +46,9 @@ public final class SettingsModel {
     public private(set) var protectedPathError: String?
 
     public var onPlatformSelectionChanged: ((ActiveCatalog) -> Void)?
+
+    /// The tab the Settings window switches to next; it clears the request once it has.
+    public var requestedSettingsSection: SettingsSection?
 
     /// Bumped on every write attempt, and read by `isLaunchAtLoginEnabled` so the getter re-evaluates each time.
     private var launchAtLoginRevision = 0
@@ -103,6 +109,7 @@ public final class SettingsModel {
     private let reminderScheduler: ScanReminderScheduler
     private let loginItemService: any LoginItemService
     private var reminderTask: Task<Void, Never>?
+    private var isUninstalling = false
 
     public init(
         defaults: UserDefaults = .standard,
@@ -185,6 +192,7 @@ public final class SettingsModel {
 
     private func startReminderScheduling() {
         reminderTask?.cancel()
+        guard !isUninstalling else { return }
         let generation = platformGeneration
         reminderTask = Task { [weak self] in
             await self?.armReminder(generation: generation)
@@ -281,6 +289,13 @@ public final class SettingsModel {
         onPlatformSelectionChanged?(activeCatalog)
     }
 
+    /// Stops reminder scheduling for good, for a removal of the app's data.
+    public func haltForUninstall() {
+        isUninstalling = true
+        reminderTask?.cancel()
+        reminderTask = nil
+    }
+
     private func advancePolicyGeneration(notify: Bool = true) {
         platformGeneration &+= 1
         let readOnlyIDs = LocationCatalog.all.filter { $0.mutationPolicy == .readOnly }.map(\.id)
@@ -358,8 +373,7 @@ public extension SettingsModel {
             platforms: Set<DevelopmentPlatform> = Set(DevelopmentPlatform.allCases),
             platformSectionOrder: PlatformSectionOrder = .appleFirst
         ) -> SettingsModel {
-            let suiteName = "Cruftless.SettingsPreview.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
+            let defaults = ScratchDefaults(label: "cruftless-settings-preview").defaults
             let store = ProtectedPathsStore(userDefaults: defaults)
             for path in protectedPaths {
                 store.addPath(path)

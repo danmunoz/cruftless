@@ -50,3 +50,16 @@ custom_rules:
       - ".*/Tests/CruftlessCoreTests/Support/TestFileSystem\\.swift"
     message: "Deletion primitives may only be called inside DeletionExecutor.swift (guarded) or the test-only TestFileSystem helper."
     severity: error
+  no_named_defaults_suite:
+    name: "Named defaults suite forbidden"
+    regex: 'UserDefaults\(suiteName:'
+    included:
+      - ".*\\.swift"
+    excluded:
+      - ".*/CruftlessFixtures/ScratchDefaults\\.swift"
+      - ".*/CruftlessCore/Locations/ActiveToolchain\\.swift"
+      - ".*/CruftlessCore/Locations/RootResolver\\.swift"
+      - ".*/Tests/CruftlessCoreTests/Locations/LocationCatalogTests\\.swift"
+      - ".*/Tests/CruftlessCoreTests/ScratchDefaultsTests\\.swift"
+    message: "A named suite leaves a plist in ~/Library/Preferences. Use ScratchDefaults for tests and previews."
+    severity: error

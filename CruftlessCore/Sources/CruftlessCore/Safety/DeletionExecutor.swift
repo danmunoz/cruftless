@@ -258,6 +258,11 @@ public actor DeletionExecutor {
                 return "\(deviceName) is no longer shut down"
             }
             return nil
+        case let .derivedDataProjectMissing(folder, workspacePath, name):
+            guard DerivedDataWorkspaceReader.isStillOrphaned(folder: folder, workspacePath: workspacePath) else {
+                return "\(name)'s project is no longer confirmed missing"
+            }
+            return nil
         }
     }
 

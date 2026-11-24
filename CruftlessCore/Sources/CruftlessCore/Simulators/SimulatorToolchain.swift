@@ -26,6 +26,8 @@ public enum SimulatorToolchainFailure: Sendable, Equatable, LocalizedError {
     case invalidSelection
     case probeFailed
     case candidateLimitExceeded
+    /// Every Xcode found lies in a protected area Cruftless has not been allowed to read yet.
+    case needsAccess([ProtectedArea])
 
     public var errorDescription: String? {
         switch self {
@@ -40,6 +42,9 @@ public enum SimulatorToolchainFailure: Sendable, Equatable, LocalizedError {
             "Xcode simulator tools could not be checked within the time limit. Try again from Settings."
         case .candidateLimitExceeded:
             "More Xcode installations were found than Cruftless can safely check at once. Choose one in Settings."
+        case let .needsAccess(areas):
+            "The Xcode installations found are in \(ListFormatter.localizedString(byJoining: areas.map(\.displayName))), " +
+                "which Cruftless has not been given access to yet. Nothing there was read."
         }
     }
 }
@@ -77,6 +82,8 @@ public enum SimulatorToolchainProbe: Sendable, Equatable {
     case usable(SimulatorToolchain)
     case unusable
     case timedOut
+    /// Not checked: the installation lies in a protected area the access gate blocks.
+    case blocked(ProtectedArea)
 
     public var toolchain: SimulatorToolchain? {
         guard case let .usable(toolchain) = self else { return nil }
@@ -119,7 +126,8 @@ public actor SimulatorToolchainResolver {
         selectedDirectory: SelectionProvider? = nil,
         validator: CandidateValidator? = nil,
         prober: CandidateProber? = nil,
-        persistsSelection: Bool = false
+        persistsSelection: Bool = false,
+        accessGate: AccessGate = .shared
     ) {
         let candidateProvider = candidates ?? { await XcodeInstallDiscovery.discover(refresh: false) }
         self.candidates = candidateProvider
@@ -136,7 +144,7 @@ public actor SimulatorToolchainResolver {
         } else if let validator {
             self.prober = { await validator($0).map(SimulatorToolchainProbe.usable) ?? .unusable }
         } else {
-            self.prober = { await Self.probe(candidate: $0) }
+            self.prober = { await Self.probe(candidate: $0, gate: accessGate) }
         }
         self.persistsSelection = persistsSelection
         explicitChoice = persistsSelection
@@ -272,6 +280,7 @@ public actor SimulatorToolchainResolver {
             case let .usable(selected): return .ready(selected, source: .userSelected, generation: UUID())
             case .timedOut: return .unavailable(.probeFailed)
             case .unusable: return .unavailable(.invalidSelection)
+            case let .blocked(area): return .unavailable(.needsAccess([area]))
             }
         }
         var timedOut = false
@@ -279,7 +288,7 @@ public actor SimulatorToolchainResolver {
             switch await prober(selected) {
             case let .usable(toolchain): return .ready(toolchain, source: .selected, generation: UUID())
             case .timedOut: timedOut = true
-            case .unusable: break
+            case .unusable, .blocked: break
             }
         }
         return await resolveDiscovered(refresh: refresh, selectionTimedOut: timedOut)
@@ -306,7 +315,9 @@ public actor SimulatorToolchainResolver {
         }
         let usable = probes.compactMap(\.toolchain).sorted { $0.id < $1.id }
         guard !usable.isEmpty else {
-            return .unavailable(selectionTimedOut || probes.contains(.timedOut) ? .probeFailed : .unavailable)
+            if selectionTimedOut || probes.contains(.timedOut) { return .unavailable(.probeFailed) }
+            let blocked = ProtectedArea.allCases.filter { probes.contains(.blocked($0)) }
+            return .unavailable(blocked.isEmpty ? .unavailable : .needsAccess(blocked))
         }
         guard usable.count == 1, let toolchain = usable.first else {
             return .unavailable(.ambiguous(candidateCount: usable.count))

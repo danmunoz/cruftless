@@ -3,6 +3,8 @@ import Foundation
 
 public struct SizeResult: Sendable, Hashable {
     public let allocatedBytes: Int64
+    /// Bytes deleting this tree alone would free: allocated space minus blocks shared with APFS clones outside it.
+    public let exclusiveBytes: Int64
     public let newestMtime: Date?
 
     /// Directories the walk could not open: a permission-denied `opendir` under a root the app is otherwise allowed to read.
@@ -16,6 +18,7 @@ public struct SizeResult: Sendable, Hashable {
 
     public init(
         allocatedBytes: Int64,
+        exclusiveBytes: Int64? = nil,
         newestMtime: Date?,
         unreadableDirectoryCount: Int = 0,
         firstUnreadablePath: String? = nil,
@@ -23,6 +26,7 @@ public struct SizeResult: Sendable, Hashable {
         firstSkippedMountPath: String? = nil
     ) {
         self.allocatedBytes = allocatedBytes
+        self.exclusiveBytes = exclusiveBytes ?? allocatedBytes
         self.newestMtime = newestMtime
         self.unreadableDirectoryCount = unreadableDirectoryCount
         self.firstUnreadablePath = firstUnreadablePath
@@ -36,6 +40,8 @@ public struct SizeResult: Sendable, Hashable {
 /// Accumulates allocated file sizes (APFS allocated space) and tracks highest modification timestamps.
 public struct SizeAccumulator: Sendable {
     private var allocated: Int64 = 0
+    private var exclusive: Int64 = 0
+    private var clones = CloneTally()
     private var latestMtime: Date?
     private var unreadableDirectories: Int = 0
     private var firstUnreadable: String?
@@ -45,7 +51,15 @@ public struct SizeAccumulator: Sendable {
     public init() {}
 
     public mutating func addFile(allocatedBytes: Int64, mtime: Date) {
+        addFile(allocatedBytes: allocatedBytes, exclusiveBytes: allocatedBytes, cloneFamily: nil, mtime: mtime)
+    }
+
+    mutating func addFile(allocatedBytes: Int64, exclusiveBytes: Int64, cloneFamily: CloneFamilyMember?, mtime: Date) {
         allocated += allocatedBytes
+        exclusive += exclusiveBytes
+        if let cloneFamily {
+            clones.record(cloneFamily)
+        }
         if let current = latestMtime {
             if mtime > current {
                 latestMtime = mtime
@@ -71,8 +85,10 @@ public struct SizeAccumulator: Sendable {
         }
     }
 
+    /// Adds a finished result; clone families it left incomplete stay uncounted.
     public mutating func add(_ result: SizeResult) {
         allocated += result.allocatedBytes
+        exclusive += result.exclusiveBytes
         unreadableDirectories += result.unreadableDirectoryCount
         if firstUnreadable == nil {
             firstUnreadable = result.firstUnreadablePath
@@ -90,9 +106,24 @@ public struct SizeAccumulator: Sendable {
         }
     }
 
+    /// Adds a sibling subtree, completing clone families split across the two.
+    mutating func merge(_ other: SizeAccumulator) {
+        clones.merge(other.clones)
+        add(SizeResult(allocatedBytes: other.allocated, exclusiveBytes: other.exclusive, newestMtime: other.latestMtime))
+        unreadableDirectories += other.unreadableDirectories
+        if firstUnreadable == nil {
+            firstUnreadable = other.firstUnreadable
+        }
+        skippedMounts += other.skippedMounts
+        if firstSkippedMount == nil {
+            firstSkippedMount = other.firstSkippedMount
+        }
+    }
+
     public func result() -> SizeResult {
         SizeResult(
             allocatedBytes: allocated,
+            exclusiveBytes: exclusive + clones.completedSharedBytes,
             newestMtime: latestMtime,
             unreadableDirectoryCount: unreadableDirectories,
             firstUnreadablePath: firstUnreadable,

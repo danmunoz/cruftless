@@ -13,8 +13,34 @@ Cruftless is available through Homebrew:
 brew install --cask danmunoz/tap/cruftless
 ```
 
+Or download the DMG from
+[GitHub Releases](https://github.com/danmunoz/cruftless/releases), open it, and
+drag Cruftless to Applications. Settings › About links back to Releases when a
+newer version is out.
+
 It requires macOS 26 or later. Releases are Developer ID–signed and notarized
 by Apple.
+
+### Uninstall
+
+- **Homebrew:** `brew uninstall --zap --cask cruftless` removes the app, its
+  data and settings, its login item, its scan reminders, and the privacy
+  permissions macOS recorded for it. Run `brew upgrade cruftless` first if your
+  copy predates uninstall support: Homebrew zaps with the cask it installed.
+- **DMG:** Settings › Support › Remove Cruftless Data shows what it will delete,
+  removes it, and quits. Then drag Cruftless to the Trash.
+- **By hand**, for a copy already deleted: turn off Launch at login in System
+  Settings › General › Login Items, then delete
+  `~/Library/Application Support/Cruftless`,
+  `~/Library/Caches/com.danmunoz.Cruftless`,
+  `~/Library/HTTPStorages/com.danmunoz.Cruftless`,
+  `~/Library/Preferences/com.danmunoz.Cruftless.plist`, and
+  `$(getconf DARWIN_USER_CACHE_DIR)com.danmunoz.Cruftless`.
+
+Uninstalling never brings back anything Cruftless deleted, and it does not touch
+the developer data Cruftless tracks. macOS may write an empty
+`com.danmunoz.Cruftless.plist` back a few seconds after it is removed; it holds
+no settings.
 
 <p align="center">
   <img src="Screenshots/overview.png" width="31%" alt="Cruftless overview showing reclaimable developer disk space">
@@ -55,13 +81,12 @@ by Apple.
 | Device Support | Delete; Xcode recreates it when the device reconnects. |
 | Simulator devices | Clear known caches, erase a device, or delete it through `simctl`. |
 | Simulator runtimes | Delete through `simctl`; unusable runtimes are supported. |
-| Derived Data | Delete by project or clear the location; Xcode rebuilds it. |
+| Derived Data | Delete by project or clear the location; Xcode rebuilds it. Each folder shows its project, and folders whose project was deleted or moved are suggested for review. |
 | Previews cache | Delete; Xcode Previews regenerates it. |
 | Toolchains | Delete installed toolchains; the active toolchain gets an explicit warning. |
 | SwiftPM cache | Delete; packages are downloaded again when they resolve. |
 | Interface Builder support | Delete; Interface Builder rebuilds it on demand. |
 | Archives | Delete individually with a warning; archives and dSYMs cannot be recovered. |
-| Xcode coding assistant | Delete with a warning about assistant data and settings. |
 | Build products and logs | Delete build output, logs, and caches; device logs do not regenerate. |
 | Xcode installs | Inspect and reveal in Finder; Cruftless does not delete the app. |
 | Simulator dyld cache | Inspect only; Cruftless provides a command for this root-owned data. |
@@ -111,8 +136,8 @@ review step. Cruftless cannot verify that Gradle has stopped using those files.
 ## About the numbers
 
 Cruftless measures allocated disk usage, including filesystem metadata, and
-deduplicates hardlinks by volume and inode. APFS does not expose a public API
-for identifying clone-shared extents, so totals involving clones are an upper
+deduplicates hardlinks by volume and inode. Blocks shared between APFS clones
+are counted in full for now, so totals involving clones are an upper
 bound. The app keeps purgeable space separate because macOS already includes it
 in the reported free-space figure.
 
@@ -184,10 +209,12 @@ can help other people too.
 
 ## Acknowledgements
 
-- **Menu bar icon:** “Clean” by [Icons8](https://icons8.com).
 - **Device-identifier table:** generated from local CoreSimulator device
   profiles plus a baseline of historical models from
   [DeviceKit](https://github.com/devicekit/DeviceKit) (MIT).
+- **Orphaned Derived Data detection:** the idea of reading each folder's
+  recorded workspace path comes from [plonge](https://github.com/mattt/plonge)
+  (MIT); no code is shared.
 
 ## License
 

@@ -1,13 +1,14 @@
 import CruftlessCore
+import CruftlessFixtures
 import Foundation
 import Testing
 
 @Suite("ProtectedPathsStore")
 struct ProtectedPathsStoreTests {
     private func withStore(_ body: (ProtectedPathsStore, UserDefaults) throws -> Void) throws {
-        let suiteName = "cruftless.tests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let scratch = ScratchDefaults()
+        defer { TestFileSystem.remove(scratch) }
+        let defaults = scratch.defaults
         try body(ProtectedPathsStore(userDefaults: defaults), defaults)
     }
 

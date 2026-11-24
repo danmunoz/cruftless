@@ -61,10 +61,6 @@ struct LocationExplanation {
             you cannot export that build again or fully interpret its crash reports.
             """
         ),
-        LocationCatalog.codingAssistant.id: LocationExplanation(
-            description: "Data stored by Xcode’s coding assistants, including conversations, agent history, and integration settings.",
-            risk: "Deleting can permanently remove history and settings. You may need to configure integrations again."
-        ),
         LocationCatalog.productsLogsDocCache.id: LocationExplanation(
             description: "Generated app builds, cached documentation, and logs collected from devices.",
             risk: """

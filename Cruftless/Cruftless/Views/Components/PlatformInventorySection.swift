@@ -20,9 +20,40 @@ struct PlatformInventorySection: View {
         entries.filter { !$0.isUnavailable && $0.reclaimableBytes > 0 }
     }
 
-    private var restRows: [InventoryEntry] {
-        let zeros = entries.filter { !$0.isUnavailable && $0.reclaimableBytes == 0 }
-        return zeros + entries.filter(\.isUnavailable)
+    private var unavailableRows: [InventoryEntry] {
+        entries.filter(\.isUnavailable)
+    }
+
+    private var emptyRows: [InventoryEntry] {
+        entries.filter { !$0.isUnavailable && $0.reclaimableBytes == 0 }
+    }
+
+    @State private var showsEmptyRows: Bool
+
+    init(
+        platform: DevelopmentPlatform,
+        entries: [InventoryEntry],
+        measuring: Set<String>,
+        preparingLocationId: String?,
+        planningLocationId: String? = nil,
+        copiedLocationId: String? = nil,
+        showsTopSeparator: Bool,
+        showsEmptyRows: Bool = false,
+        onSelect: @escaping (InventoryEntry) -> Void,
+        onAction: @escaping (InventoryEntry) -> Void,
+        onRescan: @escaping (String) -> Void
+    ) {
+        self.platform = platform
+        self.entries = entries
+        self.measuring = measuring
+        self.preparingLocationId = preparingLocationId
+        self.planningLocationId = planningLocationId
+        self.copiedLocationId = copiedLocationId
+        self.showsTopSeparator = showsTopSeparator
+        _showsEmptyRows = State(initialValue: showsEmptyRows)
+        self.onSelect = onSelect
+        self.onAction = onAction
+        self.onRescan = onRescan
     }
 
     var body: some View {
@@ -53,14 +84,53 @@ struct PlatformInventorySection: View {
                 row(for: entry)
             }
 
-            if !sizedRows.isEmpty, !restRows.isEmpty {
+            if !sizedRows.isEmpty, !(unavailableRows.isEmpty && emptyRows.isEmpty) {
                 Hairline().padding(.vertical, 4)
             }
 
-            ForEach(restRows) { entry in
+            ForEach(unavailableRows) { entry in
                 row(for: entry)
             }
+
+            if !emptyRows.isEmpty {
+                emptyHeader
+
+                if showsEmptyRows {
+                    ForEach(emptyRows) { entry in
+                        row(for: entry)
+                    }
+                }
+            }
         }
+    }
+
+    /// Toggles the rows measured at 0 B, which start collapsed.
+    private var emptyHeader: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { showsEmptyRows.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(showsEmptyRows ? 90 : 0))
+                Text("Empty")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("\(emptyRows.count)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, PopoverMetrics.rowInset)
+            .padding(.vertical, 6)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Empty locations, \(emptyRows.count)")
+        .accessibilityValue(showsEmptyRows ? "Expanded" : "Collapsed")
+        .accessibilityHint("Shows or hides locations that hold nothing to clean.")
+        .accessibilityIdentifier("inventory.empty-toggle.\(platform.rawValue)")
     }
 
     private static let androidNotice =
@@ -98,6 +168,21 @@ private extension DevelopmentPlatform {
             measuring: [],
             preparingLocationId: nil,
             showsTopSeparator: false,
+            onSelect: { _ in },
+            onAction: { _ in },
+            onRescan: { _ in }
+        )
+        .frame(width: PopoverMetrics.width)
+    }
+
+    #Preview("Platform section: Apple, empty rows expanded") {
+        PlatformInventorySection(
+            platform: .apple,
+            entries: PreviewFixtures.sampleEntries.filter { $0.location.platform == .apple },
+            measuring: [],
+            preparingLocationId: nil,
+            showsTopSeparator: false,
+            showsEmptyRows: true,
             onSelect: { _ in },
             onAction: { _ in },
             onRescan: { _ in }

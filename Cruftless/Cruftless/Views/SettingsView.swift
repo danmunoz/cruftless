@@ -1,8 +1,12 @@
 import CruftlessCore
+#if DEBUG
+    import CruftlessFixtures
+#endif
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     case general
+    case access
     case support
     case about
 
@@ -13,6 +17,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     var title: LocalizedStringResource {
         switch self {
         case .general: "General"
+        case .access: "Access"
         case .support: "Support"
         case .about: "About"
         }
@@ -21,6 +26,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
+        case .access: "hand.raised"
         case .support: "questionmark.circle"
         case .about: "info.circle"
         }
@@ -32,12 +38,14 @@ public struct SettingsView: View {
     public let simulatorToolchainResolver: SimulatorToolchainResolver
     public let appModel: AppModel?
     @State private var selection: SettingsSection
+    @State private var accessModel: AccessListModel
     private let discoversToolchainsOnAppear: Bool
 
     public init(
         settings: SettingsModel,
         simulatorToolchainResolver: SimulatorToolchainResolver = .shared,
         appModel: AppModel? = nil,
+        accessModel: AccessListModel? = nil,
         initialSection: SettingsSection = .general,
         discoversToolchainsOnAppear: Bool = true
     ) {
@@ -46,6 +54,7 @@ public struct SettingsView: View {
         self.appModel = appModel
         self.discoversToolchainsOnAppear = discoversToolchainsOnAppear
         _selection = State(initialValue: initialSection)
+        _accessModel = State(initialValue: accessModel ?? appModel?.makeAccessListModel() ?? AccessListModel())
     }
 
     public var body: some View {
@@ -54,6 +63,12 @@ public struct SettingsView: View {
                 GeneralSettingsPane(settings: settings)
             } label: {
                 Label(SettingsSection.general.title, systemImage: SettingsSection.general.symbol)
+            }
+
+            Tab(value: .access) {
+                AccessSettingsPane(model: accessModel)
+            } label: {
+                Label(SettingsSection.access.title, systemImage: SettingsSection.access.symbol)
             }
 
             Tab(value: .support) {
@@ -73,6 +88,11 @@ public struct SettingsView: View {
             }
         }
         .frame(width: SettingsMetrics.paneWidth)
+        .onChange(of: settings.requestedSettingsSection, initial: true) { _, requested in
+            guard let requested else { return }
+            selection = requested
+            settings.requestedSettingsSection = nil
+        }
     }
 }
 
@@ -103,6 +123,15 @@ enum SettingsMetrics {
 
     #Preview("Settings: Support") {
         SettingsView(settings: .preview(), initialSection: .support, discoversToolchainsOnAppear: false)
+    }
+
+    #Preview("Settings: Access") {
+        SettingsView(
+            settings: .preview(),
+            accessModel: .preview(PreviewFixtures.accessAreasMixed),
+            initialSection: .access,
+            discoversToolchainsOnAppear: false
+        )
     }
 
     #Preview("Settings: About") {

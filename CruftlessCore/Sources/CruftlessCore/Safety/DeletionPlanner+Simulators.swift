@@ -58,7 +58,7 @@ public extension DeletionPlanner {
         let hasBooted = devices.contains { $0.device.state.isBooted }
         let label: String
         switch (hasTestDelete, hasDelete, hasErase) {
-        case (true, _, _): label = "Delete Test Simulator"
+        case (true, _, _): label = devices.count == 1 ? "Delete Test Simulator" : "Delete Test Simulators"
         case (false, true, true): label = hasBooted ? "Shut Down, Delete and Erase" : "Delete and Erase"
         case (false, true, false): label = "Delete Permanently"
         case (false, false, true) where devices.contains(where: \.device.state.isBooted):

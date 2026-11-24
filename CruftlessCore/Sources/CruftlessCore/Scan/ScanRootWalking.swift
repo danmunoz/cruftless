@@ -42,6 +42,8 @@ extension ScanEngine {
         var breakdowns: [String: [String: SizeResult]] = [:]
         /// The first root whose walk could not read every folder under it.
         var incomplete: (root: URL, result: SizeResult)?
+        /// Roots the walk could not open at all.
+        var unopenedRoots: [URL] = []
     }
 
     static func walkRoots(
@@ -66,6 +68,10 @@ extension ScanEngine {
 
             if result.unreadableDirectoryCount > 0 || result.skippedMountCount > 0, walk.incomplete == nil {
                 walk.incomplete = (root, result)
+            }
+            if breakdown.sizes.isEmpty, result.unreadableDirectoryCount == 1,
+               result.firstUnreadablePath == ProtectedPaths.normalize(root) {
+                walk.unopenedRoots.append(root)
             }
 
             if let mtime = result.newestMtime {

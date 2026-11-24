@@ -101,6 +101,29 @@ import SwiftUI
         .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
     }
 
+    #Preview("Review: single item running") {
+        let plan = previewPlan([
+            previewPathTarget(
+                name: "SuperApp-eszycidpyopumzgdpamntyyawoix",
+                tier: .regen,
+                consequence: "Xcode rebuilds indexes and intermediates on the next build.",
+                reclaimableBytes: 4_500_000_000
+            )
+        ])
+        var run = DeletionRunState(plan: plan)
+        run.apply(.started(index: 0))
+        return ReviewView(
+            plan: plan,
+            isExecuting: true,
+            progress: DeletionProgress(verb: .delete, targetName: "SuperApp", phase: .mutating),
+            run: run,
+            onConfirm: {},
+            onCancel: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
     #Preview("Review: freeing space") {
         ReviewView(
             plan: previewPlan([

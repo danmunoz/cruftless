@@ -56,6 +56,8 @@ struct NoticeStrip: View {
     let symbol: String
     let tint: Color
     let text: String
+    /// Draws a close control when set.
+    var onDismiss: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -69,6 +71,19 @@ struct NoticeStrip: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
+
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 14, height: 14)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
+            }
         }
         .padding(.horizontal, PopoverMetrics.rowInset)
         .padding(.vertical, 8)

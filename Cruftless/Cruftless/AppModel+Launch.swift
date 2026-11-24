@@ -20,6 +20,7 @@ extension AppModel {
     func startAtLaunch() {
         restoreSavedInventory()
         startMonitoring(for: activeCatalog)
+        guard !isWelcomePending else { return }
 
         launchScanTask = Task { [weak self] in
             try? await Task.sleep(for: Self.launchScanDelay)
@@ -31,14 +32,29 @@ extension AppModel {
     /// Called every time the popover appears.
     func popoverDidAppear() {
         isNavigating = false
+        guard !isUninstalling else { return }
         checkRunningApps()
+        startInitialScanIfNeeded(source: .popover)
+    }
+
+    // MARK: - First run
+
+    /// Whether an earlier session left a scan behind, which marks someone who has used the app before.
+    var hasSavedInventory: Bool {
+        inventoryStore.load() != nil
+    }
+
+    /// Starts the first scan once the welcome window is finished or closed.
+    func welcomeDidFinish() {
+        guard isWelcomePending else { return }
+        isWelcomePending = false
         startInitialScanIfNeeded(source: .popover)
     }
 
     // MARK: - The first scan of the session
 
     func startInitialScanIfNeeded(source: InitialScanSource) {
-        guard !hasStartedInitialScan else { return }
+        guard !hasStartedInitialScan, !isWelcomePending, !isUninstalling else { return }
 
         if source == .launchTimer, ProcessInfo.processInfo.isLowPowerModeEnabled {
             isAutomaticScanPaused = true
@@ -76,6 +92,7 @@ extension AppModel {
 
     /// Replaces the FSEvents stream for the active scope.
     func startMonitoring(for catalog: ActiveCatalog) {
+        guard !isUninstalling else { return }
         Task {
             let roots = await Task.detached {
                 catalog.locations
@@ -83,7 +100,7 @@ extension AppModel {
                         location.resolveRoots().map { WatchedRoot(locationId: location.id, url: $0) }
                     }
             }.value
-            guard settings.platformGeneration == catalog.generation else { return }
+            guard settings.platformGeneration == catalog.generation, !isUninstalling else { return }
             invalidator?.replaceMonitoring(roots: roots, policyGeneration: catalog.generation)
         }
     }
@@ -105,7 +122,7 @@ extension AppModel {
 
     /// Writes the current inventory out after a scan completes.
     func persistInventory() {
-        guard let inventory else { return }
+        guard let inventory, !isUninstalling else { return }
         inventoryStore.save(InventorySnapshot(inventory))
     }
 

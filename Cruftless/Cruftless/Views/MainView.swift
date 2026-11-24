@@ -1,4 +1,3 @@
-import AppKit
 import CruftlessCore
 #if DEBUG
     import CruftlessFixtures
@@ -25,6 +24,7 @@ public struct MainView: View {
                 .popoverScreen()
                 .navigationDestination(for: AppRoute.self, destination: screen)
         }
+        .environment(\.openAccessSettings, OpenAccessSettingsAction(handler: openAccessSettingsWindow))
         .frame(width: PopoverMetrics.width, height: resolvedHeight)
         .onPreferenceChange(ContentHeightPreference.self) { reportedContentHeight = $0 }
         .animation(PopoverMetrics.pushAnimation, value: resolvedHeight)
@@ -64,7 +64,10 @@ public struct MainView: View {
                 progress: model.deletionProgress,
                 run: model.deletionRun,
                 currentFreeBytes: model.reviewFreeSpaceBytes,
-                onConfirm: { await model.executeDeletion(plan: plan) },
+                onConfirm: {
+                    model.recordReviewCompleted()
+                    await model.executeDeletion(plan: plan)
+                },
                 onCancel: model.pop
             )
 
@@ -124,7 +127,12 @@ public struct MainView: View {
 
     private func openSettingsWindow() {
         openSettings()
-        NSApp.activate()
+        AppActivation.activate()
+    }
+
+    private func openAccessSettingsWindow() {
+        model.requestAccessSettings()
+        openSettingsWindow()
     }
 }
 

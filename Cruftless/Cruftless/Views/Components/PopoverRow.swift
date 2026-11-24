@@ -26,12 +26,35 @@ struct RowAction {
     }
 }
 
+/// A short coloured word that follows a row's title, such as "Orphaned".
+struct RowTitleTag: Hashable {
+    let text: String
+    let tint: Color
+
+    static let orphaned = RowTitleTag(text: "Orphaned", tint: .orange)
+}
+
+/// Renders a `RowTitleTag` beside a title; never truncated, so the title gives way first.
+struct RowTitleTagView: View {
+    let tag: RowTitleTag
+
+    var body: some View {
+        Text(tag.text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(tag.tint)
+            .fixedSize()
+    }
+}
+
 struct PopoverRow<Caption: View>: View {
     let icon: RowIcon?
     var iconFileURL: URL?
     let title: String
     var titleColor: Color = .primary
+    var titleTag: RowTitleTag?
     var sizeBytes: Int64?
+    /// Shown in the size column when `sizeBytes` is nil.
+    var sizePlaceholder: String = "-"
     /// Tint for the inline ⚠ marker that follows the title.
     var flagTint: Color?
     var action: RowAction?
@@ -135,13 +158,17 @@ struct PopoverRow<Caption: View>: View {
             }
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
                         .font(.system(size: 13))
                         .foregroundStyle(isPlaceholder ? AnyShapeStyle(.secondary) : AnyShapeStyle(titleColor))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(title)
+
+                    if let titleTag {
+                        RowTitleTagView(tag: titleTag)
+                    }
 
                     if let flagTint {
                         RowFlagMarker(tint: flagTint)
@@ -218,7 +245,7 @@ struct PopoverRow<Caption: View>: View {
             hoverControls
                 .transition(.opacity)
         } else {
-            Text(sizeBytes.map { ByteFormatter.format($0) } ?? "-")
+            Text(sizeBytes.map { ByteFormatter.format($0) } ?? sizePlaceholder)
                 .font(.system(size: 13))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
