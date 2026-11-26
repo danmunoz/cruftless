@@ -7,6 +7,11 @@
 - Skip Remaining while a multi-item deletion runs: the item in progress
   finishes, and the rest are listed as not attempted.
 
+### Improved
+
+- Select Items switches the Detail screen into selection mode in place
+  instead of opening a separate screen; Cancel leaves it.
+
 ## [1.4.0]
 
 ### Added

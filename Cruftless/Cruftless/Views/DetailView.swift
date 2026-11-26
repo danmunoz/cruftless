@@ -116,7 +116,9 @@ public struct DetailView: View {
 
             if let orphanedProjects {
                 OrphanedProjectsCard(suggestion: orphanedProjects, isDisabled: model.isDeleting) {
-                    model.openSelection(for: location, preselecting: orphanedProjects.childIDs)
+                    withAnimation(.snappy(duration: 0.2)) {
+                        model.beginSelectionMode(for: location, preselecting: orphanedProjects.childIDs)
+                    }
                 }
                 .padding(.bottom, 6)
             }

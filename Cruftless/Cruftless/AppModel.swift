@@ -72,6 +72,9 @@ public final class AppModel {
     /// In-memory selections keyed by tracked location.
     var cleanupSessions: [String: CleanupSelectionSession] = [:]
 
+    /// The location whose Detail screen is in selection mode, if any.
+    public internal(set) var selectingLocationID: String?
+
     public internal(set) var preparingLocationId: String?
     /// The location whose whole-location plan is being prepared.
     public internal(set) var planningLocationId: String?

@@ -3,6 +3,7 @@ import SwiftUI
 
 /// The frame every Detail screen shares: a header carrying the measured total, the tier strip, a scrolling body, and a
 /// footer band with Select Items on the left and the screen's own location action on the right.
+/// In selection mode the same frame shows checkbox rows and a Review Selection footer instead.
 struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
     let location: TrackedLocation
     let model: AppModel
@@ -56,6 +57,10 @@ struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
         location.supportsBatchSelection
     }
 
+    private var selectionSession: CleanupSelectionSession? {
+        model.isSelecting(in: location) ? model.cleanupSessions[location.id] : nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             PopoverHeader(title: location.title, subtitle: summary?.text, backTitle: backTitle, onBack: model.pop) {
@@ -64,6 +69,10 @@ struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
             Hairline()
             LocationTierStrip(location: location)
             Hairline()
+            if let selectionSession {
+                SelectionModeControls(model: model, session: selectionSession)
+                Hairline()
+            }
 
             GeometryReader { geometry in
                 ScrollView {
@@ -74,7 +83,11 @@ struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
                                 .padding(.top, 12)
                                 .padding(.bottom, 8)
                         }
-                        content
+                        if let selectionSession {
+                            SelectionModeList(model: model, session: selectionSession)
+                        } else {
+                            content
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
                 }
@@ -87,10 +100,17 @@ struct LocationDetailScaffold<Content: View, FooterTrailing: View>: View {
                         SelectItemsButton(location: location, model: model)
                     }
                     Spacer(minLength: 0)
-                    footerTrailing
+                    if let selectionSession {
+                        SelectionModeSummary(model: model, session: selectionSession)
+                    } else {
+                        footerTrailing
+                    }
                 }
                 .frame(minHeight: PopoverMetrics.footerControlHeight)
             }
+        }
+        .onChange(of: model.settings.platformGeneration) { _, _ in
+            if let selectionSession { model.synchronizeSelectionSession(selectionSession) }
         }
     }
 

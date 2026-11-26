@@ -1,66 +1,49 @@
 import CruftlessCore
 import SwiftUI
 
-struct CleanupSelectionView: View {
+/// Notices and checkbox rows that stand in for a Detail screen's rows while it is in selection mode.
+struct SelectionModeList: View {
     let model: AppModel
-    @Bindable var session: CleanupSelectionSession
-    var isPreviewFixture = false
+    let session: CleanupSelectionSession
 
     var body: some View {
-        VStack(spacing: 0) {
-            PopoverHeader(title: session.location.title, backTitle: session.location.title, onBack: model.pop)
-                .disabled(model.isDeleting)
-            Hairline()
-            SelectionControls(model: model, session: session, isPreviewFixture: isPreviewFixture)
-            Hairline()
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    SelectionNotices(model: model, session: session)
-                    if session.rows.isEmpty {
-                        Text(session.isRefreshing ? "Measuring items…" : "Nothing to select")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 30)
-                    }
-                    ForEach(session.groups) { group in
-                        if group.rows.first?.groupTitle != nil {
-                            SelectionGroupHeader(
-                                group: group,
-                                canSelect: session.isReady && !session.isRefreshing && !model.isDeleting,
-                                onSelect: { model.selectEligibleCleanupRows(in: session, groupID: group.id) }
-                            )
-                        }
-                        ForEach(group.rows) { row in
-                            SelectionCheckboxRow(
-                                row: row,
-                                isSelected: session.selection.selectedIDs.contains(row.id),
-                                canSelect: session.isReady && !session.isRefreshing,
-                                isBusy: model.isDeleting,
-                                onToggle: { model.toggleCleanupSelection(row, in: session) }
-                            )
-                        }
-                    }
-                }
-                .padding(.horizontal, PopoverMetrics.bandInset)
-                .padding(.vertical, 12)
+        LazyVStack(alignment: .leading, spacing: 10) {
+            SelectionNotices(model: model, session: session)
+            if session.rows.isEmpty {
+                Text(session.isRefreshing ? "Measuring items…" : "Nothing to select")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 30)
             }
-            .scrollBounceBehavior(.basedOnSize)
-
-            SelectionFooter(
-                resolution: session.resolution,
-                canReview: session.canReview && !model.isDeleting,
-                onReview: { model.reviewCleanupSelection(in: session) }
-            )
+            ForEach(session.groups) { group in
+                if group.rows.first?.groupTitle != nil {
+                    SelectionGroupHeader(
+                        group: group,
+                        canSelect: session.isReady && !session.isRefreshing && !model.isDeleting,
+                        onSelect: { model.selectEligibleCleanupRows(in: session, groupID: group.id) }
+                    )
+                }
+                ForEach(group.rows) { row in
+                    SelectionCheckboxRow(
+                        row: row,
+                        isSelected: session.selection.selectedIDs.contains(row.id),
+                        canSelect: session.isReady && !session.isRefreshing,
+                        isBusy: model.isDeleting,
+                        onToggle: { model.toggleCleanupSelection(row, in: session) }
+                    )
+                }
+            }
         }
+        .padding(.horizontal, PopoverMetrics.bandInset)
+        .padding(.vertical, 12)
     }
 }
 
-private struct SelectionControls: View {
+/// Select All, Clear Selection and Refresh, pinned above the rows while a Detail screen is in selection mode.
+struct SelectionModeControls: View {
     let model: AppModel
     let session: CleanupSelectionSession
-    let isPreviewFixture: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -80,7 +63,7 @@ private struct SelectionControls: View {
                 }
                 .help("Refresh this location")
                 .accessibilityLabel("Refresh this location")
-                .disabled(model.isDeleting || isPreviewFixture)
+                .disabled(model.isDeleting)
             }
         }
         .font(.system(size: 11))
@@ -211,81 +194,82 @@ private struct SelectionCheckboxRow: View {
     }
 }
 
-private struct SelectionFooter: View {
-    let resolution: CleanupSelectionResolution
-    let canReview: Bool
-    let onReview: () -> Void
+/// The selection count, its estimate and Review Selection, shown in the Detail footer during selection mode.
+struct SelectionModeSummary: View {
+    let model: AppModel
+    let session: CleanupSelectionSession
+
+    private var resolution: CleanupSelectionResolution {
+        session.resolution
+    }
 
     var body: some View {
-        PopoverFooter {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(resolution.selectedCount) selected")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Estimated \(ByteFormatter.format(resolution.estimatedBytes))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                .help("Allocated-size estimate. APFS clones may reduce the space actually freed.")
-                Spacer(minLength: 4)
-                Button("Review Selection", action: onReview)
+        HStack(spacing: 10) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(resolution.selectedCount) selected")
                     .font(.system(size: 12, weight: .medium))
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.regular)
-                    .disabled(!canReview)
-                    .keyboardShortcut(.defaultAction)
+                Text(ByteFormatter.format(resolution.estimatedBytes))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
+            .help("Allocated-size estimate. APFS clones may reduce the space actually freed.")
+            Button("Review Selection") { model.reviewCleanupSelection(in: session) }
+                .font(.system(size: 12, weight: .medium))
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .disabled(!session.canReview || model.isDeleting)
+                .keyboardShortcut(.defaultAction)
         }
     }
 }
 
 #if DEBUG
-    #Preview("Selection: empty") {
+    #Preview("Selection mode: empty") {
         let model = CleanupSelectionPreviewFixtures.emptyModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: refreshing") {
+    #Preview("Selection mode: refreshing") {
         let model = CleanupSelectionPreviewFixtures.refreshingModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: failed scan") {
+    #Preview("Selection mode: failed scan") {
         let model = CleanupSelectionPreviewFixtures.failedModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: stale IDs") {
+    #Preview("Selection mode: stale IDs") {
         let model = CleanupSelectionPreviewFixtures.staleModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: simulator groups") {
+    #Preview("Selection mode: simulator groups") {
         let model = CleanupSelectionPreviewFixtures.simulatorSelectionModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.simulatorDevices.id]!, isPreviewFixture: true)
+        SimulatorsDetailView(location: LocationCatalog.simulatorDevices, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: disabled runtimes") {
+    #Preview("Selection mode: disabled runtimes") {
         let model = CleanupSelectionPreviewFixtures.allDisabledModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.simulatorRuntimes.id]!, isPreviewFixture: true)
+        RuntimesDetailView(location: LocationCatalog.simulatorRuntimes, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: orphaned projects preselected") {
+    #Preview("Selection mode: orphaned projects preselected") {
         let model = CleanupSelectionPreviewFixtures.orphanedProjectsModel()
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 
-    #Preview("Selection: selected files") {
+    #Preview("Selection mode: selected files") {
         let model = CleanupSelectionPreviewFixtures.model(selectedIDs: [CleanupSelectionPreviewFixtures.childItems[0].id])
-        CleanupSelectionView(model: model, session: model.cleanupSessions[LocationCatalog.derivedData.id]!, isPreviewFixture: true)
+        DetailView(location: LocationCatalog.derivedData, model: model)
             .frame(width: PopoverMetrics.width, height: PopoverMetrics.height)
     }
 #endif
