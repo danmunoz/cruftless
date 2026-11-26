@@ -6,6 +6,7 @@
 
 - Skip Remaining while a multi-item deletion runs: the item in progress
   finishes, and the rest are listed as not attempted.
+- Show each item's folder in Review.
 
 ### Improved
 
