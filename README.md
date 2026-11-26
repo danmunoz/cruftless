@@ -1,13 +1,19 @@
 # Cruftless
 
-Cruftless is a native macOS menu bar app for finding developer storage used by
-Xcode, CoreSimulator, Android Studio, and Gradle, then carefully removing
-selected items. It shows what can be reclaimed, explains the consequence of
-each action, and asks for confirmation before permanently deleting anything.
+Cruftless is a native macOS menu bar app that finds the storage used by Xcode,
+CoreSimulator, Android Studio, and Gradle, and carefully removes the items you
+choose. It shows what can be reclaimed, explains what each deletion costs you,
+and asks for confirmation before permanently deleting anything.
+
+<p align="center">
+  <img src="Screenshots/overview.png" width="31%" alt="Cruftless overview showing reclaimable developer disk space">
+  <img src="Screenshots/simulator-devices.png" width="31%" alt="Simulator device cleanup with per-device reclaimable storage">
+  <img src="Screenshots/derived-data.png" width="31%" alt="Derived Data drill-down grouped by project and cache type">
+</p>
 
 ## Install
 
-Cruftless is available through Homebrew:
+With Homebrew:
 
 ```bash
 brew install --cask danmunoz/tap/cruftless
@@ -16,17 +22,126 @@ brew install --cask danmunoz/tap/cruftless
 Or download the DMG from
 [GitHub Releases](https://github.com/danmunoz/cruftless/releases), open it, and
 drag Cruftless to Applications. Settings › About links back to Releases when a
-newer version is out.
+newer version is out, and [CHANGELOG.md](CHANGELOG.md) lists what changed.
 
-It requires macOS 26 or later. Releases are Developer ID–signed and notarized
-by Apple.
+Cruftless requires macOS 26 or later. Releases are signed with a Developer ID
+and notarized by Apple.
 
-### Uninstall
+On first launch, a welcome window asks which platforms you develop for, offers
+access to any protected folders your setup uses, and runs the first scan.
+
+## Highlights
+
+- Lives in the menu bar and rescans automatically when tracked folders change.
+- Breaks usage down by project, simulator, runtime, toolchain, and cache.
+- Separates data that tools regenerate from downloads, app data, and files that
+  cannot be recovered.
+- Opens each location in a detail screen with an explanation of its contents
+  and the risk of deleting them.
+- Tags Derived Data folders whose project was deleted or moved.
+- Shows APFS allocated size, not misleading logical file size, and reports
+  purgeable space separately from free space.
+- Lets you protect your own folders from deletion.
+- Scans Apple development, Android development, or both.
+- Runs locally, with no account, analytics, or telemetry.
+
+## What Cruftless scans
+
+| Location | How Cruftless handles it |
+|---|---|
+| Device Support | Delete; Xcode recreates it when the device reconnects. |
+| Simulator devices | Clear known caches, erase a device, or delete it through `simctl`. |
+| Xcode test simulators | Delete retained test simulators through `simctl`. |
+| Simulator runtimes | Delete through `simctl`, including unusable runtimes. |
+| Derived Data | Delete by project or clear the location; Xcode rebuilds it. Folders whose project no longer exists are tagged for review. |
+| Previews cache | Delete; Xcode Previews regenerates it. |
+| Toolchains | Delete installed toolchains; the active toolchain gets an explicit warning. |
+| SwiftPM cache | Delete; packages download again when they resolve. |
+| Interface Builder support | Delete; Interface Builder rebuilds it on demand. |
+| Archives | Delete one at a time, with a warning: archives hold the dSYMs for shipped builds and cannot be recovered. |
+| Build products & logs | Delete build output, logs, and caches; device logs do not regenerate. |
+| Xcode installs | Inspect and reveal in Finder; Cruftless does not delete Xcode. |
+| Simulator dyld cache | Inspect only; Cruftless gives you a `sudo` command for this root-owned data. |
+| Android Studio system files | Inspect recognized cache locations; cleanup is not available. |
+| Gradle caches | Remove one eligible entry at a time, after a risk acknowledgement and review. |
+| Android SDK | Inspect installed packages; removal is not available. |
+| Android Virtual Devices | Delete one stopped device at a time through Google's `android` command-line tool. |
+
+Locations are sorted by reclaimable size, and each one lets you inspect its
+items before deciding what to remove.
+
+## Safety model
+
+Cruftless deletes files permanently, because moving them to the Trash frees no
+disk space until the Trash is emptied. That makes the deletion boundary the most
+important part of the project:
+
+- Nothing is deleted without an explicit action and a review screen. Scanning
+  never deletes anything.
+- A path guard limits deletion to known development-data folders, resolves
+  paths before comparing them, refuses symlinks, and refuses any target that
+  contains a protected location.
+- Each target's filesystem identity is checked again just before deletion, so
+  an item that changed after the scan is refused.
+- Simulator devices and runtimes are changed through Apple's `simctl`, never by
+  deleting CoreSimulator folders directly.
+- Items that cannot be recovered, such as Archives, are flagged, explained, and
+  left out of every whole-location or batch action.
+- A batch reports the result of every item instead of stopping at the first
+  failure.
+- Select Items lets you check several entries in one location; the selection
+  still goes through Review and confirmation.
+
+You can protect your own folders in **Settings › General**. A deletion that
+contains a protected folder is refused as a whole rather than quietly skipping
+part of what you asked for.
+
+### Android
+
+- Android SDK packages and Android Studio system files are inventory only.
+- An Android Virtual Device can be deleted only while it is stopped and not in
+  use, through Google's `android` command-line tool and the normal review step.
+  Cruftless checks for the tools when you choose Delete Device and asks before
+  installing them. If something launches the device after the final check,
+  Cruftless cannot stop it; an incomplete removal is reported and the remaining
+  storage stays visible.
+- Gradle caches are shared across projects, so each removal needs its own risk
+  acknowledgement. Cruftless cannot verify that Gradle has stopped using those
+  files: a running build may be interrupted, and offline builds may fail.
+
+## Privacy
+
+Inventory and cleanup run on your Mac. Cruftless contacts the network only
+when you check for updates (public release metadata from GitHub) or approve
+setting up Android tools (official downloads from Google).
+
+macOS asks for permission before an app reads Documents, Desktop, Downloads,
+iCloud Drive, or removable and network volumes. Cruftless never reads one of
+those places unless you allow it, in the welcome window or in
+**Settings › Access**. Until then, an affected location shows that it needs
+access instead of a size.
+
+**Settings › Support** can prepare a diagnostic report for you to review. It
+holds only version, toolchain, and Android SDK status fields; paths, usernames,
+host details, logs, and inventories are left out. The report is copied or saved
+only when you choose to, it is never sent automatically, and the issue tracker
+link does not include it.
+
+## About the numbers
+
+Cruftless measures allocated disk usage, including filesystem metadata, and
+counts hardlinked files once per volume and inode. Blocks shared between APFS
+clones are still counted in full, so totals that involve clones are an upper
+bound. Purgeable space is shown separately because macOS already counts it as
+free.
+
+## Uninstall
 
 - **Homebrew:** `brew uninstall --zap --cask cruftless` removes the app, its
   data and settings, its login item, its scan reminders, and the privacy
-  permissions macOS recorded for it. Run `brew upgrade cruftless` first if your
-  copy predates uninstall support: Homebrew zaps with the cask it installed.
+  permissions macOS recorded for it. If your copy predates uninstall support,
+  run `brew upgrade cruftless` first, because Homebrew zaps with the cask it
+  installed.
 - **DMG:** Settings › Support › Remove Cruftless Data shows what it will delete,
   removes it, and quits. Then drag Cruftless to the Trash.
 - **By hand**, for a copy already deleted: turn off Launch at login in System
@@ -37,116 +152,14 @@ by Apple.
   `~/Library/Preferences/com.danmunoz.Cruftless.plist`, and
   `$(getconf DARWIN_USER_CACHE_DIR)com.danmunoz.Cruftless`.
 
-Uninstalling never brings back anything Cruftless deleted, and it does not touch
-the developer data Cruftless tracks. macOS may write an empty
+Uninstalling does not bring back anything Cruftless deleted, and it does not
+touch the developer data Cruftless tracks. macOS may write an empty
 `com.danmunoz.Cruftless.plist` back a few seconds after it is removed; it holds
 no settings.
 
-<p align="center">
-  <img src="Screenshots/overview.png" width="31%" alt="Cruftless overview showing reclaimable developer disk space">
-  <img src="Screenshots/simulator-devices.png" width="31%" alt="Simulator device cleanup with per-device reclaimable storage">
-  <img src="Screenshots/derived-data.png" width="31%" alt="Derived Data drill-down grouped by project and cache type">
-</p>
-
-## Highlights
-
-- Lives in the menu bar and scans automatically after launch.
-- Breaks usage down by project, simulator, runtime, toolchain, and cache.
-- Distinguishes regenerable data from downloads, app data, and irreversible
-  files.
-- Opens every available location in a detail screen with an info button for
-  a collapsible explanation of its contents and deletion risks.
-- Shows APFS allocated size instead of misleading logical file size.
-- Reports purgeable disk space separately from free space.
-- Lets you protect additional folders in Settings.
-- Lets you choose whether to scan Apple development, Android development, or
-  both.
-- Inventories Android Studio system data, Gradle caches, Android SDK packages,
-  and Android Virtual Devices. SDK packages and Android Studio data remain
-  read-only. Stopped AVDs can be deleted individually through the modern Android CLI;
-  missing tools require installation permission. Selected Gradle cache entries have a separate warning and review.
-- Inventory and cleanup run locally, with no account, app analytics, or
-  telemetry. Manual update checks contact GitHub for public release metadata.
-  Approved Android tool setup downloads official tooling from Google.
-- **Settings → Support** can prepare a local diagnostic report for review. It
-  contains allowlisted version, toolchain, and Android SDK status fields;
-  paths, usernames, host details, logs, and inventories are excluded. Cruftless
-  only copies or saves the preview when you choose those actions. Reports are
-  never sent automatically; the issue tracker link does not include report data.
-
-## What Cruftless scans
-
-| Location | How Cruftless handles it |
-|---|---|
-| Device Support | Delete; Xcode recreates it when the device reconnects. |
-| Simulator devices | Clear known caches, erase a device, or delete it through `simctl`. |
-| Simulator runtimes | Delete through `simctl`; unusable runtimes are supported. |
-| Derived Data | Delete by project or clear the location; Xcode rebuilds it. Each folder shows its project, and folders whose project was deleted or moved are suggested for review. |
-| Previews cache | Delete; Xcode Previews regenerates it. |
-| Toolchains | Delete installed toolchains; the active toolchain gets an explicit warning. |
-| SwiftPM cache | Delete; packages are downloaded again when they resolve. |
-| Interface Builder support | Delete; Interface Builder rebuilds it on demand. |
-| Archives | Delete individually with a warning; archives and dSYMs cannot be recovered. |
-| Build products and logs | Delete build output, logs, and caches; device logs do not regenerate. |
-| Xcode installs | Inspect and reveal in Finder; Cruftless does not delete the app. |
-| Simulator dyld cache | Inspect only; Cruftless provides a command for this root-owned data. |
-| Android Studio system data | Inspect recognized system-cache locations; cleanup is not available. |
-| Gradle caches | Inspect shared cache entries; remove one eligible entry at a time after a one-use risk acknowledgement and review. Active builds may be interrupted, and offline builds may fail. |
-| Android SDK | Inspect installed packages; package removal is not available. |
-| Android Virtual Devices | Review and delete one stopped, inactive device through the modern Android CLI. |
-
-Entries are sorted by reclaimable size. Drill-downs let you inspect individual
-items before deciding what to remove.
-
-## Safety model
-
-Cruftless permanently deletes files because moving them to Trash does not free
-disk space until the Trash is emptied. That makes the deletion boundary the
-most important part of the project:
-
-- Every deletion starts with an explicit action and goes through a review
-  screen. Scanning never deletes anything.
-- A path guard restricts deletion to known Xcode and simulator roots, resolves
-  paths before comparison, rejects symlink targets, and refuses protected
-  locations.
-- The filesystem identity of a target is checked again immediately before
-  deletion so an item that changed after the scan is refused.
-- Simulator devices and runtimes are mutated through Apple's `simctl`, not by
-  recursively deleting CoreSimulator directories.
-- Irreversible items such as Archives are flagged, explained, and excluded from
-  whole-location actions.
-- Batch work records each result instead of stopping after the first failure.
-- Detail screens with child listings offer Select Items for location-scoped checkbox
-  selection in the same popover. Review and confirmation are required before any batch;
-  flagged and protected rows stay out, and Gradle remains one entry per attempt.
-
-You can add your own protected folders in **Settings → General**. Any deletion
-that contains a protected folder is refused rather than silently excluding part
-of the requested item.
-
-Android SDK packages and Android Studio system data are inventory-only. AVD
-removal requires a stopped, inactive device, the modern Android CLI, and the normal
-review step. Tools are checked only when Delete Device is requested; installation
-and first-run setup require permission. An external launch after the final state
-check is not prevented. Incomplete removal is reported and remaining storage stays
-visible. See [Android device cleanup](docs/ANDROID_AVD_CLEANUP.md). Gradle caches are shared across projects, so removing an
-eligible cache entry requires a per-attempt risk acknowledgement and the normal
-review step. Cruftless cannot verify that Gradle has stopped using those files.
-
-## About the numbers
-
-Cruftless measures allocated disk usage, including filesystem metadata, and
-deduplicates hardlinks by volume and inode. Blocks shared between APFS clones
-are counted in full for now, so totals involving clones are an upper
-bound. The app keeps purgeable space separate because macOS already includes it
-in the reported free-space figure.
-
-## Requirements
-
-- macOS 26 or later
-- Xcode 26 with Swift 6.4 or later
-
 ## Build from source
+
+You need macOS 26 or later and Xcode 26 with Swift 6.4 or later.
 
 ```bash
 git clone https://github.com/danmunoz/cruftless.git
@@ -154,33 +167,34 @@ cd cruftless
 make run
 ```
 
-`make run` builds the `Cruftless` scheme and opens the resulting app. Cruftless
-appears in the menu bar rather than the Dock.
+`make run` builds the `Cruftless` scheme and opens the app, which appears in
+the menu bar.
 
 ## Development
 
-The repository keeps filesystem and deletion logic independent from the UI:
+Filesystem and deletion logic live apart from the UI:
 
 | Path | Purpose |
 |---|---|
 | `CruftlessCore/` | Swift package for scanning, inventory, planning, deletion, and naming. |
-| `Cruftless/` | SwiftUI menu bar app and Settings window. |
-| `scripts/` | Maintainer tools, including device-table generation. |
+| `Cruftless/` | SwiftUI menu bar app, welcome window, and Settings. |
+| `scripts/` | Maintainer tools: device-table generation and release scripts. |
 
-Run the full validation suite with:
+`make` runs the full validation suite, or run each step on its own:
 
 ```bash
-make lint
-make test
-make build
+make lint   # swiftlint --strict
+make test   # swift test --package-path CruftlessCore
+make build  # xcodebuild for the Cruftless scheme
 ```
 
-Formatting is available separately through `make fmt`.
+`make fmt` formats the code with SwiftFormat. Maintainers cutting a release
+follow [RELEASING.md](RELEASING.md).
 
 ## Contributing
 
 Cruftless is a small, independent project, and thoughtful contributions are
-very welcome. If you find a bug, have an idea, or know about an Xcode-related
+very welcome. If you find a bug, have an idea, or know about a development
 folder the app is missing, please open an issue and tell me about it. Pull
 requests are welcome too.
 
@@ -189,7 +203,7 @@ about changes to its deletion logic. For anything substantial, please start
 with an issue so we can agree on the behavior and safety boundary first.
 Deletion-path changes need focused tests, and every new tracked location must
 prove that paths outside its allowed root are rejected. Filesystem work belongs
-in `CruftlessCore`; bug fixes should include a regression test whenever
+in `CruftlessCore`, and bug fixes should include a regression test whenever
 practical.
 
 ## Contact
@@ -203,18 +217,28 @@ you can reach me here:
 - **Twitter:** [@Makias](https://twitter.com/Makias)
 - **Website:** [danmunoz.com](https://www.danmunoz.com)
 
-If you’ve found a bug or have a feature idea, I’d prefer a
+For bugs and feature ideas, I’d prefer a
 [GitHub issue](https://github.com/danmunoz/cruftless/issues) so the conversation
 can help other people too.
 
 ## Acknowledgements
 
-- **Device-identifier table:** generated from local CoreSimulator device
-  profiles plus a baseline of historical models from
-  [DeviceKit](https://github.com/devicekit/DeviceKit) (MIT).
-- **Orphaned Derived Data detection:** the idea of reading each folder's
-  recorded workspace path comes from [plonge](https://github.com/mattt/plonge)
-  (MIT); no code is shared.
+These projects shaped Cruftless's approach. Only ideas were adopted; no code is
+shared.
+
+- [XCleanup](https://github.com/DevEverton/XCleanup) (MIT): a root allowlist for
+  deletion, reading `device.plist` to enumerate simulators with `simctl` only
+  for changes, and a core library separate from the app.
+- [cleardisk](https://github.com/bysiber/cleardisk) (MIT): hardlink and APFS
+  clone deduplication, purgeable space reporting, and FSEvents-driven rescans.
+- [plonge](https://github.com/mattt/plonge) (MIT): finding orphaned Derived Data
+  from each folder's recorded workspace path.
+- [DevCleaner for Xcode](https://github.com/vashpan/xcode-dev-cleaner) (GPL-3):
+  human-readable device and build names.
+
+The device-identifier table is generated from local CoreSimulator device
+profiles plus a baseline of historical models from
+[DeviceKit](https://github.com/devicekit/DeviceKit) (MIT).
 
 ## License
 
