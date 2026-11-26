@@ -188,7 +188,8 @@ public enum LocationCatalog: Sendable {
         hasDrillDown: true,
         stalenessSource: .topLevelMtime,
         mutationPolicy: .readOnly,
-        consequence: "SDK packages are read-only. Removing one can break projects and emulators.",
+        itemRemoval: .androidSDKPackage,
+        consequence: "Remove unused SDK packages individually after review. Removing one can break projects and emulators.",
         discoveryIssue: RootResolver.androidSDKIssue,
         resolveRoots: RootResolver.androidSDKRoots
     )

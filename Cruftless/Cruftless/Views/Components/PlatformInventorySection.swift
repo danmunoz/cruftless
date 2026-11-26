@@ -134,9 +134,9 @@ struct PlatformInventorySection: View {
     }
 
     private static let androidNotice =
-        "SDK and Android Studio data remain read-only. "
+        "Android Studio data remains read-only. "
             + "Eligible Gradle cache folders can be cleared after a one-time risk review. "
-            + "Stopped virtual devices can be deleted one at a time after review."
+            + "Stopped virtual devices and unused SDK packages can be removed one at a time after review."
 
     private func row(for entry: InventoryEntry) -> some View {
         CategoryRowView(

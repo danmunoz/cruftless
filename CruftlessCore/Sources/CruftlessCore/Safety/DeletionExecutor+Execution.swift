@@ -10,10 +10,8 @@ extension DeletionExecutor {
         onProgress: (@Sendable (DeletionProgress) -> Void)? = nil,
         onItemEvent: (@Sendable (DeletionItemEvent) -> Void)? = nil
     ) async -> DeletionResult {
-        let androidTarget = plan.items.contains { if case .androidAVDDelete = $0 { true } else { false } }
-        let invalidAndroidPlan = !plan.isPlannerAuthorized || plan.count != 1
-            || plan.affectedLocationIds != [LocationCatalog.androidAVDs.id]
-        if androidTarget, invalidAndroidPlan {
+        if let androidLocationID = plan.items.lazy.compactMap(Self.androidManagerLocationID).first,
+           !plan.isPlannerAuthorized || plan.count != 1 || plan.affectedLocationIds != [androidLocationID] {
             return Self.refusedAsUnverified(plan)
         }
         if plan.items.contains(where: { $0.validatedPath != nil }), !plan.isPlannerAuthorized {
@@ -102,7 +100,16 @@ extension DeletionExecutor {
     private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {
         switch target {
         case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete: true
-        case .path, .androidAVDDelete: false
+        case .path, .androidAVDDelete, .androidSDKPackageDelete: false
+        }
+    }
+
+    /// The read-only location whose one reviewed item a manager-backed target may remove.
+    private static func androidManagerLocationID(_ target: DeletionTarget) -> String? {
+        switch target {
+        case .androidAVDDelete: LocationCatalog.androidAVDs.id
+        case .androidSDKPackageDelete: LocationCatalog.androidSDK.id
+        default: nil
         }
     }
 
@@ -121,8 +128,8 @@ extension DeletionExecutor {
         var authorizedIDs: Set<String> = acknowledgement == nil
             ? []
             : [LocationCatalog.gradleCaches.id]
-        if plan.isPlannerAuthorized, plan.count == 1, case .androidAVDDelete = plan.items[0] {
-            authorizedIDs.insert(LocationCatalog.androidAVDs.id)
+        if plan.isPlannerAuthorized, plan.count == 1, let locationID = Self.androidManagerLocationID(plan.items[0]) {
+            authorizedIDs.insert(locationID)
         }
         let locationIDs = plan.affectedLocationIds.subtracting(authorizedIDs).union(
             policyGenerationAuthority.readOnlyLocationIDs(matching: plan.items)

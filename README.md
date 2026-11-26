@@ -64,7 +64,7 @@ access to any protected folders your setup uses, and runs the first scan.
 | Simulator dyld cache | Inspect only; Cruftless gives you a `sudo` command for this root-owned data. |
 | Android Studio system files | Inspect recognized cache locations; cleanup is not available. |
 | Gradle caches | Remove one eligible entry at a time, after a risk acknowledgement and review. |
-| Android SDK | Inspect installed packages; removal is not available. |
+| Android SDK | Remove one installed package at a time through Google's `android` command-line tool. |
 | Android Virtual Devices | Delete one stopped device at a time through Google's `android` command-line tool. |
 
 Locations are sorted by reclaimable size, and each one lets you inspect its
@@ -98,7 +98,11 @@ part of what you asked for.
 
 ### Android
 
-- Android SDK packages and Android Studio system files are inventory only.
+- Android Studio system files are inventory only.
+- An Android SDK package can be removed one at a time through Google's
+  `android` command-line tool (1.1.16919734 or later) and the normal review
+  step. A system image that a virtual device uses, or a package something is
+  running from, stays put.
 - An Android Virtual Device can be deleted only while it is stopped and not in
   use, through Google's `android` command-line tool and the normal review step.
   Cruftless checks for the tools when you choose Delete Device and asks before

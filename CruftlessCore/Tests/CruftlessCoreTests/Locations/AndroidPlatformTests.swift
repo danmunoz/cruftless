@@ -35,11 +35,11 @@ struct AndroidPlatformTests {
         let inventoryOnly = Set(LocationCatalog.all.filter(\.isInventoryOnly).map(\.id))
         #expect(inventoryOnly == [
             LocationCatalog.simulatorDyldCache.id,
-            LocationCatalog.androidStudioSystem.id,
-            LocationCatalog.androidSDK.id
+            LocationCatalog.androidStudioSystem.id
         ])
         #expect(LocationCatalog.gradleCaches.itemRemoval == .gradleCacheRiskReview)
         #expect(LocationCatalog.androidAVDs.itemRemoval == .androidVirtualDevice)
+        #expect(LocationCatalog.androidSDK.itemRemoval == .androidSDKPackage)
         #expect(LocationCatalog.all.filter { !$0.mutationPolicy.isReadOnly }.allSatisfy { $0.itemRemoval == .none })
     }
 

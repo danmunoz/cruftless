@@ -101,6 +101,7 @@ struct ReviewItemRow: View {
         case .xctestSimulatorDelete: "Delete Test Simulator"
         case .runtimeDelete: "Delete Runtime"
         case .androidAVDDelete: "Delete Device"
+        case .androidSDKPackageDelete: "Remove Package"
         }
     }
 }

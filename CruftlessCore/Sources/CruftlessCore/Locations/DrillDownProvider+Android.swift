@@ -101,7 +101,7 @@ extension DrillDownProvider {
             reclaimableBytes: knownSizes[path]?.allocatedBytes ?? DirectoryWalker.walk(url: url, inodeSet: inodeSet).allocatedBytes,
             staleness: calculateStaleness(url: url, source: .newestChildMtime, statMtime: mtime),
             tier: .info,
-            consequence: "Read-only installed Android SDK package."
+            consequence: "Installed Android SDK package. Removed one at a time through Android tools."
         )
     }
 
@@ -212,7 +212,7 @@ private struct SDKPackageDiscovery {
         let knownEntries: Set<String> = [
             "platform-tools", "emulator", "platforms", "build-tools", "sources", "system-images",
             "ndk", "cmake", "cmdline-tools", "extras", "licenses", "skins", "fonts",
-            ".downloadIntermediates", ".knownPackages", ".temp", "tools", "add-ons", "patcher"
+            ".downloadIntermediates", ".knownPackages", ".temp", ".sdk", "tools", "add-ons", "patcher"
         ]
         guard let directory = FileAccessAudit.openDirectory(ProtectedPaths.normalize(root)) else { return false }
         defer { closedir(directory) }

@@ -51,8 +51,8 @@ public struct GeneralSettingsPane: View {
             } footer: {
                 Text(
                     "Android includes shared Gradle caches that other projects may use. "
-                        + "SDK and Android Studio storage is read-only. "
-                        + "Deleting devices needs the Android tools. "
+                        + "Android Studio storage is read-only. "
+                        + "Deleting devices or SDK packages needs the Android tools. "
                         + "Gradle cleanup asks for an extra risk review."
                 )
             }

@@ -102,6 +102,7 @@ public final class AppModel {
     var androidPreparationTask: Task<Void, Never>?
     var androidPreparationID: UUID?
     public let androidAVDRemoval: AndroidAVDRemoval
+    public let androidSDKPackageRemoval: AndroidSDKPackageRemoval
 
     /// True while a plan is being executed.
     public internal(set) var isDeleting = false
@@ -166,15 +167,19 @@ public final class AppModel {
         simulatorService: SimulatorService = SimulatorService(),
         deletionExecutor: DeletionExecutor? = nil,
         androidAVDRemoval: AndroidAVDRemoval = AndroidAVDRemoval(),
+        androidSDKPackageRemoval: AndroidSDKPackageRemoval? = nil,
         settings: SettingsModel = SettingsModel(),
         inventoryStore: InventoryStore = InventoryStore()
     ) {
         self.androidAVDRemoval = androidAVDRemoval
+        let sdkPackageRemoval = androidSDKPackageRemoval ?? AndroidSDKPackageRemoval(tools: androidAVDRemoval.tools)
+        self.androidSDKPackageRemoval = sdkPackageRemoval
         self.scanEngine = scanEngine
         self.simulatorService = simulatorService
         self.settings = settings
         self.deletionExecutor = deletionExecutor ?? DeletionExecutor(
             androidAVDRemoval: androidAVDRemoval,
+            androidSDKPackageRemoval: sdkPackageRemoval,
             policyGenerationAuthority: settings.policyGenerationAuthority,
             protectedPathsStore: settings.protectedPathsStore
         )

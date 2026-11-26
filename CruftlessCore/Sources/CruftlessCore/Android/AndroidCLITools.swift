@@ -6,11 +6,26 @@ public typealias AndroidCLIProcess = @Sendable (URL, [String], [String: String],
 public struct AndroidCLITool: Sendable, Hashable {
     public let executable: URL
     public let fingerprint: Fingerprint
+    /// The release reported during setup, or nil for a tool prepared before versions were recorded.
+    public let version: AndroidCLIVersion?
+
+    public init(executable: URL, fingerprint: Fingerprint, version: AndroidCLIVersion? = nil) {
+        self.executable = executable
+        self.fingerprint = fingerprint
+        self.version = version
+    }
+
+    func meets(_ minimum: AndroidCLIVersion?) -> Bool {
+        guard let minimum else { return true }
+        return version.map { $0 >= minimum } ?? false
+    }
 }
 
 public enum AndroidCLIToolAvailability: Sendable {
     case ready(AndroidCLITool)
     case setupRequired
+    /// A prepared tool exists but is older than the operation requires.
+    case updateRequired(installed: AndroidCLIVersion?)
 }
 
 public actor AndroidCLITools {
@@ -49,51 +64,95 @@ public actor AndroidCLITools {
         self.download = download
     }
 
-    public func availability() -> AndroidCLIToolAvailability {
+    /// Reports the prepared tool without running or downloading anything.
+    public func availability(minimumVersion: AndroidCLIVersion? = nil) -> AndroidCLIToolAvailability {
+        guard let tool = preparedTool() else { return .setupRequired }
+        return tool.meets(minimumVersion) ? .ready(tool) : .updateRequired(installed: tool.version)
+    }
+
+    private func preparedTool() -> AndroidCLITool? {
         if let prepared, prepared.fingerprint.verify(at: prepared.executable) == .valid {
-            return .ready(prepared)
+            return prepared
         }
         guard let record = try? Data(contentsOf: markerURL),
               let receipt = try? JSONDecoder().decode(PreparationReceipt.self, from: record),
               receipt.userHome == ProtectedPaths.normalize(androidUserHome),
-              let executable = candidates.first(where: { $0.path(percentEncoded: false) == receipt.path }),
-              let tool = tool(at: executable), receipt.matches(tool.fingerprint)
-        else { return .setupRequired }
+              let executable = knownExecutables.first(where: { $0.path(percentEncoded: false) == receipt.path }),
+              let found = tool(at: executable), receipt.matches(found.fingerprint)
+        else { return nil }
+        let tool = AndroidCLITool(executable: found.executable, fingerprint: found.fingerprint, version: receipt.version)
         prepared = tool
-        return .ready(tool)
+        return tool
     }
 
     /// Runs only after the user accepts tool installation and first-run setup.
-    public func setUp() async throws -> AndroidCLITool {
+    ///
+    /// - Parameter minimumVersion: Skips installed copies older than this and downloads the latest release instead.
+    public func setUp(minimumVersion: AndroidCLIVersion? = nil) async throws -> AndroidCLITool {
         guard !isPreparing else { throw AndroidAVDRemovalError.refused("Android tools are already being prepared.") }
         isPreparing = true
         defer { isPreparing = false }
         try validateInstallDirectory()
-        var executable = candidates.first(where: { tool(at: $0) != nil })
-        if executable == nil {
-            let destination = installDirectory.appendingPathComponent("android-cli")
-            guard !FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) else {
-                throw AndroidAVDRemovalError.refused("The Android tools installation path is occupied by an unsupported file.")
+        let installed = candidates.filter { tool(at: $0) != nil }
+        if minimumVersion == nil, let first = installed.first {
+            return try await prepare(first, minimumVersion: nil)
+        }
+        var outdated: AndroidCLIVersion?
+        for executable in installed {
+            guard let version = try await probeVersion(executable) else { continue }
+            if minimumVersion.map({ version >= $0 }) ?? true {
+                return try await prepare(executable, minimumVersion: minimumVersion, probed: version)
             }
-            try await download(Self.downloadURL, destination)
-            executable = destination
+            outdated = outdated ?? version
         }
-        guard let executable, let candidate = tool(at: executable) else {
-            throw AndroidAVDRemovalError.refused("The Android CLI executable could not be verified.")
+        let destination = ownExecutable
+        guard !FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) else {
+            if let minimumVersion, let outdated {
+                throw AndroidAVDRemovalError.refused(
+                    "Android tools \(outdated) are older than \(minimumVersion). Run android update, then try again."
+                )
+            }
+            throw AndroidAVDRemovalError.refused("The Android tools installation path is occupied by an unsupported file.")
         }
-        let output = try await run(executable, ["--no-metrics", "--version"], environment(), .seconds(180))
-        guard output.status == 0, output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            .range(of: #"^\d+\.\d+\.\d+"#, options: .regularExpression) != nil,
-            candidate.fingerprint.verify(at: executable) == .valid
-        else { throw AndroidAVDRemovalError.refused("Android tools could not complete setup. Try again before deleting the device.") }
-        let receipt = PreparationReceipt(tool: candidate, userHome: ProtectedPaths.normalize(androidUserHome))
-        try JSONEncoder().encode(receipt).write(to: markerURL, options: .atomic)
-        prepared = candidate
-        return candidate
+        try await download(Self.downloadURL, destination)
+        return try await prepare(destination, minimumVersion: minimumVersion)
     }
 
-    public func verify(_ selected: AndroidCLITool) throws {
-        guard case let .ready(current) = availability(), current == selected else { throw AndroidAVDRemovalError.toolsRequired }
+    private func prepare(
+        _ executable: URL,
+        minimumVersion: AndroidCLIVersion?,
+        probed: AndroidCLIVersion? = nil
+    ) async throws -> AndroidCLITool {
+        guard let candidate = tool(at: executable) else {
+            throw AndroidAVDRemovalError.refused("The Android CLI executable could not be verified.")
+        }
+        let reported = if let probed { probed } else { try await probeVersion(executable) }
+        guard let version = reported,
+              candidate.fingerprint.verify(at: executable) == .valid
+        else { throw AndroidAVDRemovalError.refused("Android tools could not complete setup. Try again before deleting anything.") }
+        let prepared = AndroidCLITool(executable: executable, fingerprint: candidate.fingerprint, version: version)
+        if let minimumVersion, !prepared.meets(minimumVersion) {
+            throw AndroidAVDRemovalError.refused(
+                "These Android tools report \(version), older than the \(minimumVersion) Cruftless requires."
+            )
+        }
+        let receipt = PreparationReceipt(tool: prepared, userHome: ProtectedPaths.normalize(androidUserHome))
+        try JSONEncoder().encode(receipt).write(to: markerURL, options: .atomic)
+        self.prepared = prepared
+        return prepared
+    }
+
+    /// Runs `--version`, which also completes the tool's first-run setup.
+    private func probeVersion(_ executable: URL) async throws -> AndroidCLIVersion? {
+        let output = try await run(executable, ["--no-metrics", "--version"], environment(), .seconds(180))
+        guard output.status == 0 else { return nil }
+        return AndroidCLIVersion(versionOutput: output.stdout)
+    }
+
+    public func verify(_ selected: AndroidCLITool, minimumVersion: AndroidCLIVersion? = nil) throws {
+        guard case let .ready(current) = availability(minimumVersion: minimumVersion), current == selected else {
+            throw AndroidAVDRemovalError.toolsRequired
+        }
     }
 
     public func invoke(_ tool: AndroidCLITool, arguments: [String], timeout: Duration) async throws -> BoundedProcess.Output {
@@ -117,6 +176,14 @@ public actor AndroidCLITools {
         #else
             URL(string: "https://dl.google.com/android/cli/latest/darwin_x86_64/android-cli")!
         #endif
+    }
+
+    private var ownExecutable: URL {
+        installDirectory.appendingPathComponent("android-cli")
+    }
+
+    private var knownExecutables: [URL] {
+        candidates.contains(ownExecutable) ? candidates : [ownExecutable] + candidates
     }
 
     private var markerURL: URL {
@@ -173,6 +240,7 @@ private struct PreparationReceipt: Codable {
     let inode: UInt64
     let device: Int32
     let modified: Date
+    let version: AndroidCLIVersion?
 
     init(tool: AndroidCLITool, userHome: String) {
         path = tool.executable.path(percentEncoded: false)
@@ -180,6 +248,7 @@ private struct PreparationReceipt: Codable {
         inode = tool.fingerprint.inode
         device = tool.fingerprint.device
         modified = tool.fingerprint.modificationDate
+        version = tool.version
     }
 
     func matches(_ fingerprint: Fingerprint) -> Bool {

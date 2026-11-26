@@ -45,6 +45,7 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         reclaimableBytes: Int64
     )
     case androidAVDDelete(AndroidAVDRemovalRequest)
+    case androidSDKPackageDelete(AndroidSDKPackageRemovalRequest)
     case runtimeDelete(
         identifier: String,
         name: String,
@@ -63,6 +64,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
             "sim-delete-\(udid)"
         case let .xctestSimulatorDelete(set, udid, _, _, _, _, _, _): "sim-delete-\(set.id)-\(udid)"
         case let .androidAVDDelete(request): "androidAVDs-" + request.identity.name
+        case let .androidSDKPackageDelete(request):
+            LocationCatalog.androidSDK.id + "-" + ProtectedPaths.normalize(request.identity.directory)
         case let .runtimeDelete(identifier, _, _, _, _):
             "runtime-\(identifier)"
         }
@@ -71,6 +74,7 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
     public var name: String {
         switch self {
         case let .androidAVDDelete(request): request.displayName
+        case let .androidSDKPackageDelete(request): request.displayName
         case let .path(_, name, _, _, _, _, _, _):
             name
         case let .simulatorErase(_, name, _, _, _),
@@ -85,7 +89,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         switch self {
         case let .path(_, _, _, _, tier, _, _, _):
             tier
-        case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete, .androidAVDDelete:
+        case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete, .androidAVDDelete,
+             .androidSDKPackageDelete:
             .judgment
         }
     }
@@ -94,6 +99,8 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
         switch self {
         case .androidAVDDelete:
             "Permanently deletes this device, its apps, settings, local data and snapshots. Do not start it during removal."
+        case let .androidSDKPackageDelete(request):
+            request.identity.consequence
         case let .path(_, _, _, _, _, consequence, _, _):
             consequence
         case let .simulatorErase(_, _, _, consequence, _),
@@ -107,6 +114,7 @@ public enum DeletionTarget: Sendable, Hashable, Identifiable {
     public var reclaimableBytes: Int64 {
         switch self {
         case let .androidAVDDelete(request): request.estimatedBytes
+        case let .androidSDKPackageDelete(request): request.estimatedBytes
         case let .path(_, _, _, _, _, _, bytes, _),
              let .simulatorErase(_, _, _, _, bytes),
              let .simulatorDelete(_, _, _, _, bytes),

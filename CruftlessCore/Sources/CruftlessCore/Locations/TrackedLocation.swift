@@ -21,6 +21,8 @@ public enum ItemRemoval: Sendable, Hashable {
     case gradleCacheRiskReview
     /// One stopped device at a time, through Google's Android CLI.
     case androidVirtualDevice
+    /// One installed SDK package at a time, through Google's Android CLI.
+    case androidSDKPackage
 }
 
 /// Where a tracked location's size comes from.

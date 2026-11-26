@@ -15,6 +15,8 @@ public extension DeletionTarget {
             simulatorDevicesRoot?.appendingPathComponent(udid, isDirectory: true)
         case let .xctestSimulatorDelete(_, _, deviceDirectory, _, _, _, _, _):
             deviceDirectory
+        case let .androidSDKPackageDelete(request):
+            request.identity.directory
         case let .androidAVDDelete(request):
             request.identity.directory
         case .runtimeDelete:

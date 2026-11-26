@@ -163,6 +163,21 @@ public struct ProtectedPaths: Sendable {
             && !containsStructuralAnchor(forms)
     }
 
+    /// Allows an installed SDK package directory only for manager-backed removal, including the default SDK under `~/Library`.
+    package func allowsAndroidSDKPackage(_ target: URL, under sdkRoot: URL) -> Bool {
+        let forms = ProtectedPathForms(url: target)
+        let sdkPrefix = Self.normalize(sdkRoot).lowercased() + "/"
+        let privateRoots = (Self.protectedHomeSubdirectories.filter { $0 != "Library" } + Self.anchoredHomeSubdirectories)
+            .map { (homePath as NSString).appendingPathComponent($0).lowercased() }
+        return forms.resolved.hasPrefix(sdkPrefix)
+            && !intersectsCustomProtection(target)
+            && !isSystemProtected(forms, allowingAndroidAVDRoot: sdkRoot)
+            && !forms.variants.contains { spelling in privateRoots.contains { spelling == $0 || spelling.hasPrefix($0 + "/") } }
+            && !Self.isCoreSimulatorStructure(forms.lexical)
+            && !Self.isCoreSimulatorStructure(forms.resolved)
+            && !containsStructuralAnchor(forms)
+    }
+
     /// Whether `url` may serve as a `PathGuard` root at all.
     public func isUsableRoot(_ url: URL) -> Bool {
         guard url.isFileURL else { return false }
