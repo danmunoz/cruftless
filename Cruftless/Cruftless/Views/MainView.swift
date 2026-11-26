@@ -64,11 +64,13 @@ public struct MainView: View {
                 progress: model.deletionProgress,
                 run: model.deletionRun,
                 currentFreeBytes: model.reviewFreeSpaceBytes,
+                isStopRequested: model.isDeletionStopRequested,
                 onConfirm: {
                     model.recordReviewCompleted()
                     await model.executeDeletion(plan: plan)
                 },
-                onCancel: model.pop
+                onCancel: model.pop,
+                onStop: model.stopDeletionAfterCurrentItem
             )
 
         case let .result(result):

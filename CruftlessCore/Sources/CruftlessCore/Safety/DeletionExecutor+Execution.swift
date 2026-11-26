@@ -2,8 +2,11 @@ import Foundation
 
 extension DeletionExecutor {
     /// Executes all items in the plan sequentially, collecting per-item outcomes.
+    ///
+    /// - Parameter stopRequest: Once requested, the item in progress finishes and every later item is not attempted.
     public func execute(
         _ plan: DeletionPlan,
+        stopRequest: DeletionStopRequest? = nil,
         onProgress: (@Sendable (DeletionProgress) -> Void)? = nil,
         onItemEvent: (@Sendable (DeletionItemEvent) -> Void)? = nil
     ) async -> DeletionResult {
@@ -45,6 +48,7 @@ extension DeletionExecutor {
             plan,
             admission: admission,
             hasSimulatorMutation: hasSimulatorMutation,
+            stopRequest: stopRequest,
             onItemEvent: onItemEvent
         )
     }
@@ -53,6 +57,7 @@ extension DeletionExecutor {
         _ plan: DeletionPlan,
         admission: (locationIDs: Set<String>, gradleAcknowledgement: GradleCacheRiskAcknowledgement?),
         hasSimulatorMutation: Bool,
+        stopRequest: DeletionStopRequest?,
         onItemEvent: (@Sendable (DeletionItemEvent) -> Void)?
     ) async -> DeletionResult {
         var outcomes: [ItemOutcome] = []
@@ -66,8 +71,8 @@ extension DeletionExecutor {
                 }
                 break
             }
-            if Task.isCancelled {
-                let outcome = ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0)
+            if let reason = Self.skipReason(stopRequest: stopRequest) {
+                let outcome = ItemOutcome(target: item, status: .notAttempted(reason: reason), freedBytes: 0)
                 outcomes.append(outcome)
                 onItemEvent?(.finished(index: index, outcome: outcome))
                 continue
@@ -86,6 +91,12 @@ extension DeletionExecutor {
             await simulatorExecutor.endToolchainOperation(generation: plan.simulatorToolchainGeneration)
         }
         return DeletionResult(items: outcomes)
+    }
+
+    private static func skipReason(stopRequest: DeletionStopRequest?) -> NotAttemptedReason? {
+        if Task.isCancelled { return .cancelled }
+        if stopRequest?.isRequested == true { return .stoppedByUser }
+        return nil
     }
 
     private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {

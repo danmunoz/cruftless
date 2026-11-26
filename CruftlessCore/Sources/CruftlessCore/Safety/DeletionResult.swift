@@ -3,6 +3,8 @@ import Foundation
 public enum NotAttemptedReason: Sendable, Hashable {
     /// The run was cancelled before execution reached this item.
     case cancelled
+    /// The user stopped the run while an earlier item was in progress.
+    case stoppedByUser
     case executorBusy
     case policyChanged
     case toolchainChanged
@@ -13,6 +15,8 @@ public enum NotAttemptedReason: Sendable, Hashable {
         switch self {
         case .cancelled:
             "Not attempted: the operation was cancelled."
+        case .stoppedByUser:
+            "Not attempted: you stopped the deletion before it reached this item."
         case .executorBusy:
             "Not attempted: another deletion is already running."
         case .policyChanged:
@@ -119,7 +123,7 @@ public struct DeletionResult: Sendable, Hashable {
         })
     }
 
-    /// Items nothing was tried on: the run was cancelled before reaching them, or the executor was already busy.
+    /// Items nothing was tried on: the run was cancelled or stopped before reaching them, or the executor was busy.
     public var notAttemptedCount: Int {
         items.count(where: { $0.status.isNotAttempted })
     }

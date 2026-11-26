@@ -76,8 +76,10 @@ private struct SelectionSessionScreen: View {
                     canConfirm: session.isReady && !session.isRefreshing && !isPreviewFixture,
                     isBusy: model.isDeleting && session.stage != .executing,
                     showsActionLabels: true,
+                    isStopRequested: model.isDeletionStopRequested,
                     onConfirm: { model.confirmCleanup(in: session) },
-                    onCancel: { model.cancelCleanupReview(in: session) }
+                    onCancel: { model.cancelCleanupReview(in: session) },
+                    onStop: model.stopDeletionAfterCurrentItem
                 )
             } else {
                 CleanupSelectionView(model: model, session: session, isPreviewFixture: isPreviewFixture)

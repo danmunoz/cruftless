@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Skip Remaining while a multi-item deletion runs: the item in progress
+  finishes, and the rest are listed as not attempted.
+
 ## [1.4.0]
 
 ### Added

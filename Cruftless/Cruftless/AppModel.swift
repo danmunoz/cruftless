@@ -109,6 +109,12 @@ public final class AppModel {
     /// Per-item state of the plan being executed, shown in Review.
     public internal(set) var deletionRun: DeletionRunState?
 
+    /// Stop request handed to the executor for the plan being executed.
+    var deletionStopRequest: DeletionStopRequest?
+
+    /// True once the user asked the running plan to stop after its current item.
+    public internal(set) var isDeletionStopRequested = false
+
     public let scanEngine: ScanEngine
     public let simulatorService: SimulatorService
     public let deletionExecutor: DeletionExecutor
@@ -279,15 +285,7 @@ public final class AppModel {
 
         let before = VolumeCapacity.query().freeBytes
         deletionRun = DeletionRunState(plan: plan)
-        let result = await deletionExecutor.execute(
-            plan,
-            onProgress: { [weak self] progress in
-                Task { @MainActor in self?.deletionProgress = progress }
-            },
-            onItemEvent: { [weak self] event in
-                Task { @MainActor in self?.deletionRun?.apply(event) }
-            }
-        )
+        let result = await runStoppable(plan)
         deletionRun?.settle(with: result)
         deletionProgress = nil
         freeSpaceDelta = FreeSpaceDelta(before: before, after: VolumeCapacity.query().freeBytes)
@@ -295,6 +293,34 @@ public final class AppModel {
         startScan(plan.rescanScope, trigger: .user)
         presentDeletionResult(result, cleanupSessionID: cleanupSessionID)
         deletionRun = nil
+    }
+
+    /// Executes a plan with a stop request the Review footer can trigger.
+    private func runStoppable(_ plan: DeletionPlan) async -> DeletionResult {
+        let stopRequest = DeletionStopRequest()
+        deletionStopRequest = stopRequest
+        isDeletionStopRequested = false
+        defer {
+            deletionStopRequest = nil
+            isDeletionStopRequested = false
+        }
+        return await deletionExecutor.execute(
+            plan,
+            stopRequest: stopRequest,
+            onProgress: { [weak self] progress in
+                Task { @MainActor in self?.deletionProgress = progress }
+            },
+            onItemEvent: { [weak self] event in
+                Task { @MainActor in self?.deletionRun?.apply(event) }
+            }
+        )
+    }
+
+    /// Lets the item in progress finish and skips every item after it.
+    public func stopDeletionAfterCurrentItem() {
+        guard isDeleting, let deletionStopRequest, !isDeletionStopRequested else { return }
+        deletionStopRequest.request()
+        isDeletionStopRequested = true
     }
 
     private func presentDeletionResult(_ result: DeletionResult, cleanupSessionID: String?) {

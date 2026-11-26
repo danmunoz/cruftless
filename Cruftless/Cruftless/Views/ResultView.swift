@@ -279,6 +279,22 @@ public struct ResultView: View {
         .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
     }
 
+    // The user stopped a batch: the item in progress finished, the rest were skipped.
+    #Preview("Result: stopped after an item") {
+        ResultView(
+            result: DeletionResult(items: [
+                previewOutcome("iPhone 17 Pro 27.0", .succeeded, 4_100_000_000),
+                previewOutcome("iPad Air 27.0", .succeeded, 3_800_000_000),
+                previewOutcome("iPhone Air 27.0", .notAttempted(reason: .stoppedByUser), 3_900_000_000),
+                previewOutcome("iPhone 17 27.0", .notAttempted(reason: .stoppedByUser), 4_000_000_000)
+            ]),
+            freeSpaceDelta: FreeSpaceDelta(before: 2_500_000_000, after: 10_400_000_000),
+            onDone: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
     // A second plan handed to a busy executor: refused outright, distinct copy from a cancelled run.
     #Preview("Result: executor busy") {
         ResultView(
