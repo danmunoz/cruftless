@@ -282,7 +282,7 @@ struct FSEventsInvalidatorTests {
         }
         defer { watcher.stopMonitoring() }
 
-        for _ in 0 ..< 40 where received.paths.isEmpty {
+        for _ in 0 ..< 40 where !received.paths.contains(where: { $0.hasSuffix(".txt") }) {
             try Data("cruft".utf8).write(to: root.appendingPathComponent("\(UUID().uuidString).txt"))
             try await Task.sleep(for: .milliseconds(250))
         }
