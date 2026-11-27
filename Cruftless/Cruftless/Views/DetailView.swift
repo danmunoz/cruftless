@@ -116,7 +116,9 @@ public struct DetailView: View {
 
             if let orphanedProjects {
                 OrphanedProjectsCard(suggestion: orphanedProjects, isDisabled: model.isDeleting) {
-                    model.openSelection(for: location, preselecting: orphanedProjects.childIDs)
+                    withAnimation(.snappy(duration: 0.2)) {
+                        model.beginSelectionMode(for: location, preselecting: orphanedProjects.childIDs)
+                    }
                 }
                 .padding(.bottom, 6)
             }
@@ -190,6 +192,7 @@ public struct DetailView: View {
             flagTint: child.isFlagged ? DesignTokens.tierColor(for: child.tier) : nil,
             action: rowAction(for: child, gradleCacheRoots: cacheRoots),
             isReadOnly: location.mutationPolicy == .readOnly && !isRiskEligibleGradleEntry && !isAndroidDevice(child)
+                && !isAndroidSDKPackage(child)
         ) {
             if isDerivedData {
                 DerivedDataWorkspaceCaption(workspace: child.workspace)
@@ -202,9 +205,16 @@ public struct DetailView: View {
         location.id == LocationCatalog.androidAVDs.id && child.id != "androidAVDs-unclassified"
     }
 
+    private func isAndroidSDKPackage(_ child: ChildEntry) -> Bool {
+        location.id == LocationCatalog.androidSDK.id && child.id != "androidSDK-unclassified"
+    }
+
     private func rowAction(for child: ChildEntry, gradleCacheRoots: [URL]) -> RowAction? {
         if isAndroidDevice(child) {
             return RowAction("Delete Device", isDestructive: true) { model.requestAndroidAVDDeletion(child) }
+        }
+        if isAndroidSDKPackage(child) {
+            return RowAction("Remove", isDestructive: true) { model.requestAndroidSDKPackageRemoval(child) }
         }
         if location.id == LocationCatalog.gradleCaches.id {
             guard GradleCacheEntryPolicy.isEligible(child, cacheRoots: gradleCacheRoots) else {

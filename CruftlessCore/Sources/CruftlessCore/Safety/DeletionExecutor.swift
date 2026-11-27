@@ -72,6 +72,7 @@ public struct DefaultSimulatorCommandExecutor: SimulatorCommandExecuting {
 /// The sole executor permitted to permanently delete files or mutate simulators.
 public actor DeletionExecutor {
     let androidAVDRemoval: AndroidAVDRemoval
+    let androidSDKPackageRemoval: AndroidSDKPackageRemoval
     let simulatorExecutor: SimulatorCommandExecuting
     let policyGenerationAuthority: PolicyGenerationAuthority
     let protectedPathsStore: ProtectedPathsStore
@@ -92,6 +93,7 @@ public actor DeletionExecutor {
     public init(
         simulatorExecutor: SimulatorCommandExecuting = DefaultSimulatorCommandExecutor(),
         androidAVDRemoval: AndroidAVDRemoval = AndroidAVDRemoval(),
+        androidSDKPackageRemoval: AndroidSDKPackageRemoval? = nil,
         policyGenerationAuthority: PolicyGenerationAuthority = PolicyGenerationAuthority(),
         protectedPathsStore: ProtectedPathsStore = .shared,
         capacitySampler: @escaping @Sendable () async -> Int64 = { VolumeCapacity.query().freeBytes },
@@ -102,6 +104,7 @@ public actor DeletionExecutor {
         xctestConfirmationTimeout: Duration = .seconds(20)
     ) {
         self.androidAVDRemoval = androidAVDRemoval
+        self.androidSDKPackageRemoval = androidSDKPackageRemoval ?? AndroidSDKPackageRemoval(tools: androidAVDRemoval.tools)
         self.simulatorExecutor = simulatorExecutor
         self.policyGenerationAuthority = policyGenerationAuthority
         self.protectedPathsStore = protectedPathsStore
@@ -120,6 +123,11 @@ public actor DeletionExecutor {
         switch target {
         case let .androidAVDDelete(request):
             await androidAVDRemoval.remove(request) { [policyGenerationAuthority, protectedPathsStore] in
+                guard policyGenerationAuthority.currentGeneration == policyGeneration else { return nil }
+                return protectedPathsStore.protectedPaths()
+            }
+        case let .androidSDKPackageDelete(request):
+            await androidSDKPackageRemoval.remove(request) { [policyGenerationAuthority, protectedPathsStore] in
                 guard policyGenerationAuthority.currentGeneration == policyGeneration else { return nil }
                 return protectedPathsStore.protectedPaths()
             }

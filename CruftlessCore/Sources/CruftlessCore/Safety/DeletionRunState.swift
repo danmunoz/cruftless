@@ -39,6 +39,11 @@ public struct DeletionRunState: Sendable, Equatable {
         }
     }
 
+    /// True while some item has not started, so stopping the run would skip something.
+    public var hasPendingItems: Bool {
+        states.contains(.pending)
+    }
+
     public var activeID: String? {
         states.firstIndex(of: .active).map { itemIDs[$0] }
     }

@@ -30,12 +30,14 @@ struct ReviewItemRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if case let .androidAVDDelete(request) = item {
-                    Text(request.identity.directory.path(percentEncoded: false))
+                if let path = displayPath {
+                    Text(Naming.abbreviatingHome(in: path))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .help(path)
                 }
                 caption(for: item, state: state)
 
@@ -51,6 +53,11 @@ struct ReviewItemRow: View {
         .opacity(state.map(Self.opacity(for:)) ?? 1)
         .accessibilityElement(children: .combine)
         .accessibilityValue(state.map(Self.accessibilityText(for:)) ?? "")
+    }
+
+    private var displayPath: String? {
+        guard let path = item.displayURL?.path(percentEncoded: false) else { return nil }
+        return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
     }
 
     @ViewBuilder
@@ -94,6 +101,7 @@ struct ReviewItemRow: View {
         case .xctestSimulatorDelete: "Delete Test Simulator"
         case .runtimeDelete: "Delete Runtime"
         case .androidAVDDelete: "Delete Device"
+        case .androidSDKPackageDelete: "Remove Package"
         }
     }
 }

@@ -60,6 +60,7 @@
                 session.notice = "Some selected items changed or disappeared. Clear Selection to resolve them before review."
             }
             model.cleanupSessions[location.id] = session
+            model.selectingLocationID = location.id
             model.drillDowns[location.id] = contents
             model.scannedLocationIds = [location.id]
             model.hasStartedInitialScan = true

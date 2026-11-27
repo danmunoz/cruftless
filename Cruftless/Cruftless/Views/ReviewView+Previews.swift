@@ -174,7 +174,23 @@ import SwiftUI
             progress: DeletionProgress(verb: .delete, targetName: "iPhone Air", phase: .waitingForSpace),
             run: previewRun(previewBatchPlan),
             onConfirm: {},
-            onCancel: {}
+            onCancel: {},
+            onStop: {}
+        )
+        .frame(width: PopoverMetrics.width)
+        .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)
+    }
+
+    #Preview("Review: stopping after this item") {
+        ReviewView(
+            plan: previewBatchPlan,
+            isExecuting: true,
+            progress: DeletionProgress(verb: .delete, targetName: "iPhone Air", phase: .waitingForSpace),
+            run: previewRun(previewBatchPlan),
+            isStopRequested: true,
+            onConfirm: {},
+            onCancel: {},
+            onStop: {}
         )
         .frame(width: PopoverMetrics.width)
         .frame(minHeight: PopoverMetrics.contentMinHeight, maxHeight: PopoverMetrics.height)

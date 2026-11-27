@@ -178,9 +178,10 @@ extension AppModel {
         returnToSelection(session)
     }
 
+    /// Pops back to the Detail screen that is in selection mode for this session.
     func returnToSelection(_ session: CleanupSelectionSession) {
         guard !isDeleting,
-              let index = navigationPath.lastIndex(of: .selection(session.location)),
+              let index = navigationPath.lastIndex(of: .detail(session.location)),
               navigationPath.count > index + 1
         else { return }
         pushing { navigationPath.removeSubrange((index + 1)...) }
@@ -222,12 +223,13 @@ extension AppModel {
         session.reviewPlan = nil
         session.freeSpaceDelta = nil
         session.selection.clear()
-        if navigationPath.contains(.selection(session.location)) {
+        session.notice = nil
+        if isSelecting(in: session.location) { selectingLocationID = nil }
+        if navigationPath.contains(.detail(session.location)) {
             returnToSelection(session)
         } else {
             popToRoot()
         }
-        refreshSelection(session)
     }
 
     private func planCleanupRows(_ rows: [CleanupSelectionRow], in session: CleanupSelectionSession) {

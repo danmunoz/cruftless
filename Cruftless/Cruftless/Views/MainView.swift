@@ -64,11 +64,13 @@ public struct MainView: View {
                 progress: model.deletionProgress,
                 run: model.deletionRun,
                 currentFreeBytes: model.reviewFreeSpaceBytes,
+                isStopRequested: model.isDeletionStopRequested,
                 onConfirm: {
                     model.recordReviewCompleted()
                     await model.executeDeletion(plan: plan)
                 },
-                onCancel: model.pop
+                onCancel: model.pop,
+                onStop: model.stopDeletionAfterCurrentItem
             )
 
         case let .result(result):
@@ -77,9 +79,6 @@ public struct MainView: View {
                 freeSpaceDelta: model.freeSpaceDelta,
                 onDone: model.popToRoot
             )
-
-        case let .selection(location):
-            selectionScreen(location, screen: .items)
 
         case let .selectionRisk(location, child):
             selectionScreen(location, screen: .risk(child))
@@ -100,7 +99,7 @@ public struct MainView: View {
         switch model.navigationPath.last {
         case .review, .result, .selectionReview, .selectionResult:
             min(max(reportedContentHeight, PopoverMetrics.contentMinHeight), PopoverMetrics.height)
-        case nil, .detail, .selection:
+        case nil, .detail:
             PopoverMetrics.height
         case .gradleCacheRisk, .selectionRisk, .androidTools:
             PopoverMetrics.height
@@ -118,7 +117,6 @@ public struct MainView: View {
         case .androidTools: "Android tools"
         case .review: "Review"
         case .result: "Result"
-        case .selection: "Selection"
         case .selectionRisk: "Gradle warning"
         case .selectionReview: "Review"
         case .selectionResult: "Result"

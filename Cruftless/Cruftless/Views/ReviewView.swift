@@ -21,8 +21,12 @@ public struct ReviewView: View {
     public let canConfirm: Bool
     public let isBusy: Bool
     public let showsActionLabels: Bool
+    /// Whether the user already asked the run to stop after its current item.
+    public let isStopRequested: Bool
     public let onConfirm: () async -> Void
     public let onCancel: () -> Void
+    /// Skips the items after the one in progress; `nil` hides the control.
+    public let onStop: (() -> Void)?
 
     @State private var headerHeight: CGFloat = 44
     @State private var contentHeight: CGFloat = 140
@@ -46,8 +50,10 @@ public struct ReviewView: View {
         canConfirm: Bool = true,
         isBusy: Bool = false,
         showsActionLabels: Bool = false,
+        isStopRequested: Bool = false,
         onConfirm: @escaping () async -> Void,
-        onCancel: @escaping () -> Void
+        onCancel: @escaping () -> Void,
+        onStop: (() -> Void)? = nil
     ) {
         self.plan = plan
         self.backTitle = backTitle
@@ -60,8 +66,10 @@ public struct ReviewView: View {
         self.canConfirm = canConfirm
         self.isBusy = isBusy
         self.showsActionLabels = showsActionLabels
+        self.isStopRequested = isStopRequested
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        self.onStop = onStop
     }
 
     public var body: some View {
@@ -110,7 +118,6 @@ public struct ReviewView: View {
 
             footer
                 .measuringHeight(into: $footerHeight)
-                .disabled(isExecuting)
         }
         .disabled(isBusy)
         .preference(key: ContentHeightPreference.self, value: naturalHeight)
@@ -162,7 +169,9 @@ public struct ReviewView: View {
                 Text("Deleting \(run.currentPosition) of \(run.total)")
                     .font(.system(size: 22, weight: .semibold))
                     .monospacedDigit()
-                Text("\(ByteFormatter.format(plan.totalReclaimableBytes)) in total")
+                Text(isStopRequested
+                    ? "Stopping after this item"
+                    : "\(ByteFormatter.format(plan.totalReclaimableBytes)) in total")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -199,10 +208,19 @@ public struct ReviewView: View {
     private var footer: some View {
         PopoverFooter {
             HStack(spacing: 10) {
-                Button("Cancel", action: onCancel)
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-                    .keyboardShortcut(.cancelAction)
+                if isExecuting, let onStop, run?.total ?? 0 > 1 {
+                    Button("Skip Remaining", action: onStop)
+                        .buttonStyle(.glass)
+                        .controlSize(.large)
+                        .help("Finishes the item being deleted, then skips the rest.")
+                        .disabled(isStopRequested || run?.hasPendingItems != true)
+                } else {
+                    Button("Cancel", action: onCancel)
+                        .buttonStyle(.glass)
+                        .controlSize(.large)
+                        .keyboardShortcut(.cancelAction)
+                        .disabled(isExecuting)
+                }
 
                 Spacer(minLength: 8)
 

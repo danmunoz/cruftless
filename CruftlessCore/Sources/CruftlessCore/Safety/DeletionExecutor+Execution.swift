@@ -2,15 +2,16 @@ import Foundation
 
 extension DeletionExecutor {
     /// Executes all items in the plan sequentially, collecting per-item outcomes.
+    ///
+    /// - Parameter stopRequest: Once requested, the item in progress finishes and every later item is not attempted.
     public func execute(
         _ plan: DeletionPlan,
+        stopRequest: DeletionStopRequest? = nil,
         onProgress: (@Sendable (DeletionProgress) -> Void)? = nil,
         onItemEvent: (@Sendable (DeletionItemEvent) -> Void)? = nil
     ) async -> DeletionResult {
-        let androidTarget = plan.items.contains { if case .androidAVDDelete = $0 { true } else { false } }
-        let invalidAndroidPlan = !plan.isPlannerAuthorized || plan.count != 1
-            || plan.affectedLocationIds != [LocationCatalog.androidAVDs.id]
-        if androidTarget, invalidAndroidPlan {
+        if let androidLocationID = plan.items.lazy.compactMap(Self.androidManagerLocationID).first,
+           !plan.isPlannerAuthorized || plan.count != 1 || plan.affectedLocationIds != [androidLocationID] {
             return Self.refusedAsUnverified(plan)
         }
         if plan.items.contains(where: { $0.validatedPath != nil }), !plan.isPlannerAuthorized {
@@ -45,6 +46,7 @@ extension DeletionExecutor {
             plan,
             admission: admission,
             hasSimulatorMutation: hasSimulatorMutation,
+            stopRequest: stopRequest,
             onItemEvent: onItemEvent
         )
     }
@@ -53,6 +55,7 @@ extension DeletionExecutor {
         _ plan: DeletionPlan,
         admission: (locationIDs: Set<String>, gradleAcknowledgement: GradleCacheRiskAcknowledgement?),
         hasSimulatorMutation: Bool,
+        stopRequest: DeletionStopRequest?,
         onItemEvent: (@Sendable (DeletionItemEvent) -> Void)?
     ) async -> DeletionResult {
         var outcomes: [ItemOutcome] = []
@@ -66,8 +69,8 @@ extension DeletionExecutor {
                 }
                 break
             }
-            if Task.isCancelled {
-                let outcome = ItemOutcome(target: item, status: .notAttempted(reason: .cancelled), freedBytes: 0)
+            if let reason = Self.skipReason(stopRequest: stopRequest) {
+                let outcome = ItemOutcome(target: item, status: .notAttempted(reason: reason), freedBytes: 0)
                 outcomes.append(outcome)
                 onItemEvent?(.finished(index: index, outcome: outcome))
                 continue
@@ -88,10 +91,25 @@ extension DeletionExecutor {
         return DeletionResult(items: outcomes)
     }
 
+    private static func skipReason(stopRequest: DeletionStopRequest?) -> NotAttemptedReason? {
+        if Task.isCancelled { return .cancelled }
+        if stopRequest?.isRequested == true { return .stoppedByUser }
+        return nil
+    }
+
     private static func isSimulatorMutation(_ target: DeletionTarget) -> Bool {
         switch target {
         case .simulatorErase, .simulatorDelete, .xctestSimulatorDelete, .runtimeDelete: true
-        case .path, .androidAVDDelete: false
+        case .path, .androidAVDDelete, .androidSDKPackageDelete: false
+        }
+    }
+
+    /// The read-only location whose one reviewed item a manager-backed target may remove.
+    private static func androidManagerLocationID(_ target: DeletionTarget) -> String? {
+        switch target {
+        case .androidAVDDelete: LocationCatalog.androidAVDs.id
+        case .androidSDKPackageDelete: LocationCatalog.androidSDK.id
+        default: nil
         }
     }
 
@@ -110,8 +128,8 @@ extension DeletionExecutor {
         var authorizedIDs: Set<String> = acknowledgement == nil
             ? []
             : [LocationCatalog.gradleCaches.id]
-        if plan.isPlannerAuthorized, plan.count == 1, case .androidAVDDelete = plan.items[0] {
-            authorizedIDs.insert(LocationCatalog.androidAVDs.id)
+        if plan.isPlannerAuthorized, plan.count == 1, let locationID = Self.androidManagerLocationID(plan.items[0]) {
+            authorizedIDs.insert(locationID)
         }
         let locationIDs = plan.affectedLocationIds.subtracting(authorizedIDs).union(
             policyGenerationAuthority.readOnlyLocationIDs(matching: plan.items)

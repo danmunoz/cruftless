@@ -2,7 +2,6 @@ import CruftlessCore
 import SwiftUI
 
 enum SelectionScreen {
-    case items
     case risk(ChildEntry)
     case review
     case result
@@ -55,11 +54,9 @@ private struct SelectionSessionScreen: View {
     @ViewBuilder
     private var content: some View {
         switch screen {
-        case .items:
-            CleanupSelectionView(model: model, session: session, isPreviewFixture: isPreviewFixture)
         case let .risk(child):
             GradleCacheRiskView(
-                location: session.location, child: child, model: model, backTitle: "Selection",
+                location: session.location, child: child, model: model, backTitle: session.location.title,
                 onCancel: { model.cancelCleanupReview(in: session) },
                 onAccept: { model.acceptCleanupGradleRisk(in: session, child: child) },
                 notice: session.notice,
@@ -68,7 +65,7 @@ private struct SelectionSessionScreen: View {
         case .review:
             if let plan = session.reviewPlan {
                 ReviewView(
-                    plan: plan, backTitle: "Selection", runningAppsWarning: model.runningAppsWarning,
+                    plan: plan, backTitle: session.location.title, runningAppsWarning: model.runningAppsWarning,
                     isExecuting: session.stage == .executing,
                     progress: model.deletionProgress, run: model.deletionRun,
                     currentFreeBytes: session.reviewFreeSpaceBytes,
@@ -76,11 +73,13 @@ private struct SelectionSessionScreen: View {
                     canConfirm: session.isReady && !session.isRefreshing && !isPreviewFixture,
                     isBusy: model.isDeleting && session.stage != .executing,
                     showsActionLabels: true,
+                    isStopRequested: model.isDeletionStopRequested,
                     onConfirm: { model.confirmCleanup(in: session) },
-                    onCancel: { model.cancelCleanupReview(in: session) }
+                    onCancel: { model.cancelCleanupReview(in: session) },
+                    onStop: model.stopDeletionAfterCurrentItem
                 )
             } else {
-                CleanupSelectionView(model: model, session: session, isPreviewFixture: isPreviewFixture)
+                PopoverPlaceholder(symbol: "checklist", title: "Nothing to review")
             }
         case .result:
             if let result = session.result {

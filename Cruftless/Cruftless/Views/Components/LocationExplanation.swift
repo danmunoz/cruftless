@@ -101,7 +101,8 @@ struct LocationExplanation {
             description: "Android development packages, including build tools, platform versions, and emulator system images.",
             risk: """
             Removing required packages can stop projects building or emulators starting. \
-            Cruftless keeps this section read-only; manage packages in Android Studio’s SDK Manager.
+            Cruftless removes one package at a time through Google’s Android CLI after review, \
+            and keeps any system image a virtual device still uses.
             """
         ),
         LocationCatalog.androidAVDs.id: LocationExplanation(

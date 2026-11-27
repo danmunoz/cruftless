@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Skip Remaining while a multi-item deletion runs: the item in progress
+  finishes, and the rest are listed as not attempted.
+- Show each item's folder in Review.
+- Remove individual Android SDK packages, one at a time after review, through
+  Google's Android CLI. Cruftless keeps any system image a virtual device uses,
+  refuses while something runs from the package, and checks the disk afterwards
+  instead of trusting the CLI's exit code. Package removal needs Android tools
+  1.1.16919734 or later; when the installed copy is older, Cruftless offers to
+  download Google's latest release into its own folder.
+
+### Improved
+
+- Select Items switches the Detail screen into selection mode in place
+  instead of opening a separate screen; Cancel leaves it.
+
 ## [1.4.0]
 
 ### Added

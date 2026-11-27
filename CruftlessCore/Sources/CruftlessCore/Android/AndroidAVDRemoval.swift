@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 public actor AndroidAVDRemoval {
-    public let tools: AndroidCLITools
+    nonisolated public let tools: AndroidCLITools
     public let registryRoot: URL
     private let process: AndroidCLIProcess
     private let removalTimeout: Duration
