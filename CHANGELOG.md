@@ -2,12 +2,6 @@
 
 ## [1.5.0]
 
-### Changes
-
-- batch stop, in-place selection, Review paths, and Android SDK package removal (#23) (87bbafe)
-
-## [Unreleased]
-
 ### Added
 
 - Skip Remaining while a multi-item deletion runs: the item in progress
